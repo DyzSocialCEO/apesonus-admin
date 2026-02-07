@@ -2,7 +2,19 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X } from "lucide-react"
+import {
+  LayoutDashboard,
+  Music,
+  Users,
+  BarChart3,
+  Settings,
+  LogOut,
+  Menu,
+  X,
+  Crown,
+  Megaphone,
+  Coins,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
@@ -10,6 +22,9 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Tracks", href: "/dashboard/tracks", icon: Music },
   { name: "Users", href: "/dashboard/users", icon: Users },
+  { name: "Subscriptions", href: "/dashboard/subscriptions", icon: Crown },
+  { name: "Banners", href: "/dashboard/banners", icon: Megaphone },
+  { name: "Moji Points", href: "/dashboard/moji", icon: Coins },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ]
