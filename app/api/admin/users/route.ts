@@ -10,7 +10,6 @@ export async function GET() {
 
     const supabase = await createAdminClient()
 
-    // Get all users
     const { data: users, error } = await supabase
       .from("users")
       .select("*")
@@ -19,13 +18,11 @@ export async function GET() {
 
     if (error) throw error
 
-    // Get active subscriptions
     const { data: subs } = await supabase
       .from("subscriptions")
       .select("telegram_id, status, expires_at")
       .in("status", ["active", "trial"])
 
-    // Merge premium status
     const subMap = new Map<string, any>()
     subs?.forEach((s) => {
       if (!subMap.has(s.telegram_id) || s.status === "active") {
@@ -62,46 +59,42 @@ export async function POST(request: Request) {
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
       const now = new Date().toISOString()
 
-      const { data: existing } = await supabase
-        .from("subscriptions")
-        .select("id")
-        .eq("telegram_id", telegramId)
-        .maybeSingle()
+      // Delete any existing row first, then insert fresh
+      await supabase.from("subscriptions").delete().eq("telegram_id", telegramId)
 
-      if (existing) {
-        await supabase.from("subscriptions").update({
-          status: "active",
-          plan: "premium",
-          amount_paid: 0,
-          payment_method: "admin_grant",
-          started_at: now,
-          expires_at: expiresAt,
-          updated_at: now,
-        }).eq("telegram_id", telegramId)
-      } else {
-        await supabase.from("subscriptions").insert({
-          telegram_id: telegramId,
-          status: "active",
-          plan: "premium",
-          amount_paid: 0,
-          currency: "USDT",
-          payment_method: "admin_grant",
-          started_at: now,
-          expires_at: expiresAt,
-          updated_at: now,
-        })
+      const { data, error } = await supabase.from("subscriptions").insert({
+        telegram_id: telegramId,
+        status: "active",
+        plan: "premium",
+        amount_paid: 0,
+        currency: "USDT",
+        payment_method: "admin_grant",
+        started_at: now,
+        expires_at: expiresAt,
+        updated_at: now,
+      }).select().single()
+
+      if (error) {
+        console.error("[Admin] Insert subscription error:", error)
+        return NextResponse.json({ error: "Failed to activate: " + error.message }, { status: 500 })
       }
 
-      return NextResponse.json({ success: true, message: "Premium activated" })
+      console.log("[Admin] Premium activated for", telegramId, data)
+      return NextResponse.json({ success: true, message: "Premium activated for 30 days" })
     }
 
     if (action === "deactivate_premium") {
-      await supabase
+      const { error } = await supabase
         .from("subscriptions")
         .update({ status: "cancelled", updated_at: new Date().toISOString() })
         .eq("telegram_id", telegramId)
 
-      return NextResponse.json({ success: true, message: "Premium deactivated" })
+      if (error) {
+        console.error("[Admin] Deactivate error:", error)
+        return NextResponse.json({ error: "Failed to deactivate: " + error.message }, { status: 500 })
+      }
+
+      return NextResponse.json({ success: true, message: "Premium removed" })
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 })
