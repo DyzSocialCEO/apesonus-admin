@@ -59,20 +59,38 @@ export async function POST(request: Request) {
     const supabase = await createAdminClient()
 
     if (action === "activate_premium") {
-      // Create or update subscription — 30 days from now
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      const now = new Date().toISOString()
 
-      await supabase.from("subscriptions").upsert({
-        telegram_id: telegramId,
-        status: "active",
-        plan: "premium",
-        amount_paid: 0,
-        currency: "USDT",
-        payment_method: "admin_grant",
-        started_at: new Date().toISOString(),
-        expires_at: expiresAt,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "telegram_id" })
+      const { data: existing } = await supabase
+        .from("subscriptions")
+        .select("id")
+        .eq("telegram_id", telegramId)
+        .maybeSingle()
+
+      if (existing) {
+        await supabase.from("subscriptions").update({
+          status: "active",
+          plan: "premium",
+          amount_paid: 0,
+          payment_method: "admin_grant",
+          started_at: now,
+          expires_at: expiresAt,
+          updated_at: now,
+        }).eq("telegram_id", telegramId)
+      } else {
+        await supabase.from("subscriptions").insert({
+          telegram_id: telegramId,
+          status: "active",
+          plan: "premium",
+          amount_paid: 0,
+          currency: "USDT",
+          payment_method: "admin_grant",
+          started_at: now,
+          expires_at: expiresAt,
+          updated_at: now,
+        })
+      }
 
       return NextResponse.json({ success: true, message: "Premium activated" })
     }
