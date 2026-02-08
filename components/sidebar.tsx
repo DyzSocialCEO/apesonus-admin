@@ -14,6 +14,7 @@ import {
   Crown,
   Megaphone,
   Coins,
+  BookOpen,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -25,6 +26,7 @@ const navigation = [
   { name: "Subscriptions", href: "/dashboard/subscriptions", icon: Crown },
   { name: "Banners", href: "/dashboard/banners", icon: Megaphone },
   { name: "Moji Points", href: "/dashboard/moji", icon: Coins },
+  { name: "Stories", href: "/dashboard/stories", icon: BookOpen },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ]
