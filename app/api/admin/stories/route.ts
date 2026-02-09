@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { createAdminClient } from "@/lib/supabase"
+import { getSession } from "@/lib/auth"
 
 // GET - List all stories for admin review
 export async function GET(request: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const supabase = await createAdminClient()
   const { searchParams } = new URL(request.url)
   const status = searchParams.get("status") || "pending"
 
@@ -61,6 +61,10 @@ export async function GET(request: NextRequest) {
 
 // PUT - Update story status (approve/reject/select)
 export async function PUT(request: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const supabase = await createAdminClient()
   try {
     const body = await request.json()
     const { id, status, adminNotes } = body
@@ -135,6 +139,10 @@ export async function PUT(request: NextRequest) {
 
 // DELETE - Delete a story
 export async function DELETE(request: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const supabase = await createAdminClient()
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
