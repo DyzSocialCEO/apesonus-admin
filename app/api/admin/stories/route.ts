@@ -92,7 +92,7 @@ export async function PUT(request: NextRequest) {
     // Update story
     const updates: any = {
       status,
-      updated_at: new Date().toISOString(),
+      
     }
     if (adminNotes !== undefined) updates.admin_notes = adminNotes
 
