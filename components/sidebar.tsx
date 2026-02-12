@@ -11,10 +11,10 @@ import {
   LogOut,
   Menu,
   X,
-  Crown,
+  Activity,
   Megaphone,
   Coins,
-  BookOpen,
+  Flame,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -23,10 +23,10 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Tracks", href: "/dashboard/tracks", icon: Music },
   { name: "Users", href: "/dashboard/users", icon: Users },
-  { name: "Subscriptions", href: "/dashboard/subscriptions", icon: Crown },
+  { name: "Culture Pulse", href: "/dashboard/pulse", icon: Activity },
+  { name: "Streaks", href: "/dashboard/streaks", icon: Flame },
   { name: "Banners", href: "/dashboard/banners", icon: Megaphone },
   { name: "Moji Points", href: "/dashboard/moji", icon: Coins },
-  { name: "Stories", href: "/dashboard/stories", icon: BookOpen },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ]
