@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
 
-// GET all users with premium status
+// GET all users with engagement status
 export async function GET() {
   try {
     const session = await getSession()
@@ -18,21 +18,20 @@ export async function GET() {
 
     if (error) throw error
 
-    const { data: subs } = await supabase
-      .from("subscriptions")
-      .select("telegram_id, status, expires_at")
-      .in("status", ["active", "trial"])
+    // Get active streaks
+    const { data: streaks } = await supabase
+      .from("user_streaks")
+      .select("telegram_id, current_day, completed_streaks, is_active")
+      .eq("is_active", true)
 
-    const subMap = new Map<string, any>()
-    subs?.forEach((s) => {
-      if (!subMap.has(s.telegram_id) || s.status === "active") {
-        subMap.set(s.telegram_id, s)
-      }
+    const streakMap = new Map<string, any>()
+    streaks?.forEach((s) => {
+      streakMap.set(s.telegram_id, s)
     })
 
     const enriched = (users || []).map((u) => ({
       ...u,
-      subscription: subMap.get(u.telegram_id) || null,
+      streak: streakMap.get(u.telegram_id) || null,
     }))
 
     return NextResponse.json({ users: enriched })
@@ -42,59 +41,43 @@ export async function GET() {
   }
 }
 
-// POST - toggle premium for a user
+// POST - admin actions on users
 export async function POST(request: Request) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    const { telegramId, action } = await request.json()
+    const { telegramId, action, amount } = await request.json()
     if (!telegramId || !action) {
       return NextResponse.json({ error: "telegramId and action required" }, { status: 400 })
     }
 
     const supabase = await createAdminClient()
 
-    if (action === "activate_premium") {
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-      const now = new Date().toISOString()
-
-      // Delete any existing row first, then insert fresh
-      await supabase.from("subscriptions").delete().eq("telegram_id", telegramId)
-
-      const { data, error } = await supabase.from("subscriptions").insert({
+    if (action === "grant_coins") {
+      const coinAmount = amount || 50
+      await supabase.from("moji_transactions").insert({
         telegram_id: telegramId,
-        status: "active",
-        plan: "premium",
-        amount_paid: 0,
-        currency: "USDT",
-        payment_method: "admin_grant",
-        started_at: now,
-        expires_at: expiresAt,
-        updated_at: now,
-      }).select().single()
-
-      if (error) {
-        console.error("[Admin] Insert subscription error:", error)
-        return NextResponse.json({ error: "Failed to activate: " + error.message }, { status: 500 })
-      }
-
-      console.log("[Admin] Premium activated for", telegramId, data)
-      return NextResponse.json({ success: true, message: "Premium activated for 30 days" })
+        amount: coinAmount,
+        reason: "admin_bonus",
+      })
+      return NextResponse.json({ success: true, message: `Granted ${coinAmount} coins` })
     }
 
-    if (action === "deactivate_premium") {
-      const { error } = await supabase
-        .from("subscriptions")
-        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+    if (action === "verify_user") {
+      await supabase
+        .from("users")
+        .update({ is_verified: true, verified_at: new Date().toISOString() })
         .eq("telegram_id", telegramId)
+      return NextResponse.json({ success: true, message: "User verified" })
+    }
 
-      if (error) {
-        console.error("[Admin] Deactivate error:", error)
-        return NextResponse.json({ error: "Failed to deactivate: " + error.message }, { status: 500 })
-      }
-
-      return NextResponse.json({ success: true, message: "Premium removed" })
+    if (action === "unverify_user") {
+      await supabase
+        .from("users")
+        .update({ is_verified: false, verified_at: null })
+        .eq("telegram_id", telegramId)
+      return NextResponse.json({ success: true, message: "Verification removed" })
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 })
