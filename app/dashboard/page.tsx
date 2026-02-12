@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Users, Music, Play, TrendingUp, Crown, DollarSign } from "lucide-react"
+import { Users, Music, Play, TrendingUp, Activity, Flame } from "lucide-react"
 import { formatNumber } from "@/lib/utils"
 
 async function getStats() {
@@ -18,10 +18,12 @@ async function getStats() {
 
     const { count: totalTracks } = await supabase.from("tracks").select("*", { count: "exact", head: true }).eq("is_active", true)
 
-    const { count: premiumUsers } = await supabase.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "active")
+    // Get today's mood votes
+    const today = new Date().toISOString().split("T")[0]
+    const { count: todayVotes } = await supabase.from("daily_mood_votes").select("*", { count: "exact", head: true }).eq("vote_date", today)
 
-    const { data: revData } = await supabase.from("subscriptions").select("amount_paid")
-    const totalRevenue = revData?.reduce((sum, s) => sum + (s.amount_paid || 0), 0) || 0
+    // Get active streaks
+    const { count: activeStreaks } = await supabase.from("user_streaks").select("*", { count: "exact", head: true }).eq("is_active", true)
 
     const { data: recentUsers } = await supabase
       .from("users")
@@ -29,23 +31,18 @@ async function getStats() {
       .order("created_at", { ascending: false })
       .limit(8)
 
-    // Get premium status for recent users
-    const tids = recentUsers?.map((u) => u.telegram_id) || []
-    const { data: subs } = await supabase.from("subscriptions").select("telegram_id, status").in("telegram_id", tids).eq("status", "active")
-    const premiumSet = new Set(subs?.map((s) => s.telegram_id))
-
     return {
       totalUsers: totalUsers || 0,
       activeUsers: activeUsers || 0,
       totalPlays,
       totalTracks: totalTracks || 0,
-      premiumUsers: premiumUsers || 0,
-      totalRevenue,
-      recentUsers: (recentUsers || []).map((u) => ({ ...u, isPremium: premiumSet.has(u.telegram_id) })),
+      todayVotes: todayVotes || 0,
+      activeStreaks: activeStreaks || 0,
+      recentUsers: (recentUsers || []).map((u) => ({ ...u })),
     }
   } catch (error) {
     console.error("Error:", error)
-    return { totalUsers: 0, activeUsers: 0, totalPlays: 0, totalTracks: 0, premiumUsers: 0, totalRevenue: 0, recentUsers: [] }
+    return { totalUsers: 0, activeUsers: 0, totalPlays: 0, totalTracks: 0, todayVotes: 0, activeStreaks: 0, recentUsers: [] }
   }
 }
 
@@ -57,8 +54,8 @@ export default async function DashboardPage() {
     { title: "Active (7d)", value: formatNumber(stats.activeUsers), icon: TrendingUp, color: "text-green-400", bg: "bg-green-400/10" },
     { title: "Total Plays", value: formatNumber(stats.totalPlays), icon: Play, color: "text-purple-400", bg: "bg-purple-400/10" },
     { title: "Tracks", value: formatNumber(stats.totalTracks), icon: Music, color: "text-primary", bg: "bg-primary/10" },
-    { title: "Premium", value: formatNumber(stats.premiumUsers), icon: Crown, color: "text-yellow-400", bg: "bg-yellow-400/10" },
-    { title: "Revenue", value: `$${stats.totalRevenue.toFixed(2)}`, icon: DollarSign, color: "text-green-400", bg: "bg-green-400/10" },
+    { title: "Pulse Today", value: formatNumber(stats.todayVotes), icon: Activity, color: "text-cyan-400", bg: "bg-cyan-400/10" },
+    { title: "Active Streaks", value: formatNumber(stats.activeStreaks), icon: Flame, color: "text-orange-400", bg: "bg-orange-400/10" },
   ]
 
   return (
@@ -92,7 +89,6 @@ export default async function DashboardPage() {
               <thead>
                 <tr className="border-b border-gray-800">
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">User</th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Status</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Plays</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Streak</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Moji</th>
@@ -106,21 +102,14 @@ export default async function DashboardPage() {
                       <p className="text-white font-medium text-sm">{user.first_name || user.username || "Unknown"}</p>
                       <p className="text-xs text-gray-500">@{user.username || "—"}</p>
                     </td>
-                    <td className="py-3 px-4 text-center">
-                      {user.isPremium ? (
-                        <Badge className="bg-primary/20 text-primary border-0 text-xs">PREMIUM</Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-xs">FREE</Badge>
-                      )}
-                    </td>
                     <td className="py-3 px-4 text-center text-white text-sm">{user.tracks_played || 0}</td>
                     <td className="py-3 px-4 text-center text-white text-sm">{user.current_streak || 0}d</td>
-                    <td className="py-3 px-4 text-center text-primary text-sm">{user.moji_points || 0}</td>
+                    <td className="py-3 px-4 text-center text-primary text-sm">{user.moji_points || user.total_moji || 0}</td>
                     <td className="py-3 px-4 text-right text-gray-400 text-xs">{new Date(user.created_at).toLocaleDateString()}</td>
                   </tr>
                 ))}
                 {stats.recentUsers.length === 0 && (
-                  <tr><td colSpan={6} className="py-8 text-center text-gray-500">No users yet</td></tr>
+                  <tr><td colSpan={5} className="py-8 text-center text-gray-500">No users yet</td></tr>
                 )}
               </tbody>
             </table>
