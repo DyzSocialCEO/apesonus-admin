@@ -141,7 +141,7 @@ Commit message: `fix admin dashboard — use total_moji, streak from user_streak
 
 **Admin Fix 4:** In `app/dashboard/users/page.tsx`, find this one line:
 ```
-<td className="py-3 px-4 text-center text-primary text-sm font-medium">{user.moji_points || 0}</td>
+<td className="py-3 px-4 text-center text-primary text-sm font-medium">{user.total_moji || 0}</td>
 ```
 
 Replace with:
