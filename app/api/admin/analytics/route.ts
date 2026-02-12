@@ -21,14 +21,12 @@ export async function GET() {
 
     const { count: totalTracks } = await supabase.from("tracks").select("*", { count: "exact", head: true }).eq("is_active", true)
 
-    // Culture Pulse — today's votes
     const today = new Date().toISOString().split("T")[0]
     const { count: todayVotes } = await supabase.from("daily_mood_votes").select("*", { count: "exact", head: true }).eq("vote_date", today)
 
-    // Active streaks
     const { count: activeStreaks } = await supabase.from("user_streaks").select("*", { count: "exact", head: true }).eq("is_active", true)
 
-    // Mood breakdown
+    // Mood breakdown from mood_stats
     const { data: moodData } = await supabase.from("mood_stats").select("mood, play_count")
     const moodBreakdown: Record<string, number> = { moon: 0, rekt: 0, cope: 0, degen: 0, zen: 0 }
     moodData?.forEach((m) => { moodBreakdown[m.mood] = (moodBreakdown[m.mood] || 0) + m.play_count })
@@ -36,9 +34,11 @@ export async function GET() {
     // Top tracks
     const { data: topTracks } = await supabase.from("tracks").select("id, title, artist, play_count").order("play_count", { ascending: false }).limit(5)
 
-    // Referral stats
-    const { data: refData } = await supabase.from("users").select("referral_count").gt("referral_count", 0)
-    const totalReferrals = refData?.reduce((sum, u) => sum + (u.referral_count || 0), 0) || 0
+    // Referral count from referred_by field
+    const { count: totalReferrals } = await supabase
+      .from("users")
+      .select("*", { count: "exact", head: true })
+      .not("referred_by", "is", null)
 
     return NextResponse.json({
       totalUsers: totalUsers || 0,
@@ -48,7 +48,7 @@ export async function GET() {
       totalTracks: totalTracks || 0,
       todayVotes: todayVotes || 0,
       activeStreaks: activeStreaks || 0,
-      totalReferrals,
+      totalReferrals: totalReferrals || 0,
       moodBreakdown,
       topTracks: topTracks || [],
     })
