@@ -9,29 +9,24 @@ export async function GET() {
 
     const supabase = await createAdminClient()
 
-    // Total users
     const { count: totalUsers } = await supabase.from("users").select("*", { count: "exact", head: true })
 
-    // Active users (7 days)
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString()
     const { count: activeUsers } = await supabase.from("users").select("*", { count: "exact", head: true }).gte("last_played_at", sevenDaysAgo)
 
-    // New users (7 days)
     const { count: newUsers } = await supabase.from("users").select("*", { count: "exact", head: true }).gte("created_at", sevenDaysAgo)
 
-    // Total plays
     const { data: playData } = await supabase.from("users").select("tracks_played")
     const totalPlays = playData?.reduce((sum, u) => sum + (u.tracks_played || 0), 0) || 0
 
-    // Active subs
-    const { count: activeSubs } = await supabase.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "active")
-
-    // Total tracks
     const { count: totalTracks } = await supabase.from("tracks").select("*", { count: "exact", head: true }).eq("is_active", true)
 
-    // Revenue
-    const { data: revData } = await supabase.from("subscriptions").select("amount_paid")
-    const totalRevenue = revData?.reduce((sum, s) => sum + (s.amount_paid || 0), 0) || 0
+    // Culture Pulse — today's votes
+    const today = new Date().toISOString().split("T")[0]
+    const { count: todayVotes } = await supabase.from("daily_mood_votes").select("*", { count: "exact", head: true }).eq("vote_date", today)
+
+    // Active streaks
+    const { count: activeStreaks } = await supabase.from("user_streaks").select("*", { count: "exact", head: true }).eq("is_active", true)
 
     // Mood breakdown
     const { data: moodData } = await supabase.from("mood_stats").select("mood, play_count")
@@ -50,9 +45,9 @@ export async function GET() {
       activeUsers: activeUsers || 0,
       newUsers: newUsers || 0,
       totalPlays,
-      activeSubs: activeSubs || 0,
       totalTracks: totalTracks || 0,
-      totalRevenue,
+      todayVotes: todayVotes || 0,
+      activeStreaks: activeStreaks || 0,
       totalReferrals,
       moodBreakdown,
       topTracks: topTracks || [],
