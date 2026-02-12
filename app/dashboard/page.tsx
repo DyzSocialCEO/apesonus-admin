@@ -135,30 +135,3 @@ export default async function DashboardPage() {
     </div>
   )
 }
-```
-
-Commit message: `fix admin dashboard — use total_moji, streak from user_streaks`
-
-**Admin Fix 4:** In `app/dashboard/users/page.tsx`, find this one line:
-```
-<td className="py-3 px-4 text-center text-primary text-sm font-medium">{user.total_moji || 0}</td>
-```
-
-Replace with:
-```
-<td className="py-3 px-4 text-center text-primary text-sm font-medium">{user.total_moji || 0}</td>
-```
-
-Commit message: `fix admin users — display total_moji not dropped moji_points`
-
-**Admin Fix 5:** In `app/dashboard/moji/page.tsx`, find these 3 lines:
-```
-{users.filter((u) => (u.moji_points || 0) > 0).map((user, i) => (
-```
-→ replace `moji_points` with `total_moji`
-```
-<td className="py-2 px-4 text-right text-primary font-bold text-sm">{user.moji_points}</td>
-```
-→ replace `moji_points` with `total_moji`
-```
-{users.filter((u) => (u.moji_points || 0) > 0).length === 0 && (
