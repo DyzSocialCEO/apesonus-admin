@@ -18,18 +18,32 @@ async function getStats() {
 
     const { count: totalTracks } = await supabase.from("tracks").select("*", { count: "exact", head: true }).eq("is_active", true)
 
-    // Get today's mood votes
     const today = new Date().toISOString().split("T")[0]
     const { count: todayVotes } = await supabase.from("daily_mood_votes").select("*", { count: "exact", head: true }).eq("vote_date", today)
 
-    // Get active streaks
     const { count: activeStreaks } = await supabase.from("user_streaks").select("*", { count: "exact", head: true }).eq("is_active", true)
 
+    // Get recent users with streak info
     const { data: recentUsers } = await supabase
       .from("users")
-      .select("telegram_id, username, first_name, tracks_played, current_streak, created_at, moji_points")
+      .select("telegram_id, username, first_name, tracks_played, total_moji, created_at")
       .order("created_at", { ascending: false })
       .limit(8)
+
+    // Get streaks for recent users
+    const tids = recentUsers?.map((u) => u.telegram_id) || []
+    const { data: streaks } = await supabase
+      .from("user_streaks")
+      .select("telegram_id, current_day, is_active")
+      .eq("is_active", true)
+      .in("telegram_id", tids)
+
+    const streakMap = new Map(streaks?.map((s) => [s.telegram_id, s]) || [])
+
+    const enrichedUsers = (recentUsers || []).map((u) => ({
+      ...u,
+      streak: streakMap.get(u.telegram_id) || null,
+    }))
 
     return {
       totalUsers: totalUsers || 0,
@@ -38,7 +52,7 @@ async function getStats() {
       totalTracks: totalTracks || 0,
       todayVotes: todayVotes || 0,
       activeStreaks: activeStreaks || 0,
-      recentUsers: (recentUsers || []).map((u) => ({ ...u })),
+      recentUsers: enrichedUsers,
     }
   } catch (error) {
     console.error("Error:", error)
@@ -103,8 +117,10 @@ export default async function DashboardPage() {
                       <p className="text-xs text-gray-500">@{user.username || "—"}</p>
                     </td>
                     <td className="py-3 px-4 text-center text-white text-sm">{user.tracks_played || 0}</td>
-                    <td className="py-3 px-4 text-center text-white text-sm">{user.current_streak || 0}d</td>
-                    <td className="py-3 px-4 text-center text-primary text-sm">{user.moji_points || user.total_moji || 0}</td>
+                    <td className="py-3 px-4 text-center text-white text-sm">
+                      {user.streak ? `${user.streak.current_day}/7` : "—"}
+                    </td>
+                    <td className="py-3 px-4 text-center text-primary text-sm">{user.total_moji || 0}</td>
                     <td className="py-3 px-4 text-right text-gray-400 text-xs">{new Date(user.created_at).toLocaleDateString()}</td>
                   </tr>
                 ))}
@@ -119,3 +135,30 @@ export default async function DashboardPage() {
     </div>
   )
 }
+```
+
+Commit message: `fix admin dashboard — use total_moji, streak from user_streaks`
+
+**Admin Fix 4:** In `app/dashboard/users/page.tsx`, find this one line:
+```
+<td className="py-3 px-4 text-center text-primary text-sm font-medium">{user.moji_points || 0}</td>
+```
+
+Replace with:
+```
+<td className="py-3 px-4 text-center text-primary text-sm font-medium">{user.total_moji || 0}</td>
+```
+
+Commit message: `fix admin users — display total_moji not dropped moji_points`
+
+**Admin Fix 5:** In `app/dashboard/moji/page.tsx`, find these 3 lines:
+```
+{users.filter((u) => (u.moji_points || 0) > 0).map((user, i) => (
+```
+→ replace `moji_points` with `total_moji`
+```
+<td className="py-2 px-4 text-right text-primary font-bold text-sm">{user.moji_points}</td>
+```
+→ replace `moji_points` with `total_moji`
+```
+{users.filter((u) => (u.moji_points || 0) > 0).length === 0 && (
