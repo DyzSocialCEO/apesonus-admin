@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
-  Users, Play, TrendingUp, Activity, Crown, Music, DollarSign, Share2, Loader2,
+  Users, Play, TrendingUp, Activity, Flame, Music, Share2, Loader2,
 } from "lucide-react"
 
 const MOOD_COLORS: Record<string, string> = {
@@ -37,9 +37,9 @@ export default function AnalyticsPage() {
     { title: "Active (7d)", value: data.activeUsers, icon: Activity, color: "text-green-400", bg: "bg-green-400/10" },
     { title: "New (7d)", value: data.newUsers, icon: TrendingUp, color: "text-cyan-400", bg: "bg-cyan-400/10" },
     { title: "Total Plays", value: data.totalPlays, icon: Play, color: "text-purple-400", bg: "bg-purple-400/10" },
-    { title: "Premium Subs", value: data.activeSubs, icon: Crown, color: "text-primary", bg: "bg-primary/10" },
+    { title: "Pulse Today", value: data.todayVotes, icon: Activity, color: "text-cyan-400", bg: "bg-cyan-400/10" },
+    { title: "Active Streaks", value: data.activeStreaks, icon: Flame, color: "text-orange-400", bg: "bg-orange-400/10" },
     { title: "Active Tracks", value: data.totalTracks, icon: Music, color: "text-pink-400", bg: "bg-pink-400/10" },
-    { title: "Revenue", value: `$${data.totalRevenue.toFixed(2)}`, icon: DollarSign, color: "text-green-400", bg: "bg-green-400/10" },
     { title: "Referrals", value: data.totalReferrals, icon: Share2, color: "text-orange-400", bg: "bg-orange-400/10" },
   ]
 
