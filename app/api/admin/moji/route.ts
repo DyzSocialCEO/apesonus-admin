@@ -9,11 +9,11 @@ export async function GET() {
 
     const supabase = await createAdminClient()
 
-    // Top users by moji points
+    // Top users by total_moji
     const { data: users } = await supabase
       .from("users")
-      .select("telegram_id, username, first_name, moji_points")
-      .order("moji_points", { ascending: false })
+      .select("telegram_id, username, first_name, total_moji")
+      .order("total_moji", { ascending: false })
       .limit(50)
 
     // Recent transactions
@@ -24,12 +24,12 @@ export async function GET() {
       .limit(50)
 
     // Total points in circulation
-    const totalPoints = users?.reduce((sum, u) => sum + (u.moji_points || 0), 0) || 0
+    const totalPoints = users?.reduce((sum, u) => sum + (u.total_moji || 0), 0) || 0
 
     return NextResponse.json({
       users: users || [],
       transactions: transactions || [],
-      stats: { totalPoints, usersWithPoints: users?.filter((u) => (u.moji_points || 0) > 0).length || 0 },
+      stats: { totalPoints, usersWithPoints: users?.filter((u) => (u.total_moji || 0) > 0).length || 0 },
     })
   } catch (error) {
     console.error("Error:", error)
@@ -37,7 +37,7 @@ export async function GET() {
   }
 }
 
-// POST - manually award points
+// POST - manually award points (trigger updates total_moji)
 export async function POST(request: Request) {
   try {
     const session = await getSession()
@@ -50,17 +50,11 @@ export async function POST(request: Request) {
 
     const supabase = await createAdminClient()
 
-    // Record transaction
+    // Insert transaction — DB trigger auto-updates total_moji
     await supabase.from("moji_transactions").insert({
       telegram_id: telegramId,
       amount,
       reason: `admin_award: ${reason}`,
-    })
-
-    // Increment user points
-    await supabase.rpc("increment_moji_points", {
-      user_telegram_id: telegramId,
-      points_to_add: amount,
     })
 
     return NextResponse.json({ success: true })
