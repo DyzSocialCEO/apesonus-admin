@@ -43,6 +43,32 @@ export default function TracksPage() {
   const [editTrack, setEditTrack] = useState<Partial<Track> | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const [msg, setMsg] = useState("")
+  const [detectingDuration, setDetectingDuration] = useState(false)
+  const durationTimerRef = { current: null as ReturnType<typeof setTimeout> | null }
+
+  // Auto-detect duration from audio URL (debounced)
+  const detectDuration = (url: string) => {
+    if (durationTimerRef.current) clearTimeout(durationTimerRef.current)
+    if (!url || !url.startsWith("http")) return
+    durationTimerRef.current = setTimeout(() => {
+      setDetectingDuration(true)
+      const audio = new Audio()
+      audio.preload = "metadata"
+      audio.onloadedmetadata = () => {
+        if (audio.duration && isFinite(audio.duration)) {
+          setEditTrack(prev => prev ? { ...prev, duration: Math.round(audio.duration) } : prev)
+        }
+        setDetectingDuration(false)
+        audio.src = ""
+      }
+      audio.onerror = () => {
+        setDetectingDuration(false)
+        audio.src = ""
+      }
+      setTimeout(() => { setDetectingDuration(false) }, 10000)
+      audio.src = url
+    }, 600)
+  }
 
   useEffect(() => { fetchTracks() }, [])
 
@@ -99,7 +125,11 @@ export default function TracksPage() {
   }
 
   const openAdd = () => { setEditTrack({ ...emptyTrack }); setShowModal(true); setMsg("") }
-  const openEdit = (t: Track) => { setEditTrack({ ...t }); setShowModal(true); setMsg("") }
+  const openEdit = (t: Track) => {
+    setEditTrack({ ...t }); setShowModal(true); setMsg("")
+    // Auto-detect duration if missing
+    if ((!t.duration || t.duration === 0) && t.audio) detectDuration(t.audio)
+  }
 
   return (
     <div className="space-y-6">
@@ -260,15 +290,23 @@ export default function TracksPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">Duration (seconds)</label>
-                  <Input type="number" value={editTrack.duration || 0} onChange={(e) => setEditTrack({ ...editTrack, duration: parseInt(e.target.value) || 0 })} placeholder="180" />
+                  <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                    Duration (seconds)
+                    {detectingDuration && <span className="ml-2 text-xs text-primary animate-pulse">⏳ Detecting...</span>}
+                    {!detectingDuration && editTrack.duration ? <span className="ml-2 text-xs text-green-400">✓ Auto-detected</span> : null}
+                  </label>
+                  <Input type="number" value={editTrack.duration || 0} onChange={(e) => setEditTrack({ ...editTrack, duration: parseInt(e.target.value) || 0 })} placeholder="Auto-detected from audio" />
                 </div>
               </div>
 
               {/* Audio + Cover URLs */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1.5">Audio URL (BunnyCDN) *</label>
-                <Input value={editTrack.audio || ""} onChange={(e) => setEditTrack({ ...editTrack, audio: e.target.value })} placeholder="https://stokmoji-audio.b-cdn.net/music/..." />
+                <Input value={editTrack.audio || ""} onChange={(e) => {
+                  const url = e.target.value
+                  setEditTrack({ ...editTrack, audio: url })
+                  detectDuration(url)
+                }} placeholder="https://stokmoji-audio.b-cdn.net/music/..." />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1.5">Cover Image URL (BunnyCDN)</label>
