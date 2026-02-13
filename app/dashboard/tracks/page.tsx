@@ -302,29 +302,19 @@ export default function TracksPage() {
                 </div>
               </div>
 
-              {/* Mood + Duration */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">Mood</label>
-                  <select
-                    value={editTrack.mood || "moon"}
-                    onChange={(e) => setEditTrack({ ...editTrack, mood: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    {MOODS.map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">
-                    Duration (seconds)
-                    {detectingDuration && <span className="ml-2 text-xs text-primary animate-pulse">⏳ Detecting...</span>}
-                    {!detectingDuration && editTrack.duration ? <span className="ml-2 text-xs text-green-400">✓ Auto-detected</span> : null}
-                  </label>
-                  <Input type="number" value={editTrack.duration || 0} onChange={(e) => setEditTrack({ ...editTrack, duration: parseInt(e.target.value) || 0 })} placeholder="Auto-detected from audio" />
-                </div>
+              {/* Mood */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1.5">Mood</label>
+                <select
+                  value={editTrack.mood || "moon"}
+                  onChange={(e) => setEditTrack({ ...editTrack, mood: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  {MOODS.map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
+                </select>
               </div>
 
-              {/* Audio + Cover URLs */}
+              {/* Audio URL — moved ABOVE duration so user pastes first, then duration auto-fills */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1.5">Audio URL (BunnyCDN) *</label>
                 <Input value={editTrack.audio || ""} onChange={(e) => {
@@ -332,6 +322,34 @@ export default function TracksPage() {
                   setEditTrack({ ...editTrack, audio: url })
                   detectDuration(url)
                 }} placeholder="https://stokmoji-audio.b-cdn.net/music/..." />
+              </div>
+
+              {/* Duration — auto-detected, shown as status display */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1.5">Duration</label>
+                <div className={`w-full px-3 py-2.5 rounded-lg border text-sm flex items-center gap-2 ${
+                  detectingDuration 
+                    ? "bg-gray-800/50 border-primary/50 text-primary" 
+                    : editTrack.duration && editTrack.duration > 0
+                      ? "bg-green-500/5 border-green-500/30 text-green-400"
+                      : "bg-gray-800/50 border-gray-700 text-gray-500"
+                }`}>
+                  {detectingDuration ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Detecting duration from audio...</span>
+                    </>
+                  ) : editTrack.duration && editTrack.duration > 0 ? (
+                    <>
+                      <span className="text-lg font-mono font-bold">
+                        {Math.floor(editTrack.duration / 60)}:{(editTrack.duration % 60).toString().padStart(2, "0")}
+                      </span>
+                      <span className="text-xs text-gray-500">({editTrack.duration}s — auto-detected ✓)</span>
+                    </>
+                  ) : (
+                    <span>{editTrack.audio ? "Paste a valid audio URL above ↑" : "Will auto-detect when you add audio URL"}</span>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1.5">Cover Image URL (BunnyCDN)</label>
