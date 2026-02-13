@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -44,30 +44,55 @@ export default function TracksPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const [msg, setMsg] = useState("")
   const [detectingDuration, setDetectingDuration] = useState(false)
-  const durationTimerRef = { current: null as ReturnType<typeof setTimeout> | null }
+  const durationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const audioElRef = useRef<HTMLAudioElement | null>(null)
 
-  // Auto-detect duration from audio URL (debounced)
-  const detectDuration = (url: string) => {
+  // Auto-detect duration: sign URL via API, then load metadata client-side
+  const detectDuration = (rawUrl: string) => {
+    // Clear any pending detection
     if (durationTimerRef.current) clearTimeout(durationTimerRef.current)
-    if (!url || !url.startsWith("http")) return
-    durationTimerRef.current = setTimeout(() => {
+    if (audioElRef.current) { audioElRef.current.src = ""; audioElRef.current = null }
+
+    if (!rawUrl || !rawUrl.startsWith("http")) return
+
+    // Debounce 800ms so it only fires after you finish pasting
+    durationTimerRef.current = setTimeout(async () => {
       setDetectingDuration(true)
-      const audio = new Audio()
-      audio.preload = "metadata"
-      audio.onloadedmetadata = () => {
-        if (audio.duration && isFinite(audio.duration)) {
-          setEditTrack(prev => prev ? { ...prev, duration: Math.round(audio.duration) } : prev)
-        }
+      try {
+        // 1. Get signed URL from server (handles BunnyCDN token auth)
+        const res = await fetch("/api/admin/detect-duration", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ audioUrl: rawUrl }),
+        })
+        if (!res.ok) throw new Error("Sign failed")
+        const { signedUrl } = await res.json()
+
+        // 2. Load only metadata (not the full file) to read duration
+        const audio = new Audio()
+        audioElRef.current = audio
+        audio.preload = "metadata"
+
+        await new Promise<void>((resolve, reject) => {
+          audio.onloadedmetadata = () => {
+            if (audio.duration && isFinite(audio.duration)) {
+              setEditTrack(prev => prev ? { ...prev, duration: Math.round(audio.duration) } : prev)
+            }
+            resolve()
+          }
+          audio.onerror = () => reject(new Error("Audio load failed"))
+          // Timeout after 8s
+          setTimeout(() => reject(new Error("Timeout")), 8000)
+          audio.src = signedUrl
+        })
+      } catch (err) {
+        // Silent fail — user can still enter duration manually
+        console.warn("[Duration] Auto-detect failed:", err)
+      } finally {
         setDetectingDuration(false)
-        audio.src = ""
+        if (audioElRef.current) { audioElRef.current.src = ""; audioElRef.current = null }
       }
-      audio.onerror = () => {
-        setDetectingDuration(false)
-        audio.src = ""
-      }
-      setTimeout(() => { setDetectingDuration(false) }, 10000)
-      audio.src = url
-    }, 600)
+    }, 800)
   }
 
   useEffect(() => { fetchTracks() }, [])
