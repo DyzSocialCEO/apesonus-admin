@@ -1,6 +1,85 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
+import { signBunnyCdnUrl } from "@/lib/bunny-cdn"
+
+// ── Auto-detect m4a duration server-side ──
+async function detectDuration(audioUrl: string): Promise<number> {
+  try {
+    const signed = signBunnyCdnUrl(audioUrl)
+
+    // Try first 64KB (faststart files have moov at beginning)
+    let buf = await fetchRange(signed, 0, 65535)
+    let dur = parseMoov(buf)
+    if (dur !== null) return Math.round(dur)
+
+    // Try last 128KB (non-faststart files)
+    const head = await fetch(signed, { method: "HEAD" })
+    const len = parseInt(head.headers.get("content-length") || "0")
+    if (len > 65536) {
+      buf = await fetchRange(signed, Math.max(0, len - 131072), len - 1)
+      dur = parseMoov(buf)
+      if (dur !== null) return Math.round(dur)
+    }
+
+    // Fallback: full file if < 20MB
+    if (len > 0 && len < 20 * 1024 * 1024) {
+      const r = await fetch(signed)
+      buf = new Uint8Array(await r.arrayBuffer())
+      dur = parseMoov(buf)
+      if (dur !== null) return Math.round(dur)
+    }
+  } catch (e) {
+    console.warn("[Duration] detect failed:", e)
+  }
+  return 0
+}
+
+async function fetchRange(url: string, s: number, e: number) {
+  const r = await fetch(url, { headers: { Range: `bytes=${s}-${e}` } })
+  return new Uint8Array(await r.arrayBuffer())
+}
+
+function parseMoov(d: Uint8Array): number | null {
+  const moov = findAtom(d, "moov", 0)
+  if (moov === -1) return null
+  const mvhd = findAtom(d, "mvhd", moov + 8)
+  if (mvhd === -1) return null
+  const h = mvhd + 8
+  if (h + 4 > d.length) return null
+  const v = d[h]
+  if (v === 0) {
+    const o = h + 4; if (o + 16 > d.length) return null
+    const ts = r32(d, o + 8), du = r32(d, o + 12)
+    return ts ? du / ts : null
+  }
+  if (v === 1) {
+    const o = h + 4; if (o + 28 > d.length) return null
+    const ts = r32(d, o + 16)
+    const du = r32(d, o + 20) * 0x100000000 + r32(d, o + 24)
+    return ts ? du / ts : null
+  }
+  return null
+}
+
+function findAtom(d: Uint8Array, n: string, s: number): number {
+  let o = s
+  const c = [n.charCodeAt(0), n.charCodeAt(1), n.charCodeAt(2), n.charCodeAt(3)]
+  while (o + 8 <= d.length) {
+    const sz = r32(d, o)
+    if (d[o+4]===c[0] && d[o+5]===c[1] && d[o+6]===c[2] && d[o+7]===c[3]) return o
+    if (sz === 0) break
+    if (sz === 1) { if (o+16>d.length) break; o += r32(d,o+8)*0x100000000+r32(d,o+12) }
+    else o += sz
+  }
+  return -1
+}
+
+function r32(d: Uint8Array, o: number) {
+  return ((d[o]<<24)>>>0)+(d[o+1]<<16)+(d[o+2]<<8)+d[o+3]
+}
+
+// ── Routes ──
 
 // GET all tracks
 export async function GET() {
@@ -31,6 +110,12 @@ export async function POST(request: Request) {
     const body = await request.json()
     const supabase = await createAdminClient()
 
+    // Auto-detect duration if not provided
+    let duration = body.duration || 0
+    if (duration === 0 && body.audio) {
+      duration = await detectDuration(body.audio)
+    }
+
     // If setting as featured, unfeatured all others first
     if (body.is_featured) {
       await supabase.from("tracks").update({ is_featured: false }).eq("is_featured", true)
@@ -44,7 +129,7 @@ export async function POST(request: Request) {
         mood: body.mood,
         cover: body.cover,
         audio: body.audio,
-        duration: body.duration || 0,
+        duration,
         is_instrumental: body.is_instrumental || false,
         soundbath_category: body.soundbath_category || null,
         is_active: body.is_active !== false,
@@ -72,6 +157,11 @@ export async function PUT(request: Request) {
     const body = await request.json()
     const { id, ...updates } = body
     if (!id) return NextResponse.json({ error: "Track ID required" }, { status: 400 })
+
+    // Auto-detect duration if updating audio URL with no duration
+    if (updates.audio && (!updates.duration || updates.duration === 0)) {
+      updates.duration = await detectDuration(updates.audio)
+    }
 
     const supabase = await createAdminClient()
 
