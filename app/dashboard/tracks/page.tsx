@@ -44,8 +44,103 @@ export default function TracksPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const [msg, setMsg] = useState("")
   const [detectingDuration, setDetectingDuration] = useState(false)
+  const [batchFixing, setBatchFixing] = useState(false)
+  const [batchProgress, setBatchProgress] = useState("")
   const durationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const audioElRef = useRef<HTMLAudioElement | null>(null)
+
+  // Detect duration for a single audio URL via signed URL + Audio element
+  const detectSingleDuration = (signedUrl: string): Promise<number> => {
+    return new Promise((resolve) => {
+      const audio = new Audio()
+      audio.preload = "metadata"
+      const timeout = setTimeout(() => { audio.src = ""; resolve(0) }, 10000)
+      audio.onloadedmetadata = () => {
+        clearTimeout(timeout)
+        const dur = audio.duration && isFinite(audio.duration) ? Math.round(audio.duration) : 0
+        audio.src = ""
+        resolve(dur)
+      }
+      audio.onerror = () => { clearTimeout(timeout); audio.src = ""; resolve(0) }
+      audio.src = signedUrl
+    })
+  }
+
+  // Batch fix ALL tracks with duration 0
+  const batchFixDurations = async () => {
+    const broken = tracks.filter(t => (!t.duration || t.duration === 0) && t.audio)
+    if (broken.length === 0) {
+      setMsg("All tracks already have durations!")
+      return
+    }
+    setBatchFixing(true)
+    setBatchProgress(`Fixing 0/${broken.length}...`)
+    let fixed = 0
+    let failed = 0
+
+    for (let i = 0; i < broken.length; i++) {
+      const track = broken[i]
+      setBatchProgress(`Fixing ${i + 1}/${broken.length}: ${track.title}...`)
+      try {
+        // Sign the URL
+        const signRes = await fetch("/api/admin/detect-duration", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ audioUrl: track.audio }),
+        })
+        if (!signRes.ok) { failed++; continue }
+        const { signedUrl } = await signRes.json()
+
+        // Detect duration client-side
+        const duration = await detectSingleDuration(signedUrl)
+        if (duration <= 0) { failed++; continue }
+
+        // Save to DB
+        const saveRes = await fetch("/api/admin/tracks", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: track.id, duration }),
+        })
+        if (saveRes.ok) fixed++
+        else failed++
+      } catch {
+        failed++
+      }
+      // Small delay to avoid hammering
+      await new Promise(r => setTimeout(r, 300))
+    }
+
+    setBatchFixing(false)
+    setBatchProgress("")
+    await fetchTracks()
+    setMsg(`Duration fix complete: ${fixed} fixed, ${failed} failed out of ${broken.length}`)
+  }
+
+  // Fix duration for a single track (from table row button)
+  const fixSingleTrackDuration = async (track: Track) => {
+    try {
+      const signRes = await fetch("/api/admin/detect-duration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ audioUrl: track.audio }),
+      })
+      if (!signRes.ok) { setMsg(`Failed to sign URL for "${track.title}"`); return }
+      const { signedUrl } = await signRes.json()
+
+      const duration = await detectSingleDuration(signedUrl)
+      if (duration <= 0) { setMsg(`Could not detect duration for "${track.title}" — file may be corrupt`); return }
+
+      await fetch("/api/admin/tracks", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: track.id, duration }),
+      })
+      await fetchTracks()
+      setMsg(`Fixed "${track.title}": ${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, "0")}`)
+    } catch {
+      setMsg(`Failed to fix "${track.title}"`)
+    }
+  }
 
   // Auto-detect duration: sign URL via API, then load metadata client-side
   const detectDuration = (rawUrl: string) => {
@@ -163,9 +258,20 @@ export default function TracksPage() {
           <h1 className="text-2xl font-bold text-white">Tracks</h1>
           <p className="text-gray-400">Manage your music catalog ({tracks.length} tracks)</p>
         </div>
-        <Button onClick={openAdd} className="bg-primary text-black hover:bg-primary/90">
+        <div className="flex items-center gap-3">
+          <Button onClick={openAdd} className="bg-primary text-black hover:bg-primary/90">
           <Plus className="w-4 h-4 mr-2" /> Add Track
         </Button>
+        <Button
+          onClick={batchFixDurations}
+          disabled={batchFixing}
+          variant="outline"
+          className="border-orange-500/50 text-orange-400 hover:bg-orange-500/10"
+        >
+          {batchFixing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Music className="w-4 h-4 mr-2" />}
+          {batchFixing ? batchProgress : `Fix Durations (${tracks.filter(t => !t.duration || t.duration === 0).length})`}
+        </Button>
+        </div>
       </div>
 
       {msg && (
@@ -215,7 +321,17 @@ export default function TracksPage() {
                         <Badge variant={track.mood as any}>{track.mood.toUpperCase()}</Badge>
                       </td>
                       <td className="py-3 px-4 text-gray-400 text-sm">
-                        {Math.floor(track.duration / 60)}:{(track.duration % 60).toString().padStart(2, "0")}
+                        {(!track.duration || track.duration === 0) ? (
+                          <button
+                            onClick={() => fixSingleTrackDuration(track)}
+                            className="text-red-400 hover:text-orange-400 underline decoration-dotted cursor-pointer"
+                            title="Click to detect duration"
+                          >
+                            0:00 ⚠️
+                          </button>
+                        ) : (
+                          <>{Math.floor(track.duration / 60)}:{(track.duration % 60).toString().padStart(2, "0")}</>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-center text-gray-400 text-sm">{track.play_count}</td>
                       <td className="py-3 px-4">
