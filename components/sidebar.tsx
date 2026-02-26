@@ -15,6 +15,7 @@ import {
   Megaphone,
   Coins,
   Flame,
+  Target,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -25,6 +26,7 @@ const navigation = [
   { name: "Users", href: "/dashboard/users", icon: Users },
   { name: "Culture Pulse", href: "/dashboard/pulse", icon: Activity },
   { name: "Streaks", href: "/dashboard/streaks", icon: Flame },
+  { name: "Forecast", href: "/dashboard/forecast", icon: Target },
   { name: "Banners", href: "/dashboard/banners", icon: Megaphone },
   { name: "Moji Points", href: "/dashboard/moji", icon: Coins },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
