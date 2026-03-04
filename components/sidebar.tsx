@@ -26,7 +26,7 @@ const navigation = [
   { name: "Culture Pulse", href: "/dashboard/pulse", icon: Activity },
   { name: "Streaks", href: "/dashboard/streaks", icon: Flame },
   { name: "Banners", href: "/dashboard/banners", icon: Megaphone },
-  { name: "Moji Points", href: "/dashboard/moji", icon: Coins },
+  { name: "$ONUS", href: "/dashboard/onus", icon: Coins },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ]
@@ -49,7 +49,7 @@ export function Sidebar() {
           <Music className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <h1 className="font-bold text-white">STOKMOJI</h1>
+          <h1 className="font-bold text-white">APESONUS</h1>
           <p className="text-xs text-gray-500">Admin Panel</p>
         </div>
       </div>

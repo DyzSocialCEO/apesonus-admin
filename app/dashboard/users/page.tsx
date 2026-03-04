@@ -101,7 +101,7 @@ export default function UsersPage() {
                     <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Status</th>
                     <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Plays</th>
                     <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Streak</th>
-                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Moji</th>
+                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">$ONUS</th>
                     <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Joined</th>
                     <th className="text-right py-4 px-4 text-sm font-medium text-gray-400">Actions</th>
                   </tr>
@@ -151,7 +151,7 @@ export default function UsersPage() {
                             <span className="text-gray-600 text-sm">—</span>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-center text-primary text-sm font-medium">{user.total_moji || 0}</td>
+                        <td className="py-3 px-4 text-center text-primary text-sm font-medium">{user.total_onus || 0}</td>
                         <td className="py-3 px-4 text-center text-gray-500 text-xs">
                           {new Date(user.created_at).toLocaleDateString()}
                         </td>

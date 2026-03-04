@@ -56,7 +56,7 @@ export async function POST(request: Request) {
 
     if (action === "grant_coins") {
       const coinAmount = amount || 50
-      await supabase.from("moji_transactions").insert({
+      await supabase.from("onus_transactions").insert({
         telegram_id: telegramId,
         amount: coinAmount,
         reason: "admin_bonus",

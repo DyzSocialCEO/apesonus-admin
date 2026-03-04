@@ -26,7 +26,7 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <p className="text-gray-400 text-sm">
-            Your admin panel is connected to the same Supabase database as your STOKMOJI app.
+            Your admin panel is connected to the same Supabase database as your APESONUS app.
           </p>
         </CardContent>
       </Card>
@@ -88,7 +88,7 @@ export default function SettingsPage() {
 
       <Card className="bg-gray-900/50 border-gray-800">
         <CardContent className="p-4 text-center">
-          <p className="text-gray-500 text-sm">STOKMOJI Admin v1.0.0</p>
+          <p className="text-gray-500 text-sm">APESONUS Admin v1.0.0</p>
         </CardContent>
       </Card>
     </div>

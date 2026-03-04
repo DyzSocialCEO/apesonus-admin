@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Coins, Loader2, Send, Trophy, Activity } from "lucide-react"
 
-export default function MojiPointsPage() {
+export default function OnusPointsPage() {
   const [users, setUsers] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
   const [stats, setStats] = useState({ totalPoints: 0, usersWithPoints: 0 })
@@ -23,7 +23,7 @@ export default function MojiPointsPage() {
 
   const fetchData = async () => {
     try {
-      const res = await fetch("/api/admin/moji")
+      const res = await fetch("/api/admin/onus")
       const data = await res.json()
       setUsers(data.users || [])
       setTransactions(data.transactions || [])
@@ -35,7 +35,7 @@ export default function MojiPointsPage() {
     if (!awardId || !awardAmount || !awardReason) { setMsg("All fields required"); return }
     setAwarding(true); setMsg("")
     try {
-      const res = await fetch("/api/admin/moji", {
+      const res = await fetch("/api/admin/onus", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -56,7 +56,7 @@ export default function MojiPointsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Moji Points</h1>
+        <h1 className="text-2xl font-bold text-white">$ONUS Points</h1>
         <p className="text-gray-400">Manage rewards and point balances</p>
       </div>
 
@@ -128,16 +128,16 @@ export default function MojiPointsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {users.filter((u) => (u.moji_points || 0) > 0).map((user, i) => (
+                  {users.filter((u) => (u.total_onus || 0) > 0).map((user, i) => (
                     <tr key={user.telegram_id} className="border-b border-gray-800/50">
                       <td className="py-2 px-4 text-gray-500 text-sm">{i + 1}</td>
                       <td className="py-2 px-4">
                         <p className="text-white text-sm">{user.first_name || user.username || user.telegram_id}</p>
                       </td>
-                      <td className="py-2 px-4 text-right text-primary font-bold text-sm">{user.moji_points}</td>
+                      <td className="py-2 px-4 text-right text-primary font-bold text-sm">{user.total_onus}</td>
                     </tr>
                   ))}
-                  {users.filter((u) => (u.moji_points || 0) > 0).length === 0 && (
+                  {users.filter((u) => (u.total_onus || 0) > 0).length === 0 && (
                     <tr><td colSpan={3} className="py-8 text-center text-gray-500 text-sm">No points awarded yet</td></tr>
                   )}
                 </tbody>

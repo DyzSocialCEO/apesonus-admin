@@ -26,7 +26,7 @@ async function getStats() {
     // Get recent users with streak info
     const { data: recentUsers } = await supabase
       .from("users")
-      .select("telegram_id, username, first_name, tracks_played, total_moji, created_at")
+      .select("telegram_id, username, first_name, tracks_played, total_onus, created_at")
       .order("created_at", { ascending: false })
       .limit(8)
 
@@ -76,7 +76,7 @@ export default async function DashboardPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-        <p className="text-gray-400">Welcome back to STOKMOJI Admin</p>
+        <p className="text-gray-400">Welcome back to APESONUS Admin</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -105,7 +105,7 @@ export default async function DashboardPage() {
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">User</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Plays</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Streak</th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Moji</th>
+                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">$ONUS</th>
                   <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">Joined</th>
                 </tr>
               </thead>
@@ -120,7 +120,7 @@ export default async function DashboardPage() {
                     <td className="py-3 px-4 text-center text-white text-sm">
                       {user.streak ? `${user.streak.current_day}/7` : "—"}
                     </td>
-                    <td className="py-3 px-4 text-center text-primary text-sm">{user.total_moji || 0}</td>
+                    <td className="py-3 px-4 text-center text-primary text-sm">{user.total_onus || 0}</td>
                     <td className="py-3 px-4 text-right text-gray-400 text-xs">{new Date(user.created_at).toLocaleDateString()}</td>
                   </tr>
                 ))}

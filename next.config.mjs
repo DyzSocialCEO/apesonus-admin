@@ -4,7 +4,7 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: 'stokmoji-images.b-cdn.net',
+        hostname: 'apesonus-images.b-cdn.net',
       },
       {
         protocol: 'https',

@@ -437,7 +437,7 @@ export default function TracksPage() {
                   const url = e.target.value
                   setEditTrack({ ...editTrack, audio: url })
                   detectDuration(url)
-                }} placeholder="https://stokmoji-audio.b-cdn.net/music/..." />
+                }} placeholder="https://apesonus-audio.b-cdn.net/music/..." />
               </div>
 
               {/* Duration — auto-detected, shown as status display */}
@@ -469,7 +469,7 @@ export default function TracksPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1.5">Cover Image URL (BunnyCDN)</label>
-                <Input value={editTrack.cover || ""} onChange={(e) => setEditTrack({ ...editTrack, cover: e.target.value })} placeholder="https://stokmoji-images.b-cdn.net/images-rekterapy/..." />
+                <Input value={editTrack.cover || ""} onChange={(e) => setEditTrack({ ...editTrack, cover: e.target.value })} placeholder="https://apesonus-images.b-cdn.net/images-rekterapy/..." />
                 {editTrack.cover && (
                   <img src={editTrack.cover} alt="Preview" className="w-16 h-16 rounded-lg object-cover mt-2 bg-gray-800" />
                 )}

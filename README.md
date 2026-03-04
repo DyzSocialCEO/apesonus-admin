@@ -1,6 +1,6 @@
-# STOKMOJI Admin
+# APESONUS Admin
 
-Admin panel for STOKMOJI Telegram Mini App.
+Admin panel for APESONUS Telegram Mini App.
 
 ## Setup
 

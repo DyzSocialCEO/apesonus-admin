@@ -46,7 +46,7 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-4">
             <Music className="w-8 h-8 text-primary" />
           </div>
-          <h1 className="text-2xl font-bold text-white">STOKMOJI Admin</h1>
+          <h1 className="text-2xl font-bold text-white">APESONUS Admin</h1>
           <p className="text-gray-400 mt-2">Music for the Gloriously Rekt</p>
         </div>
 

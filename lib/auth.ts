@@ -1,7 +1,7 @@
 import { cookies } from "next/headers"
 import crypto from "crypto"
 
-const ADMIN_COOKIE_NAME = "stokmoji_admin_session"
+const ADMIN_COOKIE_NAME = "apesonus_admin_session"
 const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000
 
 // Login attempt tracking (in-memory, resets on deploy — Upstash upgrade later)
