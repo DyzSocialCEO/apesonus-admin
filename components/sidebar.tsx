@@ -15,22 +15,22 @@ import {
   Megaphone,
   Coins,
   Flame,
-  Trophy,
+  Star,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
 const navigation = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Tracks", href: "/dashboard/tracks", icon: Music },
-  { name: "Users", href: "/dashboard/users", icon: Users },
-  { name: "Fan Forecast", href: "/dashboard/forecast", icon: Trophy },
-  { name: "Culture Pulse", href: "/dashboard/pulse", icon: Activity },
-  { name: "Streaks", href: "/dashboard/streaks", icon: Flame },
-  { name: "Banners", href: "/dashboard/banners", icon: Megaphone },
-  { name: "$ONUS", href: "/dashboard/onus", icon: Coins },
-  { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
-  { name: "Settings", href: "/dashboard/settings", icon: Settings },
+  { name: "Dashboard",     href: "/dashboard",            icon: LayoutDashboard },
+  { name: "Tracks",        href: "/dashboard/tracks",     icon: Music },
+  { name: "Users",         href: "/dashboard/users",      icon: Users },
+  { name: "Artist Backing",href: "/dashboard/backing",    icon: Star },
+  { name: "Culture Pulse", href: "/dashboard/pulse",      icon: Activity },
+  { name: "Streaks",       href: "/dashboard/streaks",    icon: Flame },
+  { name: "Banners",       href: "/dashboard/banners",    icon: Megaphone },
+  { name: "$ONUS",         href: "/dashboard/onus",       icon: Coins },
+  { name: "Analytics",     href: "/dashboard/analytics",  icon: BarChart3 },
+  { name: "Settings",      href: "/dashboard/settings",   icon: Settings },
 ]
 
 export function Sidebar() {
