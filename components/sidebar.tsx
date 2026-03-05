@@ -24,7 +24,7 @@ const navigation = [
   { name: "Dashboard",     href: "/dashboard",            icon: LayoutDashboard },
   { name: "Tracks",        href: "/dashboard/tracks",     icon: Music },
   { name: "Users",         href: "/dashboard/users",      icon: Users },
-  { name: "Artist Backing",href: "/dashboard/backing",    icon: Star },
+  { name: "Fan Forecast", href: "/dashboard/forecast",   icon: Star },
   { name: "Culture Pulse", href: "/dashboard/pulse",      icon: Activity },
   { name: "Streaks",       href: "/dashboard/streaks",    icon: Flame },
   { name: "Banners",       href: "/dashboard/banners",    icon: Megaphone },
