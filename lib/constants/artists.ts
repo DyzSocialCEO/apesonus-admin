@@ -141,7 +141,7 @@ His music captures that manic energy — the feeling of being absolutely certain
     id: "satosheek",
     name: "Satosheek",
     moods: ["rekt", "degen"],
-    tagline: "The underground. No face, no name, just the music.",
+    tagline: "The underground king. Raw. Unfiltered. Hits different at 3am.",
     backstory: `Nobody knows who Satosheek is. No profile picture. No interviews. No Twitter threads explaining their process. Just tracks that show up and hit harder than they have any right to.
 
 The name floated around degen circles for a while before anyone realized it was attached to music. Some people thought it was a bot. Others thought it was a collective — five or six producers working under one name. The truth is probably simpler and also stranger: someone who makes music about the parts of this life that nobody wants to look at directly.
