@@ -16,6 +16,7 @@ import {
   Coins,
   Flame,
   Star,
+  TrendingUp,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -25,6 +26,7 @@ const navigation = [
   { name: "Tracks",        href: "/dashboard/tracks",     icon: Music },
   { name: "Users",         href: "/dashboard/users",      icon: Users },
   { name: "Spotlight",     href: "/dashboard/spotlight",  icon: Star },
+  { name: "Fan Forecast", href: "/dashboard/forecast",   icon: TrendingUp },
   { name: "Culture Pulse", href: "/dashboard/pulse",      icon: Activity },
   { name: "Streaks",       href: "/dashboard/streaks",    icon: Flame },
   { name: "Banners",       href: "/dashboard/banners",    icon: Megaphone },
