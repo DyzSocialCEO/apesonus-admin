@@ -29,6 +29,41 @@ interface Track {
 const MOODS = ["moon", "rekt", "cope", "degen", "zen"]
 const SOUNDBATH_CATS = ["lofi", "piano", "jazz", "ambient", "meditation"]
 
+const AUDIO_CDN = "https://apesonus-audio.b-cdn.net"
+const IMAGE_CDN = "https://apesonus-images.b-cdn.net"
+
+const ARTISTS = [
+  { id: "aunty-rugsy", name: "Aunty Rugsy" },
+  { id: "chartnobyl-bro", name: "Chartnobyl Bro" },
+  { id: "coinalisa-murado", name: "Coinalisa Murado" },
+  { id: "down-bad-dave", name: "Down Bad Dave" },
+  { id: "lola-likwidity", name: "Lola Likwidity" },
+  { id: "miss-candlesticker", name: "Miss Candlesticker" },
+  { id: "satoshi-deluxe", name: "Satoshi Deluxe" },
+  { id: "shill-shady", name: "Shill Shady" },
+  { id: "shilliam-dafoe", name: "Shilliam Dafoe" },
+  { id: "satosheek", name: "Satosheek" },
+]
+
+// Helper: expand short path to full CDN URL
+function expandAudioUrl(input: string): string {
+  if (!input) return ""
+  if (input.startsWith("http")) return input
+  return `${AUDIO_CDN}${input.startsWith("/") ? "" : "/"}${input}`
+}
+
+function expandImageUrl(input: string): string {
+  if (!input) return ""
+  if (input.startsWith("http")) return input
+  return `${IMAGE_CDN}${input.startsWith("/") ? "" : "/"}${input}`
+}
+
+// Helper: shorten full URL to path for display
+function shortenUrl(url: string, base: string): string {
+  if (!url) return ""
+  return url.replace(base, "")
+}
+
 const emptyTrack: Partial<Track> = {
   title: "", artist: "", mood: "moon", cover: "", audio: "", duration: 0,
   is_instrumental: false, soundbath_category: null, is_active: true,
@@ -414,7 +449,23 @@ export default function TracksPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1.5">Artist *</label>
-                  <Input value={editTrack.artist || ""} onChange={(e) => setEditTrack({ ...editTrack, artist: e.target.value })} placeholder="Artist name" />
+                  <select
+                    value={editTrack.artist || ""}
+                    onChange={(e) => {
+                      const name = e.target.value
+                      const update: Partial<Track> = { ...editTrack, artist: name }
+                      // Auto-fill cover from existing tracks for this artist
+                      if (name) {
+                        const existing = tracks.find(t => t.artist === name || t.artist.startsWith(name))
+                        if (existing?.cover) update.cover = existing.cover
+                      }
+                      setEditTrack(update)
+                    }}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                  >
+                    <option value="">Select artist...</option>
+                    {ARTISTS.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                  </select>
                 </div>
               </div>
 
@@ -432,12 +483,15 @@ export default function TracksPage() {
 
               {/* Audio URL — moved ABOVE duration so user pastes first, then duration auto-fills */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">Audio URL (BunnyCDN) *</label>
-                <Input value={editTrack.audio || ""} onChange={(e) => {
-                  const url = e.target.value
-                  setEditTrack({ ...editTrack, audio: url })
-                  detectDuration(url)
-                }} placeholder="https://apesonus-audio.b-cdn.net/music/..." />
+                <label className="block text-sm font-medium text-gray-300 mb-1.5">Audio Path *</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 shrink-0">{AUDIO_CDN}</span>
+                  <Input value={shortenUrl(editTrack.audio || "", AUDIO_CDN)} onChange={(e) => {
+                    const fullUrl = expandAudioUrl(e.target.value)
+                    setEditTrack({ ...editTrack, audio: fullUrl })
+                    detectDuration(fullUrl)
+                  }} placeholder="/music/artist-name/track.m4a" />
+                </div>
               </div>
 
               {/* Duration — auto-detected, shown as status display */}
@@ -468,11 +522,15 @@ export default function TracksPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">Cover Image URL (BunnyCDN)</label>
-                <Input value={editTrack.cover || ""} onChange={(e) => setEditTrack({ ...editTrack, cover: e.target.value })} placeholder="https://apesonus-images.b-cdn.net/images-rekterapy/..." />
-                {editTrack.cover && (
-                  <img src={editTrack.cover} alt="Preview" className="w-16 h-16 rounded-lg object-cover mt-2 bg-gray-800" />
-                )}
+                <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                  Cover Image {editTrack.cover ? <span className="text-green-400 text-xs ml-1">Auto-filled from artist</span> : <span className="text-yellow-400 text-xs ml-1">Paste path or full URL</span>}
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input value={shortenUrl(editTrack.cover || "", IMAGE_CDN)} onChange={(e) => setEditTrack({ ...editTrack, cover: expandImageUrl(e.target.value) })} placeholder="/images-rekterapy/artist.png" />
+                  {editTrack.cover && (
+                    <img src={editTrack.cover} alt="Preview" className="w-12 h-12 rounded-lg object-cover bg-gray-800 shrink-0" />
+                  )}
+                </div>
               </div>
 
               {/* Sort order */}
