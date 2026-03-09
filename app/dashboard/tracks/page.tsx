@@ -452,10 +452,14 @@ export default function TracksPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1.5">Artist *</label>
                   <select
-                    value={editTrack.artist || ""}
+                    value={(editTrack.artist || "").split(/\s+ft\.?\s+/i)[0].trim()}
                     onChange={(e) => {
                       const name = e.target.value
-                      const update: Partial<Track> = { ...editTrack, artist: name }
+                      // Preserve featured credit if it exists
+                      const featMatch = (editTrack.artist || "").match(/\s+ft\.?\s+(.*)/i)
+                      const feat = featMatch ? featMatch[1] : ""
+                      const fullArtist = feat ? `${name} ft. ${feat}` : name
+                      const update: Partial<Track> = { ...editTrack, artist: fullArtist }
                       // Auto-fill cover from existing tracks for this artist
                       if (name) {
                         const existing = tracks.find(t => t.artist === name || t.artist.startsWith(name))
@@ -468,6 +472,22 @@ export default function TracksPage() {
                     <option value="">Select artist...</option>
                     {ARTISTS.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
                   </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1.5">Featured Credit <span className="text-gray-500">(optional)</span></label>
+                  <Input
+                    value={(() => {
+                      const match = (editTrack.artist || "").match(/\s+ft\.?\s+(.*)/i)
+                      return match ? match[1] : ""
+                    })()}
+                    onChange={(e) => {
+                      const primary = (editTrack.artist || "").split(/\s+ft\.?\s+/i)[0].trim()
+                      const feat = e.target.value.trim()
+                      setEditTrack({ ...editTrack, artist: feat ? `${primary} ft. ${feat}` : primary })
+                    }}
+                    placeholder="e.g. Aira (Satosheek)"
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1">Track shows on both artists' pages automatically</p>
                 </div>
               </div>
 
