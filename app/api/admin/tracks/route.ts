@@ -116,11 +116,6 @@ export async function POST(request: Request) {
       duration = await detectDuration(body.audio)
     }
 
-    // If setting as featured, unfeatured all others first
-    if (body.is_featured) {
-      await supabase.from("tracks").update({ is_featured: false }).eq("is_featured", true)
-    }
-
     const { data, error } = await supabase
       .from("tracks")
       .insert({
@@ -164,11 +159,6 @@ export async function PUT(request: Request) {
     }
 
     const supabase = await createAdminClient()
-
-    // If setting as featured, unfeatured all others first
-    if (updates.is_featured) {
-      await supabase.from("tracks").update({ is_featured: false }).eq("is_featured", true)
-    }
 
     updates.updated_at = new Date().toISOString()
 
