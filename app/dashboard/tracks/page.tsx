@@ -33,19 +33,18 @@ const AUDIO_CDN = "https://apesonus-audio.b-cdn.net"
 const IMAGE_CDN = "https://apesonus-images.b-cdn.net"
 
 const ARTISTS = [
-  { id: "aunty-rugsy", name: "Aunty Rugsy" },
-  { id: "chartnobyl-bro", name: "Chartnobyl Bro" },
-  { id: "coinalisa-murado", name: "Coinalisa Murado" },
-  { id: "down-bad-dave", name: "Down Bad Dave" },
-  { id: "lola-likwidity", name: "Lola Likwidity" },
-  { id: "miss-candlesticker", name: "Miss Candlesticker" },
-  { id: "satoshi-deluxe", name: "Satoshi Deluxe" },
-  { id: "shill-shady", name: "Shill Shady" },
-  { id: "shilliam-dafoe", name: "Shilliam Dafoe" },
-  { id: "satosheek", name: "Satosheek" },
+  { id: "aunty-rugsy",       name: "Aunty Rugsy"       },
+  { id: "chartnobyl-bro",    name: "Chartnobyl Bro"    },
+  { id: "coinalisa-murado",  name: "Coinalisa Murado"  },
+  { id: "down-bad-dave",     name: "Down Bad Dave"      },
+  { id: "lola-likwidity",    name: "Lola Likwidity"    },
+  { id: "miss-candlesticker",name: "Miss Candlesticker" },
+  { id: "satoshi-deluxe",    name: "Satoshi Deluxe"    },
+  { id: "shill-shady",       name: "Shill Shady"       },
+  { id: "shilliam-dafoe",    name: "Shilliam Dafoe"    },
+  { id: "satosheek",         name: "Satosheek"         },
 ]
 
-// Helper: expand short path to full CDN URL
 function expandAudioUrl(input: string): string {
   if (!input) return ""
   if (input.startsWith("http")) return input
@@ -58,10 +57,14 @@ function expandImageUrl(input: string): string {
   return `${IMAGE_CDN}${input.startsWith("/") ? "" : "/"}${input}`
 }
 
-// Helper: shorten full URL to path for display
 function shortenUrl(url: string, base: string): string {
   if (!url) return ""
   return url.replace(base, "")
+}
+
+// Returns the primary artist name from "Shill Shady ft. Miss Candlesticker"
+function getPrimaryArtist(artistStr: string): string {
+  return artistStr.split(/\s+ft\.?\s+/i)[0].trim()
 }
 
 const emptyTrack: Partial<Track> = {
@@ -71,20 +74,23 @@ const emptyTrack: Partial<Track> = {
 }
 
 export default function TracksPage() {
-  const [tracks, setTracks] = useState<Track[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [showModal, setShowModal] = useState(false)
-  const [editTrack, setEditTrack] = useState<Partial<Track> | null>(null)
+  const [tracks, setTracks]               = useState<Track[]>([])
+  const [loading, setLoading]             = useState(true)
+  const [saving, setSaving]               = useState(false)
+  const [showModal, setShowModal]         = useState(false)
+  const [editTrack, setEditTrack]         = useState<Partial<Track> | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
-  const [msg, setMsg] = useState("")
+  const [msg, setMsg]                     = useState("")
   const [detectingDuration, setDetectingDuration] = useState(false)
-  const [batchFixing, setBatchFixing] = useState(false)
+  const [batchFixing, setBatchFixing]     = useState(false)
   const [batchProgress, setBatchProgress] = useState("")
+
+  // ─── Artist filter ─────────────────────────────────────────────────────────
+  const [filterArtist, setFilterArtist] = useState<string>("all")
+
   const durationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const audioElRef = useRef<HTMLAudioElement | null>(null)
 
-  // Detect duration for a single audio URL via signed URL + Audio element
   const detectSingleDuration = (signedUrl: string): Promise<number> => {
     return new Promise((resolve) => {
       const audio = new Audio()
@@ -93,116 +99,77 @@ export default function TracksPage() {
       audio.onloadedmetadata = () => {
         clearTimeout(timeout)
         const dur = audio.duration && isFinite(audio.duration) ? Math.round(audio.duration) : 0
-        audio.src = ""
-        resolve(dur)
+        audio.src = ""; resolve(dur)
       }
       audio.onerror = () => { clearTimeout(timeout); audio.src = ""; resolve(0) }
       audio.src = signedUrl
     })
   }
 
-  // Batch fix ALL tracks with duration 0
   const batchFixDurations = async () => {
     const broken = tracks.filter(t => (!t.duration || t.duration === 0) && t.audio)
-    if (broken.length === 0) {
-      setMsg("All tracks already have durations!")
-      return
-    }
-    setBatchFixing(true)
-    setBatchProgress(`Fixing 0/${broken.length}...`)
-    let fixed = 0
-    let failed = 0
-
+    if (broken.length === 0) { setMsg("All tracks already have durations!"); return }
+    setBatchFixing(true); setBatchProgress(`Fixing 0/${broken.length}...`)
+    let fixed = 0, failed = 0
     for (let i = 0; i < broken.length; i++) {
       const track = broken[i]
       setBatchProgress(`Fixing ${i + 1}/${broken.length}: ${track.title}...`)
       try {
-        // Sign the URL
         const signRes = await fetch("/api/admin/detect-duration", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ audioUrl: track.audio }),
         })
         if (!signRes.ok) { failed++; continue }
         const { signedUrl } = await signRes.json()
-
-        // Detect duration client-side
         const duration = await detectSingleDuration(signedUrl)
         if (duration <= 0) { failed++; continue }
-
-        // Save to DB
         const saveRes = await fetch("/api/admin/tracks", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          method: "PUT", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: track.id, duration }),
         })
-        if (saveRes.ok) fixed++
-        else failed++
-      } catch {
-        failed++
-      }
-      // Small delay to avoid hammering
+        if (saveRes.ok) fixed++; else failed++
+      } catch { failed++ }
       await new Promise(r => setTimeout(r, 300))
     }
-
-    setBatchFixing(false)
-    setBatchProgress("")
+    setBatchFixing(false); setBatchProgress("")
     await fetchTracks()
     setMsg(`Duration fix complete: ${fixed} fixed, ${failed} failed out of ${broken.length}`)
   }
 
-  // Fix duration for a single track (from table row button)
   const fixSingleTrackDuration = async (track: Track) => {
     try {
       const signRes = await fetch("/api/admin/detect-duration", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ audioUrl: track.audio }),
       })
       if (!signRes.ok) { setMsg(`Failed to sign URL for "${track.title}"`); return }
       const { signedUrl } = await signRes.json()
-
       const duration = await detectSingleDuration(signedUrl)
-      if (duration <= 0) { setMsg(`Could not detect duration for "${track.title}" — file may be corrupt`); return }
-
+      if (duration <= 0) { setMsg(`Could not detect duration for "${track.title}"`); return }
       await fetch("/api/admin/tracks", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: track.id, duration }),
       })
       await fetchTracks()
       setMsg(`Fixed "${track.title}": ${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, "0")}`)
-    } catch {
-      setMsg(`Failed to fix "${track.title}"`)
-    }
+    } catch { setMsg(`Failed to fix "${track.title}"`) }
   }
 
-  // Auto-detect duration: sign URL via API, then load metadata client-side
   const detectDuration = (rawUrl: string) => {
-    // Clear any pending detection
     if (durationTimerRef.current) clearTimeout(durationTimerRef.current)
     if (audioElRef.current) { audioElRef.current.src = ""; audioElRef.current = null }
-
     if (!rawUrl || !rawUrl.startsWith("http")) return
-
-    // Debounce 800ms so it only fires after you finish pasting
     durationTimerRef.current = setTimeout(async () => {
       setDetectingDuration(true)
       try {
-        // 1. Get signed URL from server (handles BunnyCDN token auth)
         const res = await fetch("/api/admin/detect-duration", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ audioUrl: rawUrl }),
         })
         if (!res.ok) throw new Error("Sign failed")
         const { signedUrl } = await res.json()
-
-        // 2. Load only metadata (not the full file) to read duration
         const audio = new Audio()
-        audioElRef.current = audio
-        audio.preload = "metadata"
-
+        audioElRef.current = audio; audio.preload = "metadata"
         await new Promise<void>((resolve, reject) => {
           audio.onloadedmetadata = () => {
             if (audio.duration && isFinite(audio.duration)) {
@@ -211,12 +178,10 @@ export default function TracksPage() {
             resolve()
           }
           audio.onerror = () => reject(new Error("Audio load failed"))
-          // Timeout after 8s
           setTimeout(() => reject(new Error("Timeout")), 8000)
           audio.src = signedUrl
         })
       } catch (err) {
-        // Silent fail — user can still enter duration manually
         console.warn("[Duration] Auto-detect failed:", err)
       } finally {
         setDetectingDuration(false)
@@ -237,11 +202,9 @@ export default function TracksPage() {
 
   const handleSave = async () => {
     if (!editTrack?.title || !editTrack?.artist || !editTrack?.audio) {
-      setMsg("Title, artist, and audio URL are required")
-      return
+      setMsg("Title, artist, and audio URL are required"); return
     }
-    setSaving(true)
-    setMsg("")
+    setSaving(true); setMsg("")
     try {
       const isEdit = editTrack.id
       const res = await fetch("/api/admin/tracks", {
@@ -250,63 +213,117 @@ export default function TracksPage() {
         body: JSON.stringify(editTrack),
       })
       if (!res.ok) throw new Error("Failed")
-      setShowModal(false)
-      setEditTrack(null)
+      setShowModal(false); setEditTrack(null)
       await fetchTracks()
       setMsg(isEdit ? "Track updated!" : "Track created!")
-    } catch {
-      setMsg("Failed to save track")
-    } finally { setSaving(false) }
+    } catch { setMsg("Failed to save track") } finally { setSaving(false) }
   }
 
   const handleDelete = async (id: number) => {
     try {
       await fetch(`/api/admin/tracks?id=${id}`, { method: "DELETE" })
-      setDeleteConfirm(null)
-      await fetchTracks()
-      setMsg("Track deleted")
+      setDeleteConfirm(null); await fetchTracks(); setMsg("Track deleted")
     } catch { setMsg("Failed to delete") }
   }
 
   const handleQuickToggle = async (track: Track, field: string, value: boolean) => {
     try {
       await fetch("/api/admin/tracks", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: track.id, [field]: value }),
       })
       await fetchTracks()
     } catch { }
   }
 
-  const openAdd = () => { setEditTrack({ ...emptyTrack }); setShowModal(true); setMsg("") }
+  const openAdd = () => {
+    // Pre-fill artist if a filter is active
+    const pre = { ...emptyTrack }
+    if (filterArtist !== "all") {
+      const a = ARTISTS.find(a => a.id === filterArtist)
+      if (a) {
+        pre.artist = a.name
+        // Copy cover from existing track of this artist
+        const existing = tracks.find(t => getPrimaryArtist(t.artist).toLowerCase() === a.name.toLowerCase())
+        if (existing?.cover) pre.cover = existing.cover
+      }
+    }
+    setEditTrack(pre); setShowModal(true); setMsg("")
+  }
+
   const openEdit = (t: Track) => {
     setEditTrack({ ...t }); setShowModal(true); setMsg("")
-    // Auto-detect duration if missing
     if ((!t.duration || t.duration === 0) && t.audio) detectDuration(t.audio)
   }
 
+  // ─── Filtered track list ───────────────────────────────────────────────────
+  const displayedTracks = filterArtist === "all"
+    ? tracks
+    : tracks.filter(t => {
+        const primary = getPrimaryArtist(t.artist)
+        const artistName = ARTISTS.find(a => a.id === filterArtist)?.name || ""
+        return primary.toLowerCase() === artistName.toLowerCase()
+      })
+
+  const brokenCount = tracks.filter(t => !t.duration || t.duration === 0).length
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Tracks</h1>
-          <p className="text-gray-400">Manage your music catalog ({tracks.length} tracks)</p>
+          <p className="text-gray-400">
+            {filterArtist === "all"
+              ? `All artists · ${tracks.length} tracks`
+              : `${ARTISTS.find(a => a.id === filterArtist)?.name} · ${displayedTracks.length} track${displayedTracks.length !== 1 ? "s" : ""}`
+            }
+          </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <Button onClick={openAdd} className="bg-primary text-black hover:bg-primary/90">
-          <Plus className="w-4 h-4 mr-2" /> Add Track
-        </Button>
-        <Button
-          onClick={batchFixDurations}
-          disabled={batchFixing}
-          variant="outline"
-          className="border-orange-500/50 text-orange-400 hover:bg-orange-500/10"
-        >
-          {batchFixing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Music className="w-4 h-4 mr-2" />}
-          {batchFixing ? batchProgress : `Fix Durations (${tracks.filter(t => !t.duration || t.duration === 0).length})`}
-        </Button>
+            <Plus className="w-4 h-4 mr-2" />
+            {filterArtist !== "all" ? `Add for ${ARTISTS.find(a => a.id === filterArtist)?.name?.split(" ")[0]}` : "Add Track"}
+          </Button>
+          {brokenCount > 0 && (
+            <Button onClick={batchFixDurations} disabled={batchFixing} variant="outline"
+              className="border-orange-500/50 text-orange-400 hover:bg-orange-500/10">
+              {batchFixing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Music className="w-4 h-4 mr-2" />}
+              {batchFixing ? batchProgress : `Fix Durations (${brokenCount})`}
+            </Button>
+          )}
         </div>
+      </div>
+
+      {/* ── Artist filter ── */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => setFilterArtist("all")}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            filterArtist === "all"
+              ? "bg-primary/15 text-primary border border-primary/30"
+              : "bg-gray-800/50 text-gray-400 border border-gray-700 hover:text-white"
+          }`}
+        >
+          All Artists
+        </button>
+        {ARTISTS.map(a => {
+          const count = tracks.filter(t => getPrimaryArtist(t.artist).toLowerCase() === a.name.toLowerCase()).length
+          return (
+            <button key={a.id}
+              onClick={() => setFilterArtist(filterArtist === a.id ? "all" : a.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                filterArtist === a.id
+                  ? "bg-primary/15 text-primary border border-primary/30"
+                  : "bg-gray-800/50 text-gray-400 border border-gray-700 hover:text-white"
+              }`}
+            >
+              {a.name.split(" ")[0]}
+              <span className={`text-[10px] px-1 rounded ${filterArtist === a.id ? "bg-primary/20" : "bg-gray-700"}`}>
+                {count}
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       {msg && (
@@ -320,6 +337,17 @@ export default function TracksPage() {
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : displayedTracks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-48 text-center">
+              <Music className="w-10 h-10 text-gray-700 mb-3" />
+              <p className="text-gray-500 text-sm">
+                {filterArtist !== "all"
+                  ? `No tracks for ${ARTISTS.find(a => a.id === filterArtist)?.name} yet.`
+                  : "No tracks yet."
+                }
+              </p>
+              <button onClick={openAdd} className="mt-3 text-primary text-xs underline">Add one →</button>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -337,7 +365,7 @@ export default function TracksPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {tracks.map((track) => (
+                  {displayedTracks.map((track) => (
                     <tr key={track.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
@@ -357,11 +385,8 @@ export default function TracksPage() {
                       </td>
                       <td className="py-3 px-4 text-gray-400 text-sm">
                         {(!track.duration || track.duration === 0) ? (
-                          <button
-                            onClick={() => fixSingleTrackDuration(track)}
-                            className="text-red-400 hover:text-orange-400 underline decoration-dotted cursor-pointer"
-                            title="Click to detect duration"
-                          >
+                          <button onClick={() => fixSingleTrackDuration(track)}
+                            className="text-red-400 hover:text-orange-400 underline decoration-dotted cursor-pointer" title="Click to detect duration">
                             0:00 ⚠️
                           </button>
                         ) : (
@@ -372,37 +397,34 @@ export default function TracksPage() {
                       <td className="py-3 px-4">
                         <div className="flex items-center justify-center gap-1">
                           {track.is_featured && (
-                            <button onClick={() => handleQuickToggle(track, "is_featured", false)} title="Fresh Drop (click to remove)">
+                            <button onClick={() => handleQuickToggle(track, "is_featured", false)} title="Fresh Drop · click to remove">
                               <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
                             </button>
                           )}
                           {track.is_editors_choice && (
-                            <button onClick={() => handleQuickToggle(track, "is_editors_choice", false)} title="Editor's Choice (click to remove)">
+                            <button onClick={() => handleQuickToggle(track, "is_editors_choice", false)} title="Editor's Choice · click to remove">
                               <Crown className="w-4 h-4 text-primary" />
                             </button>
                           )}
                           {track.is_instrumental && (
-                            <button onClick={() => handleQuickToggle(track, "is_instrumental", false)} title="SoundBath (click to remove)">
+                            <button onClick={() => handleQuickToggle(track, "is_instrumental", false)} title="SoundBath · click to remove">
                               <Headphones className="w-4 h-4 text-cyan-400" />
                             </button>
                           )}
                           {!track.is_featured && !track.is_editors_choice && !track.is_instrumental && (
-                            <button onClick={() => handleQuickToggle(track, "is_featured", true)} title="Add to Fresh Drops" className="text-gray-600 hover:text-[#ffc847] transition-colors">
-                              <span className="text-xs">+🔥</span>
+                            <button onClick={() => handleQuickToggle(track, "is_featured", true)} title="Add to Fresh Drops"
+                              className="text-gray-600 hover:text-[#ffc847] transition-colors text-xs">
+                              +🔥
                             </button>
                           )}
                         </div>
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => handleQuickToggle(track, "is_active", !track.is_active)}
-                          title={track.is_active ? "Active (click to deactivate)" : "Inactive (click to activate)"}
-                        >
-                          {track.is_active ? (
-                            <Eye className="w-4 h-4 text-green-400" />
-                          ) : (
-                            <EyeOff className="w-4 h-4 text-red-400" />
-                          )}
+                        <button onClick={() => handleQuickToggle(track, "is_active", !track.is_active)}
+                          title={track.is_active ? "Active · click to deactivate" : "Inactive · click to activate"}>
+                          {track.is_active
+                            ? <Eye className="w-4 h-4 text-green-400" />
+                            : <EyeOff className="w-4 h-4 text-red-400" />}
                         </button>
                       </td>
                       <td className="py-3 px-4">
@@ -441,69 +463,70 @@ export default function TracksPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-
             <div className="p-6 space-y-5">
-              {/* Title + Artist */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">Title *</label>
-                  <Input value={editTrack.title || ""} onChange={(e) => setEditTrack({ ...editTrack, title: e.target.value })} placeholder="Track title" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">Artist *</label>
-                  <select
-                    value={(editTrack.artist || "").split(/\s+ft\.?\s+/i)[0].trim()}
-                    onChange={(e) => {
-                      const name = e.target.value
-                      // Preserve featured credit if it exists
-                      const featMatch = (editTrack.artist || "").match(/\s+ft\.?\s+(.*)/i)
-                      const feat = featMatch ? featMatch[1] : ""
-                      const fullArtist = feat ? `${name} ft. ${feat}` : name
-                      const update: Partial<Track> = { ...editTrack, artist: fullArtist }
-                      // Auto-fill cover from existing tracks for this artist
-                      if (name) {
-                        const existing = tracks.find(t => t.artist === name || t.artist.startsWith(name))
-                        if (existing?.cover) update.cover = existing.cover
-                      }
-                      setEditTrack(update)
-                    }}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
-                  >
-                    <option value="">Select artist...</option>
-                    {ARTISTS.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">Featured Credit <span className="text-gray-500">(optional)</span></label>
-                  <Input
-                    value={(() => {
-                      const match = (editTrack.artist || "").match(/\s+ft\.?\s+(.*)/i)
-                      return match ? match[1] : ""
-                    })()}
-                    onChange={(e) => {
-                      const primary = (editTrack.artist || "").split(/\s+ft\.?\s+/i)[0].trim()
-                      const feat = e.target.value.trim()
-                      setEditTrack({ ...editTrack, artist: feat ? `${primary} ft. ${feat}` : primary })
-                    }}
-                    placeholder="e.g. Aira (Satosheek)"
-                  />
-                  <p className="text-[10px] text-gray-500 mt-1">Track shows on both artists' pages automatically</p>
-                </div>
+
+              {/* Title */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1.5">Title *</label>
+                <Input value={editTrack.title || ""} onChange={(e) => setEditTrack({ ...editTrack, title: e.target.value })} placeholder="Track title" />
+              </div>
+
+              {/* Primary Artist */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1.5">Primary Artist *</label>
+                <select
+                  value={getPrimaryArtist(editTrack.artist || "")}
+                  onChange={(e) => {
+                    const name = e.target.value
+                    const featMatch = (editTrack.artist || "").match(/\s+ft\.?\s+(.*)/i)
+                    const feat = featMatch ? featMatch[1] : ""
+                    const fullArtist = feat ? `${name} ft. ${feat}` : name
+                    const update: Partial<Track> = { ...editTrack, artist: fullArtist }
+                    // Auto-fill cover from existing primary track of this artist
+                    if (name) {
+                      const existing = tracks.find(t => getPrimaryArtist(t.artist).toLowerCase() === name.toLowerCase() && t.cover)
+                      if (existing?.cover) update.cover = existing.cover
+                    }
+                    setEditTrack(update)
+                  }}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="">Select artist...</option>
+                  {ARTISTS.map(a => <option key={a.id} value={a.name} style={{ background: "#111827" }}>{a.name}</option>)}
+                </select>
+                <p className="text-[10px] text-gray-500 mt-1">This determines whose page the track lives on.</p>
+              </div>
+
+              {/* Featured credit */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                  Featured Credit <span className="text-gray-500">(optional)</span>
+                </label>
+                <Input
+                  value={(() => { const m = (editTrack.artist || "").match(/\s+ft\.?\s+(.*)/i); return m ? m[1] : "" })()}
+                  onChange={(e) => {
+                    const primary = getPrimaryArtist(editTrack.artist || "")
+                    const feat = e.target.value.trim()
+                    setEditTrack({ ...editTrack, artist: feat ? `${primary} ft. ${feat}` : primary })
+                  }}
+                  placeholder="e.g. Satosheek"
+                />
+                <p className="text-[10px] text-gray-500 mt-1">
+                  Track will display as "{getPrimaryArtist(editTrack.artist || "") || "Artist"} ft. {(editTrack.artist || "").match(/\s+ft\.?\s+(.*)/i)?.[1] || "..."}". 
+                  It only appears on the primary artist's page — add it separately if you want it on the featured artist's page too.
+                </p>
               </div>
 
               {/* Mood */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1.5">Mood</label>
-                <select
-                  value={editTrack.mood || "moon"}
-                  onChange={(e) => setEditTrack({ ...editTrack, mood: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                >
+                <select value={editTrack.mood || "moon"} onChange={(e) => setEditTrack({ ...editTrack, mood: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary">
                   {MOODS.map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
                 </select>
               </div>
 
-              {/* Audio URL — moved ABOVE duration so user pastes first, then duration auto-fills */}
+              {/* Audio URL */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1.5">Audio Path *</label>
                 <div className="flex items-center gap-2">
@@ -516,21 +539,18 @@ export default function TracksPage() {
                 </div>
               </div>
 
-              {/* Duration — auto-detected, shown as status display */}
+              {/* Duration — auto-detected */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1.5">Duration</label>
                 <div className={`w-full px-3 py-2.5 rounded-lg border text-sm flex items-center gap-2 ${
-                  detectingDuration 
-                    ? "bg-gray-800/50 border-primary/50 text-primary" 
+                  detectingDuration
+                    ? "bg-gray-800/50 border-primary/50 text-primary"
                     : editTrack.duration && editTrack.duration > 0
                       ? "bg-green-500/5 border-green-500/30 text-green-400"
                       : "bg-gray-800/50 border-gray-700 text-gray-500"
                 }`}>
                   {detectingDuration ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Detecting duration from audio...</span>
-                    </>
+                    <><Loader2 className="w-4 h-4 animate-spin" /><span>Detecting...</span></>
                   ) : editTrack.duration && editTrack.duration > 0 ? (
                     <>
                       <span className="text-lg font-mono font-bold">
@@ -543,12 +563,19 @@ export default function TracksPage() {
                   )}
                 </div>
               </div>
+
+              {/* Cover Image */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1.5">
-                  Cover Image {editTrack.cover ? <span className="text-green-400 text-xs ml-1">Auto-filled from artist</span> : <span className="text-yellow-400 text-xs ml-1">Paste path or full URL</span>}
+                  Cover Image{" "}
+                  {editTrack.cover
+                    ? <span className="text-green-400 text-xs ml-1">✓ set</span>
+                    : <span className="text-yellow-400 text-xs ml-1">Paste path</span>}
                 </label>
                 <div className="flex items-center gap-2">
-                  <Input value={shortenUrl(editTrack.cover || "", IMAGE_CDN)} onChange={(e) => setEditTrack({ ...editTrack, cover: expandImageUrl(e.target.value) })} placeholder="/images-rekterapy/artist.png" />
+                  <Input value={shortenUrl(editTrack.cover || "", IMAGE_CDN)}
+                    onChange={(e) => setEditTrack({ ...editTrack, cover: expandImageUrl(e.target.value) })}
+                    placeholder="/images-rekterapy/artist.png" />
                   {editTrack.cover && (
                     <img src={editTrack.cover} alt="Preview" className="w-12 h-12 rounded-lg object-cover bg-gray-800 shrink-0" />
                   )}
@@ -558,15 +585,17 @@ export default function TracksPage() {
               {/* Sort order */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1.5">Sort Order</label>
-                <Input type="number" value={editTrack.sort_order || 0} onChange={(e) => setEditTrack({ ...editTrack, sort_order: parseInt(e.target.value) || 0 })} placeholder="0" />
+                <Input type="number" value={editTrack.sort_order || 0}
+                  onChange={(e) => setEditTrack({ ...editTrack, sort_order: parseInt(e.target.value) || 0 })} />
               </div>
 
-              {/* Toggles */}
+              {/* Flags */}
               <div className="space-y-3">
                 <p className="text-sm font-medium text-gray-300">Flags</p>
                 <div className="grid grid-cols-2 gap-3">
                   <label className="flex items-center gap-3 p-3 rounded-lg bg-gray-800/50 border border-gray-700 cursor-pointer">
-                    <input type="checkbox" checked={editTrack.is_active !== false} onChange={(e) => setEditTrack({ ...editTrack, is_active: e.target.checked })}
+                    <input type="checkbox" checked={editTrack.is_active !== false}
+                      onChange={(e) => setEditTrack({ ...editTrack, is_active: e.target.checked })}
                       className="w-4 h-4 rounded accent-green-500" />
                     <div>
                       <p className="text-sm text-white font-medium">Active</p>
@@ -575,20 +604,22 @@ export default function TracksPage() {
                   </label>
 
                   <label className="flex items-center gap-3 p-3 rounded-lg bg-gray-800/50 border border-gray-700 cursor-pointer">
-                    <input type="checkbox" checked={editTrack.is_featured || false} onChange={(e) => setEditTrack({ ...editTrack, is_featured: e.target.checked })}
+                    <input type="checkbox" checked={editTrack.is_featured || false}
+                      onChange={(e) => setEditTrack({ ...editTrack, is_featured: e.target.checked })}
                       className="w-4 h-4 rounded accent-yellow-500" />
                     <div>
                       <p className="text-sm text-white font-medium">🔥 Fresh Drop</p>
-                      <p className="text-xs text-gray-500">Hero card on Discover</p>
+                      <p className="text-xs text-gray-500">Hero card on Discover + artist page</p>
                     </div>
                   </label>
 
                   <label className="flex items-center gap-3 p-3 rounded-lg bg-gray-800/50 border border-gray-700 cursor-pointer">
-                    <input type="checkbox" checked={editTrack.is_editors_choice || false} onChange={(e) => setEditTrack({ ...editTrack, is_editors_choice: e.target.checked })}
+                    <input type="checkbox" checked={editTrack.is_editors_choice || false}
+                      onChange={(e) => setEditTrack({ ...editTrack, is_editors_choice: e.target.checked })}
                       className="w-4 h-4 rounded accent-primary" />
                     <div>
-                      <p className="text-sm text-white font-medium">👑 Editor&apos;s Choice</p>
-                      <p className="text-xs text-gray-500">Shows in Fresh Drops on home page</p>
+                      <p className="text-sm text-white font-medium">👑 Editor's Choice</p>
+                      <p className="text-xs text-gray-500">Fresh Drops on home page</p>
                     </div>
                   </label>
 
@@ -604,15 +635,12 @@ export default function TracksPage() {
                 </div>
               </div>
 
-              {/* SoundBath category — only show if instrumental */}
               {editTrack.is_instrumental && (
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1.5">SoundBath Category</label>
-                  <select
-                    value={editTrack.soundbath_category || "lofi"}
+                  <select value={editTrack.soundbath_category || "lofi"}
                     onChange={(e) => setEditTrack({ ...editTrack, soundbath_category: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
+                    className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary">
                     {SOUNDBATH_CATS.map((c) => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
                   </select>
                 </div>
@@ -620,9 +648,7 @@ export default function TracksPage() {
             </div>
 
             <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-800">
-              <Button variant="outline" onClick={() => { setShowModal(false); setEditTrack(null) }} className="border-gray-700 text-gray-300">
-                Cancel
-              </Button>
+              <Button variant="outline" onClick={() => { setShowModal(false); setEditTrack(null) }} className="border-gray-700 text-gray-300">Cancel</Button>
               <Button onClick={handleSave} disabled={saving} className="bg-primary text-black hover:bg-primary/90">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                 {editTrack.id ? "Update" : "Create"}

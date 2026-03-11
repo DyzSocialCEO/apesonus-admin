@@ -3,36 +3,23 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
-  LayoutDashboard,
-  Music,
-  Users,
-  BarChart3,
-  Settings,
-  LogOut,
-  Menu,
-  X,
-  Activity,
-  Megaphone,
-  Coins,
-  Flame,
-  Star,
-  TrendingUp,
+  LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
+  Activity, Megaphone, Coins, TrendingUp, MessageSquare,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
 const navigation = [
-  { name: "Dashboard",     href: "/dashboard",            icon: LayoutDashboard },
-  { name: "Tracks",        href: "/dashboard/tracks",     icon: Music },
-  { name: "Users",         href: "/dashboard/users",      icon: Users },
-  { name: "Spotlight",     href: "/dashboard/spotlight",  icon: Star },
-  { name: "Fan Forecast", href: "/dashboard/forecast",   icon: TrendingUp },
-  { name: "Culture Pulse", href: "/dashboard/pulse",      icon: Activity },
-  { name: "Streaks",       href: "/dashboard/streaks",    icon: Flame },
-  { name: "Banners",       href: "/dashboard/banners",    icon: Megaphone },
-  { name: "$ONUS",         href: "/dashboard/onus",       icon: Coins },
-  { name: "Analytics",     href: "/dashboard/analytics",  icon: BarChart3 },
-  { name: "Settings",      href: "/dashboard/settings",   icon: Settings },
+  { name: "Dashboard",     href: "/dashboard",              icon: LayoutDashboard },
+  { name: "Tracks",        href: "/dashboard/tracks",       icon: Music           },
+  { name: "Culture Feed",  href: "/dashboard/feed",         icon: MessageSquare   },
+  { name: "Weekly Chart",  href: "/dashboard/chart",        icon: TrendingUp      },
+  { name: "Culture Pulse", href: "/dashboard/pulse",        icon: Activity        },
+  { name: "Users",         href: "/dashboard/users",        icon: Users           },
+  { name: "Banners",       href: "/dashboard/banners",      icon: Megaphone       },
+  { name: "$ONUS",         href: "/dashboard/onus",         icon: Coins           },
+  { name: "Analytics",     href: "/dashboard/analytics",    icon: BarChart3       },
+  { name: "Settings",      href: "/dashboard/settings",     icon: Settings        },
 ]
 
 export function Sidebar() {
@@ -42,8 +29,7 @@ export function Sidebar() {
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" })
-    router.push("/login")
-    router.refresh()
+    router.push("/login"); router.refresh()
   }
 
   const NavContent = () => (
@@ -62,17 +48,11 @@ export function Sidebar() {
         {navigation.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
           return (
-            <Link
-              key={item.name}
-              href={item.href}
-              onClick={() => setMobileOpen(false)}
+            <Link key={item.name} href={item.href} onClick={() => setMobileOpen(false)}
               className={cn(
                 "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-primary/10 text-primary"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800"
-              )}
-            >
+                isActive ? "bg-primary/10 text-primary" : "text-gray-400 hover:text-white hover:bg-gray-800"
+              )}>
               <item.icon className="w-5 h-5" />
               {item.name}
             </Link>
@@ -81,10 +61,8 @@ export function Sidebar() {
       </nav>
 
       <div className="px-4 py-4 border-t border-gray-800">
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors w-full"
-        >
+        <button onClick={handleLogout}
+          className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors w-full">
           <LogOut className="w-5 h-5" />
           Sign Out
         </button>
@@ -94,26 +72,19 @@ export function Sidebar() {
 
   return (
     <>
-      <button
-        onClick={() => setMobileOpen(!mobileOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-gray-800 text-white"
-      >
+      <button onClick={() => setMobileOpen(!mobileOpen)}
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-gray-800 text-white">
         {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
       </button>
 
       {mobileOpen && (
-        <div
-          className="lg:hidden fixed inset-0 bg-black/50 z-40"
-          onClick={() => setMobileOpen(false)}
-        />
+        <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setMobileOpen(false)} />
       )}
 
-      <aside
-        className={cn(
-          "lg:hidden fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 border-r border-gray-800 flex flex-col transform transition-transform duration-200",
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
+      <aside className={cn(
+        "lg:hidden fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 border-r border-gray-800 flex flex-col transform transition-transform duration-200",
+        mobileOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
         <NavContent />
       </aside>
 
