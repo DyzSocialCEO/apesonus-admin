@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
-  Activity, Megaphone, Coins, TrendingUp, MessageSquare,
+  Activity, Megaphone, Coins, TrendingUp, MessageSquare, Flame, Zap, Star,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -14,10 +14,13 @@ const navigation = [
   { name: "Tracks",        href: "/dashboard/tracks",       icon: Music           },
   { name: "Culture Feed",  href: "/dashboard/feed",         icon: MessageSquare   },
   { name: "Weekly Chart",  href: "/dashboard/chart",        icon: TrendingUp      },
+  { name: "Forecast",      href: "/dashboard/forecast",     icon: Zap             },
   { name: "Culture Pulse", href: "/dashboard/pulse",        icon: Activity        },
+  { name: "Streaks",       href: "/dashboard/streaks",      icon: Flame           },
   { name: "Users",         href: "/dashboard/users",        icon: Users           },
   { name: "Banners",       href: "/dashboard/banners",      icon: Megaphone       },
   { name: "$ONUS",         href: "/dashboard/onus",         icon: Coins           },
+  { name: "Spotlight",     href: "/dashboard/spotlight",    icon: Star            },
   { name: "Analytics",     href: "/dashboard/analytics",    icon: BarChart3       },
   { name: "Settings",      href: "/dashboard/settings",     icon: Settings        },
 ]
@@ -44,9 +47,9 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 px-4 py-6 space-y-1">
+      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
         {navigation.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+          const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"))
           return (
             <Link key={item.name} href={item.href} onClick={() => setMobileOpen(false)}
               className={cn(
