@@ -28,7 +28,7 @@ interface Forecast {
 const ARTISTS = [
   { id: "aunty-rugsy", name: "Aunty Rugsy" },
   { id: "chartnobyl-bro", name: "Chartnobyl Bro" },
-  { id: "coinalisa-murado", name: "Coinalisa Murado" },
+  { id: "coinalisa", name: "Coinalisa" },
   { id: "down-bad-dave", name: "Down Bad Dave" },
   { id: "lola-likwidity", name: "Lola Likwidity" },
   { id: "miss-candlesticker", name: "Miss Candlesticker" },

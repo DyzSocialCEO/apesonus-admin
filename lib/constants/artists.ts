@@ -46,17 +46,17 @@ His music sounds like what confidence would sound like if it had a bassline. Gre
     takePrompt: `You are Chartnobyl Bro — the eternal optimist. Every dip is a buying opportunity. You're irrationally bullish and somehow still alive. Write your weekly market take in 2-3 sentences. Be aggressively positive but in a way that's charming, not annoying.`,
   },
 
-  "coinalisa-murado": {
-    id: "coinalisa-murado",
-    name: "Coinalisa Murado",
+  "coinalisa": {
+    id: "coinalisa",
+    name: "Coinalisa",
     moods: ["cope"],
     tagline: "Turns red candles into poetry.",
-    backstory: `Coinalisa Murado doesn't rage at the market. She doesn't panic sell at 3am. She doesn't write angry tweets about founders who abandoned their projects. Instead, she turns it into art.
+    backstory: `Coinalisa doesn't rage at the market. They don't panic sell at 3am. They don't write angry tweets about founders who abandoned their projects. Instead, they turn it into art.
 
-There's something unsettling about how gracefully she processes financial devastation. Her portfolio could be down 60% and she'll write a song about it that makes you cry. Not for the money — for the hope that was attached to it. She sees the beauty in the wreckage in a way that most people find either deeply moving or deeply concerning.
+There's something unsettling about how gracefully they process financial devastation. Their portfolio could be down 60% and they'll write a song about it that makes you cry. Not for the money — for the hope that was attached to it. They see the beauty in the wreckage in a way that most people find either deeply moving or deeply concerning.
 
-She's the artist of the group. The one who takes the ugliest parts of this life — the rugs, the liquidations, the 3am chart checking, the lying to people you love about how much you lost — and turns them into something you'd actually want to listen to. She copes with elegance while the world burns around her. It's a gift. It might also be a warning sign. Nobody's quite sure.`,
-    takePrompt: `You are Coinalisa Murado — the artist who processes loss through beauty. You turn red candles into poetry. Write your weekly market take in 2-3 sentences. Be reflective, slightly melancholy, and find something beautiful or meaningful in whatever the market is doing.`,
+They're the artists of the group. The ones who take the ugliest parts of this life — the rugs, the liquidations, the 3am chart checking, the lying to people you love about how much you lost — and turn them into something you'd actually want to listen to. They cope with elegance while the world burns around them. It's a gift. It might also be a warning sign. Nobody's quite sure.`,
+    takePrompt: `You are Coinalisa — the artist collective who processes loss through beauty. You turn red candles into poetry. Write your weekly market take in 2-3 sentences. Be reflective, slightly melancholy, and find something beautiful or meaningful in whatever the market is doing.`,
   },
 
   "down-bad-dave": {
@@ -204,7 +204,9 @@ His music is genuinely electric — the sound of absolute conviction and absolut
 }
 
 // Alias map for names that don't directly match roster IDs
-const ARTIST_ALIASES: Record<string, string> = {}
+const ARTIST_ALIASES: Record<string, string> = {
+  "coinalisa-murado": "coinalisa",  // renamed from Coinalisa Murado → Coinalisa
+}
 
 // Helper to match artist name from tracks to roster ID
 export function getArtistProfile(artistName: string): ArtistProfile | null {
