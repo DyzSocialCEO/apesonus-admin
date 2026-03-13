@@ -45,6 +45,7 @@ export default function FeedPage() {
   const [showContext, setShowContext] = useState(false)
   const [artistCount, setArtistCount] = useState(4)
   const [publishingIdx, setPublishingIdx] = useState<number | null>(null)
+  const [genErrors, setGenErrors] = useState<string[]>([])
 
   // Edit state per draft
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
@@ -110,6 +111,7 @@ export default function FeedPage() {
       if (data.error) { alert(data.error); return }
       setDrafts(data.drafts || [])
       setContextData(data.context || null)
+      setGenErrors(data.errors || [])
     } catch (e: any) {
       alert("Generation failed: " + (e.message || "unknown error"))
     } finally {
@@ -242,6 +244,16 @@ export default function FeedPage() {
                 <p>📅 {contextData.dayOfWeek}</p>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Generation Errors */}
+      {genErrors.length > 0 && (
+        <Card className="border-red-500/30 bg-red-950/20">
+          <CardContent className="py-3">
+            <p className="text-sm font-bold text-red-400 mb-1">⚠️ Some generations failed:</p>
+            {genErrors.map((e, i) => <p key={i} className="text-xs text-red-300/70">{e}</p>)}
           </CardContent>
         </Card>
       )}

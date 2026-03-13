@@ -9,7 +9,7 @@ import { ARTIST_ROSTER } from "@/lib/constants/artists"
 // ============================================
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-const MODEL = "google/gemini-flash-1.5"
+const MODEL = "google/gemini-2.5-flash-lite"
 
 const POST_CATEGORIES = [
   "market_reaction",
@@ -381,9 +381,13 @@ export async function POST(request: Request) {
     )
 
     const drafts = results.filter(Boolean)
+    const errors = results
+      .map((r, i) => r === null ? `${assignments[i].artistId}: generation failed` : null)
+      .filter(Boolean)
 
     return NextResponse.json({
       drafts,
+      errors,
       context: { market, moodPulse, chart, dayOfWeek },
       selectedArtists,
     })
