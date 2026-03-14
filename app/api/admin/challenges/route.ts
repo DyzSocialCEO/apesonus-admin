@@ -184,17 +184,35 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true, message: "No submissions", awarded: 0 })
       }
 
-      // Award ONUS to correct answers
+      // Award ONUS to correct answers — scaled by user's tier multiplier
       let awarded = 0
       let starsAwarded = 0
+      let totalOnusDistributed = 0
       const correctSubs = submissions.filter(s => s.is_correct)
+
+      // Batch-fetch all correct users' multipliers
+      const correctTgIds = correctSubs.map(s => s.telegram_id)
+      const { data: userRecords } = await supabase
+        .from("users")
+        .select("telegram_id, onus_multiplier, verification_tier")
+        .in("telegram_id", correctTgIds)
+
+      const multiplierMap: Record<string, number> = {}
+      if (userRecords) {
+        for (const u of userRecords) {
+          multiplierMap[u.telegram_id] = u.onus_multiplier ?? (u.verification_tier ? 1 : 0.25)
+        }
+      }
 
       for (let i = 0; i < correctSubs.length; i++) {
         const sub = correctSubs[i]
+        const userMultiplier = multiplierMap[sub.telegram_id] ?? 0.25 // free = 0.25×
+        const reward = Math.floor(challenge.onus_reward * Math.max(userMultiplier, 0.25))
 
         // Award ONUS
-        await awardOnus(supabase, sub.telegram_id, challenge.onus_reward, "challenge_reward", `challenge_${id}`)
+        await awardOnus(supabase, sub.telegram_id, reward, "challenge_reward", `challenge_${id}`)
         awarded++
+        totalOnusDistributed += reward
 
         // Mark Stars-eligible (fastest N correct)
         const isStarsWinner = challenge.stars_eligible && i < challenge.stars_winner_count
@@ -202,7 +220,7 @@ export async function POST(request: Request) {
         await supabase
           .from("challenge_submissions")
           .update({
-            onus_awarded: challenge.onus_reward,
+            onus_awarded: reward,
             stars_awarded: isStarsWinner,
           })
           .eq("id", sub.id)
@@ -215,6 +233,7 @@ export async function POST(request: Request) {
         totalSubmissions: submissions.length,
         correctSubmissions: correctSubs.length,
         onusAwarded: awarded,
+        totalOnusDistributed,
         starsAwarded,
       })
     }
