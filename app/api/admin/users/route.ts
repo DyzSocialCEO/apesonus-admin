@@ -109,7 +109,6 @@ export async function POST(request: Request) {
         .single()
 
       if (counter) {
-        const counterUpdate: Record<string, any> = { updated_at: new Date().toISOString() }
         if (tier === "genesis") counterUpdate.genesis_count = counter.genesis_count + 1
         else if (tier === "early") counterUpdate.early_count = counter.early_count + 1
         else counterUpdate.standard_count = counter.standard_count + 1
@@ -127,7 +126,6 @@ export async function POST(request: Request) {
         verification_tier: tier,
         onus_multiplier: multiplier,
         premium_expires_at: expiresAt.toISOString(),
-        updated_at: now.toISOString(),
       }).eq("telegram_id", telegramId)
 
       if (updateErr) {
@@ -164,7 +162,6 @@ export async function POST(request: Request) {
       const { error: rErr } = await supabase.from("users").update({
         is_premium: false,
         premium_expires_at: null,
-        updated_at: new Date().toISOString(),
       }).eq("telegram_id", telegramId)
 
       if (rErr) {
@@ -185,14 +182,12 @@ export async function POST(request: Request) {
     // ── Legacy verify/unverify ──
     if (action === "verify_user") {
       await supabase.from("users")
-        .update({ is_premium: true, updated_at: new Date().toISOString() })
         .eq("telegram_id", telegramId)
       return NextResponse.json({ success: true, message: "User verified" })
     }
 
     if (action === "unverify_user") {
       await supabase.from("users")
-        .update({ is_premium: false, updated_at: new Date().toISOString() })
         .eq("telegram_id", telegramId)
       return NextResponse.json({ success: true, message: "Verification removed" })
     }
