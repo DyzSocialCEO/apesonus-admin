@@ -76,29 +76,46 @@ export function getMultiplier(tier: TierOrFree | null | undefined): number {
   return TIER_MULTIPLIERS[tier] ?? 0.25
 }
 
-const STREAK_BASE = [100, 150, 200, 300]
+/**
+ * Resolve the actual multiplier for a user.
+ * Handles the case where onus_multiplier is 0 in the DB (free users)
+ * — the ?? operator doesn't catch 0, so we need explicit logic.
+ */
+export function resolveMultiplier(dbMultiplier: number | null | undefined, tier: string | null | undefined): number {
+  if (typeof dbMultiplier === "number" && dbMultiplier > 0) return dbMultiplier
+  return getMultiplier(tier as TierOrFree | null | undefined)
+}
+
+// ── ONUS SUPPLY ──
+export const ONUS_SUPPLY = {
+  TOTAL: 10_000_000_000,       // 10B total (minted at TGE)
+  USER_POOL: 8_000_000_000,    // 8B distributed to users
+  TEAM_RESERVE: 2_000_000_000, // 2B team reserve
+} as const
+
+const STREAK_BASE = [250, 300, 350, 500]
 
 export function getStreakReward(completedStreaks: number, multiplier: number): number {
   const idx = Math.min(completedStreaks, STREAK_BASE.length - 1)
-  return STREAK_BASE[idx] * multiplier
+  return Math.round(STREAK_BASE[idx] * multiplier)
 }
 
-const MOOD_VOTE_BASE = 5
+const MOOD_VOTE_BASE = 15
 
 export function getMoodVoteReward(multiplier: number): number {
-  return MOOD_VOTE_BASE * multiplier
+  return Math.round(MOOD_VOTE_BASE * multiplier)
 }
 
 // ── Forecast v2 rewards ──
 export const FORECAST_REWARDS = {
-  PARTICIPATION: 50,          // everyone gets this on submission (including free)
-  CORRECT_PICK: 700,          // per correct pick in top 3 (any order) × multiplier
-  JACKPOT_POOL: 1_000_000,    // shared among perfect-order winners
-  JACKPOT_STARS: 10_000,      // Telegram Stars for perfect order
+  PARTICIPATION: 100,           // everyone gets this on submission
+  CORRECT_PICK: 1_000,          // per correct pick in top 3 (any order) × multiplier
+  JACKPOT_POOL: 1_000_000,     // shared among perfect-order winners
+  JACKPOT_STARS: 10_000,       // Telegram Stars for perfect order
 } as const
 
 // Legacy — kept for backward compat
-const FORECAST_CORRECT_BASE = 50
+const FORECAST_CORRECT_BASE = 100
 
 export function getForecastReward(isCorrect: boolean, multiplier: number): number {
   if (multiplier <= 0) return 0

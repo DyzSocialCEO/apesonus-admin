@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
 import { awardOnus } from "@/lib/award-onus"
+import { resolveMultiplier } from "@/lib/constants/tiers"
 
 // GET — list all challenges
 export async function GET(request: Request) {
@@ -200,7 +201,7 @@ export async function POST(request: Request) {
       const multiplierMap: Record<string, number> = {}
       if (userRecords) {
         for (const u of userRecords) {
-          multiplierMap[u.telegram_id] = u.onus_multiplier ?? (u.verification_tier ? 1 : 0.25)
+          multiplierMap[u.telegram_id] = resolveMultiplier(u.onus_multiplier, u.verification_tier)
         }
       }
 
