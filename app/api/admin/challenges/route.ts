@@ -80,7 +80,7 @@ export async function POST(request: Request) {
 
     // ── CREATE ──
     if (action === "create") {
-      const { type, trackId, lyricSnippet, correctAnswer, options, onusReward, starsEligible, starsWinnerCount, startsAt, endsAt } = body
+      const { type, trackId, lyricSnippet, audioUrl, correctAnswer, options, onusReward, starsEligible, starsWinnerCount, startsAt, endsAt } = body
 
       if (!type || !lyricSnippet || !correctAnswer || !options || !startsAt || !endsAt) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
@@ -108,9 +108,10 @@ export async function POST(request: Request) {
           type,
           track_id: trackId || null,
           lyric_snippet: lyricSnippet,
+          audio_url: audioUrl || null,
           correct_answer: correctAnswer,
           options: JSON.stringify(options),
-          onus_reward: onusReward || 10,
+          onus_reward: onusReward || 50,
           stars_eligible: starsEligible || false,
           stars_winner_count: starsWinnerCount || 0,
           starts_at: startsAt,
@@ -131,6 +132,7 @@ export async function POST(request: Request) {
 
       const updateData: Record<string, any> = { updated_at: new Date().toISOString() }
       if (fields.lyricSnippet !== undefined) updateData.lyric_snippet = fields.lyricSnippet
+      if (fields.audioUrl !== undefined) updateData.audio_url = fields.audioUrl || null
       if (fields.correctAnswer !== undefined) updateData.correct_answer = fields.correctAnswer
       if (fields.options !== undefined) updateData.options = JSON.stringify(fields.options)
       if (fields.onusReward !== undefined) updateData.onus_reward = fields.onusReward

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Plus, Trash2, Loader2, RefreshCw, Trophy, Users, Clock, Eye, CheckCircle, XCircle, Star, Swords } from "lucide-react"
+import { Plus, Trash2, Loader2, RefreshCw, Trophy, Users, Clock, Eye, CheckCircle, XCircle, Star, Swords, Volume2 } from "lucide-react"
 
 const CHALLENGE_TYPES = [
   { id: "name_the_artist", label: "Name the Artist", description: "User reads lyrics, names the artist" },
@@ -49,6 +49,7 @@ export default function ChallengesPage() {
   const [onusReward, setOnusReward] = useState(10)
   const [starsEligible, setStarsEligible] = useState(false)
   const [starsWinnerCount, setStarsWinnerCount] = useState(5)
+  const [audioUrl, setAudioUrl] = useState("")
   const [startsAt, setStartsAt] = useState("")
   const [endsAt, setEndsAt] = useState("")
 
@@ -67,9 +68,10 @@ export default function ChallengesPage() {
     setLyricSnippet("")
     setCorrectAnswer("")
     setWrongOptions(["", "", ""])
-    setOnusReward(10)
+    setOnusReward(50)
     setStarsEligible(false)
     setStarsWinnerCount(5)
+    setAudioUrl("")
     setStartsAt("")
     setEndsAt("")
   }
@@ -93,6 +95,7 @@ export default function ChallengesPage() {
           action: "create",
           type,
           lyricSnippet,
+          audioUrl: audioUrl.trim() || null,
           correctAnswer,
           options: allOptions,
           onusReward,
@@ -208,6 +211,22 @@ export default function ChallengesPage() {
                     : "It's four fifty-two and I'm wide awake\nSome guy on Discord said something's happening"
                 }
                 className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 text-sm border border-gray-700 resize-none font-mono" />
+            </div>
+
+            {/* Audio Snippet URL */}
+            <div>
+              <label className="text-sm text-gray-400 mb-1 block flex items-center gap-2">
+                <Volume2 className="w-3.5 h-3.5 text-purple-400" />
+                Audio Snippet URL (optional — 15sec clip from BunnyCDN)
+              </label>
+              <Input value={audioUrl} onChange={e => setAudioUrl(e.target.value)}
+                placeholder="https://apesonus-images.b-cdn.net/snippets/clip-name.mp3" />
+              {audioUrl.trim() && (
+                <div className="mt-2 flex items-center gap-2 p-2 rounded-lg bg-purple-900/20 border border-purple-500/20">
+                  <audio controls src={audioUrl.trim()} className="h-8 flex-1" style={{ maxWidth: "100%" }} />
+                  <span className="text-[10px] text-purple-400 shrink-0">Preview</span>
+                </div>
+              )}
             </div>
 
             {/* Correct Answer */}
@@ -346,10 +365,16 @@ export default function ChallengesPage() {
                         <Badge variant="outline" className="text-[10px]">{typeLabel(c.type)}</Badge>
                         <span className="text-xs text-yellow-400 font-semibold">+{c.onus_reward} $ONUS</span>
                         {c.stars_eligible && <span className="text-xs text-yellow-300">⭐ Top {c.stars_winner_count}</span>}
+                        {c.audio_url && <Badge variant="outline" className="text-[10px] border-purple-500/30 text-purple-400">🔊 Audio</Badge>}
                       </div>
                       <p className="text-sm text-gray-300 whitespace-pre-wrap font-mono leading-relaxed mb-2">
                         {c.lyric_snippet.length > 150 ? c.lyric_snippet.slice(0, 150) + "..." : c.lyric_snippet}
                       </p>
+                      {c.audio_url && (
+                        <div className="mb-2">
+                          <audio controls src={c.audio_url} className="h-7 w-full max-w-[280px]" />
+                        </div>
+                      )}
                       <div className="flex items-center gap-4 text-xs text-gray-500">
                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {timeLeft(c.ends_at)}</span>
                         <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {c.submissionCount} submitted</span>
