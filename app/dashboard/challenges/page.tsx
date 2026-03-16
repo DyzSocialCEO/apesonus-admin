@@ -8,9 +8,12 @@ import { Input } from "@/components/ui/input"
 import { Plus, Trash2, Loader2, RefreshCw, Trophy, Users, Clock, Eye, CheckCircle, XCircle, Star, Swords, Volume2 } from "lucide-react"
 
 const CHALLENGE_TYPES = [
-  { id: "name_the_artist", label: "Name the Artist", description: "User reads lyrics, names the artist" },
-  { id: "complete_the_lyric", label: "Complete the Lyric", description: "User fills in missing words" },
-  { id: "identify_the_mood", label: "Identify the Mood", description: "User picks the mood world" },
+  { id: "name_the_artist", label: "🎤 Name the Artist", description: "Play vocal snippet — user picks the artist", defaultReward: 50 },
+  { id: "name_the_artist_instrumental", label: "🎹 Instrumental", description: "Play instrumental only — user guesses artist (harder, 2× reward)", defaultReward: 100 },
+  { id: "finish_the_lyric", label: "✍️ Finish the Lyric", description: "Audio stops mid-line — user picks what comes next", defaultReward: 50 },
+  { id: "identify_the_mood", label: "🌍 What Mood Is This?", description: "Play snippet — user picks the mood world", defaultReward: 30 },
+  { id: "which_track", label: "🎵 Which Track?", description: "Play snippet — user picks the track name", defaultReward: 50 },
+  { id: "odd_one_out", label: "👂 Odd One Out", description: "3 snippets — two same artist, one different. Pick the odd one.", defaultReward: 150 },
 ]
 
 const MOODS = ["MOON", "REKT", "COPE", "DEGEN", "ZEN"]
@@ -25,10 +28,8 @@ const STATUS_COLORS: Record<string, string> = {
 function timeLeft(endsAt: string): string {
   const diff = new Date(endsAt).getTime() - Date.now()
   if (diff <= 0) return "Ended"
-  const h = Math.floor(diff / 3600000)
-  const m = Math.floor((diff % 3600000) / 60000)
-  if (h > 0) return `${h}h ${m}m left`
-  return `${m}m left`
+  const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000)
+  return h > 0 ? `${h}h ${m}m left` : `${m}m left`
 }
 
 export default function ChallengesPage() {
@@ -41,90 +42,87 @@ export default function ChallengesPage() {
   const [loadingSubs, setLoadingSubs] = useState(false)
   const [completing, setCompleting] = useState<number | null>(null)
 
-  // Create form
+  // Form state
   const [type, setType] = useState("name_the_artist")
   const [lyricSnippet, setLyricSnippet] = useState("")
+  const [audioUrl, setAudioUrl] = useState("")
+  const [audioUrl2, setAudioUrl2] = useState("")
+  const [audioUrl3, setAudioUrl3] = useState("")
   const [correctAnswer, setCorrectAnswer] = useState("")
   const [wrongOptions, setWrongOptions] = useState(["", "", ""])
-  const [onusReward, setOnusReward] = useState(10)
+  const [onusReward, setOnusReward] = useState(50)
   const [starsEligible, setStarsEligible] = useState(false)
   const [starsWinnerCount, setStarsWinnerCount] = useState(5)
-  const [audioUrl, setAudioUrl] = useState("")
   const [startsAt, setStartsAt] = useState("")
   const [endsAt, setEndsAt] = useState("")
 
+  const currentType = CHALLENGE_TYPES.find(t => t.id === type)!
+  const isOddOneOut = type === "odd_one_out"
+  const isMoodType = type === "identify_the_mood"
+
   const fetchChallenges = async () => {
     setLoading(true)
-    try {
-      const res = await fetch("/api/admin/challenges")
-      const data = await res.json()
-      setChallenges(data.challenges || [])
-    } catch {} finally { setLoading(false) }
+    try { const res = await fetch("/api/admin/challenges"); const data = await res.json(); setChallenges(data.challenges || []) }
+    catch {} finally { setLoading(false) }
   }
 
   useEffect(() => { fetchChallenges() }, [])
 
   const resetForm = () => {
-    setLyricSnippet("")
-    setCorrectAnswer("")
-    setWrongOptions(["", "", ""])
-    setOnusReward(50)
-    setStarsEligible(false)
-    setStarsWinnerCount(5)
-    setAudioUrl("")
-    setStartsAt("")
-    setEndsAt("")
+    setLyricSnippet(""); setAudioUrl(""); setAudioUrl2(""); setAudioUrl3("")
+    setCorrectAnswer(""); setWrongOptions(["", "", ""])
+    setOnusReward(currentType?.defaultReward || 50)
+    setStarsEligible(false); setStarsWinnerCount(5); setStartsAt(""); setEndsAt("")
+  }
+
+  const handleTypeChange = (newType: string) => {
+    setType(newType)
+    setCorrectAnswer(""); setWrongOptions(["", "", ""])
+    setAudioUrl2(""); setAudioUrl3("")
+    const t = CHALLENGE_TYPES.find(ct => ct.id === newType)
+    if (t) setOnusReward(t.defaultReward)
   }
 
   const handleCreate = async () => {
     if (!lyricSnippet.trim() || !correctAnswer.trim() || !startsAt || !endsAt || creating) return
+    if (!audioUrl.trim()) { alert("Audio snippet URL is required for all challenge types"); return }
 
-    const allOptions = type === "identify_the_mood"
+    const allOptions = isMoodType
       ? MOODS
-      : [correctAnswer, ...wrongOptions.filter(o => o.trim())].sort(() => Math.random() - 0.5)
+      : isOddOneOut
+        ? ["Snippet A", "Snippet B", "Snippet C"]
+        : [correctAnswer, ...wrongOptions.filter(o => o.trim())].sort(() => Math.random() - 0.5)
 
-    if (allOptions.length < 2) { alert("Need at least 2 options"); return }
+    if (!isMoodType && !isOddOneOut && allOptions.length < 2) { alert("Need at least 2 options"); return }
     if (!allOptions.includes(correctAnswer)) { alert("Correct answer must be in options"); return }
+
+    if (isOddOneOut && (!audioUrl2.trim() || !audioUrl3.trim())) {
+      alert("Odd One Out requires all 3 audio snippet URLs"); return
+    }
 
     setCreating(true)
     try {
       const res = await fetch("/api/admin/challenges", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "create",
-          type,
-          lyricSnippet,
+          action: "create", type, lyricSnippet,
           audioUrl: audioUrl.trim() || null,
-          correctAnswer,
-          options: allOptions,
-          onusReward,
-          starsEligible,
-          starsWinnerCount: starsEligible ? starsWinnerCount : 0,
-          startsAt: new Date(startsAt).toISOString(),
-          endsAt: new Date(endsAt).toISOString(),
+          audioUrl2: audioUrl2.trim() || null,
+          audioUrl3: audioUrl3.trim() || null,
+          correctAnswer, options: allOptions, onusReward,
+          starsEligible, starsWinnerCount: starsEligible ? starsWinnerCount : 0,
+          startsAt: new Date(startsAt).toISOString(), endsAt: new Date(endsAt).toISOString(),
         }),
       })
       const data = await res.json()
-      if (data.success) {
-        resetForm()
-        setShowCreate(false)
-        fetchChallenges()
-      } else {
-        alert(data.error || "Failed to create")
-      }
-    } catch (e: any) {
-      alert(e.message)
-    } finally { setCreating(false) }
+      if (data.success) { resetForm(); setShowCreate(false); fetchChallenges() }
+      else alert(data.error || "Failed to create")
+    } catch (e: any) { alert(e.message) } finally { setCreating(false) }
   }
 
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this challenge and all submissions?")) return
-    await fetch("/api/admin/challenges", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "delete", id }),
-    })
+    await fetch("/api/admin/challenges", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete", id }) })
     fetchChallenges()
   }
 
@@ -132,32 +130,18 @@ export default function ChallengesPage() {
     if (!confirm("Complete this challenge? This will reveal the answer and distribute rewards.")) return
     setCompleting(id)
     try {
-      const res = await fetch("/api/admin/challenges", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "complete", id }),
-      })
+      const res = await fetch("/api/admin/challenges", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "complete", id }) })
       const data = await res.json()
-      if (data.success) {
-        alert(`Completed! ${data.correctSubmissions} correct, ${data.onusAwarded} ONUS distributed, ${data.starsAwarded} Stars winners`)
-        fetchChallenges()
-      } else {
-        alert(data.error)
-      }
+      if (data.success) { alert(`Completed! ${data.correctSubmissions} correct, ${data.onusAwarded} ONUS distributed`); fetchChallenges() }
+      else alert(data.error)
     } catch {} finally { setCompleting(null) }
   }
 
   const viewSubmissions = async (id: number) => {
-    setViewSubs(id)
-    setLoadingSubs(true)
+    setViewSubs(id); setLoadingSubs(true)
     try {
-      const res = await fetch("/api/admin/challenges", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "submissions", id }),
-      })
-      const data = await res.json()
-      setSubmissions(data.submissions || [])
+      const res = await fetch("/api/admin/challenges", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "submissions", id }) })
+      const data = await res.json(); setSubmissions(data.submissions || [])
     } catch {} finally { setLoadingSubs(false) }
   }
 
@@ -168,18 +152,12 @@ export default function ChallengesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Swords className="w-6 h-6 text-purple-400" /> Challenge Arena
-          </h2>
-          <p className="text-gray-400 text-sm">{challenges.length} challenges</p>
+          <h2 className="text-2xl font-bold text-white flex items-center gap-2"><Swords className="w-6 h-6 text-purple-400" /> Challenge Arena</h2>
+          <p className="text-gray-400 text-sm">{challenges.length} challenges · 6 game types</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={fetchChallenges}>
-            <RefreshCw className="w-4 h-4 mr-2" /> Refresh
-          </Button>
-          <Button size="sm" onClick={() => setShowCreate(!showCreate)} className="bg-purple-600 hover:bg-purple-700">
-            <Plus className="w-4 h-4 mr-2" /> New Challenge
-          </Button>
+          <Button variant="outline" size="sm" onClick={fetchChallenges}><RefreshCw className="w-4 h-4 mr-2" /> Refresh</Button>
+          <Button size="sm" onClick={() => setShowCreate(!showCreate)} className="bg-purple-600 hover:bg-purple-700"><Plus className="w-4 h-4 mr-2" /> New Challenge</Button>
         </div>
       </div>
 
@@ -188,74 +166,101 @@ export default function ChallengesPage() {
         <Card className="border-purple-500/30">
           <CardHeader><CardTitle className="text-base">Create Challenge</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            {/* Type */}
+            {/* Type selector */}
             <div>
               <label className="text-sm text-gray-400 mb-1 block">Challenge Type</label>
-              <select value={type} onChange={e => { setType(e.target.value); setCorrectAnswer(""); setWrongOptions(["", "", ""]) }}
+              <select value={type} onChange={e => handleTypeChange(e.target.value)}
                 className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 text-sm border border-gray-700">
-                {CHALLENGE_TYPES.map(t => (
-                  <option key={t.id} value={t.id}>{t.label} — {t.description}</option>
-                ))}
+                {CHALLENGE_TYPES.map(t => <option key={t.id} value={t.id}>{t.label} — {t.description}</option>)}
               </select>
             </div>
 
-            {/* Lyric Snippet */}
+            {/* Question text */}
             <div>
               <label className="text-sm text-gray-400 mb-1 block">
-                {type === "complete_the_lyric" ? "Lyric with blanks (use ___ for blanks)" : "Lyric Excerpt"}
+                {type === "finish_the_lyric" ? "Lyric context (what plays before the blank)" :
+                 isOddOneOut ? "Question text (e.g. 'Which snippet is from a different artist?')" :
+                 "Question / Lyric excerpt"}
               </label>
-              <textarea value={lyricSnippet} onChange={e => setLyricSnippet(e.target.value)}
-                rows={4} placeholder={
-                  type === "complete_the_lyric"
-                    ? "It's four fifty-two and I'm ___ awake\nSome guy on Discord said something's ___"
-                    : "It's four fifty-two and I'm wide awake\nSome guy on Discord said something's happening"
+              <textarea value={lyricSnippet} onChange={e => setLyricSnippet(e.target.value)} rows={3}
+                placeholder={
+                  type === "name_the_artist" ? "🎧 Listen to the snippet — who is this artist?" :
+                  type === "name_the_artist_instrumental" ? "🎹 Instrumental only — can you name the artist?" :
+                  type === "finish_the_lyric" ? "The audio stops mid-line. What comes next?" :
+                  type === "identify_the_mood" ? "🌍 Listen — which mood world does this track belong to?" :
+                  type === "which_track" ? "🎵 Name that track!" :
+                  "👂 Two snippets are from the same artist. Which one is different?"
                 }
                 className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 text-sm border border-gray-700 resize-none font-mono" />
             </div>
 
-            {/* Audio Snippet URL */}
-            <div>
-              <label className="text-sm text-gray-400 mb-1 block flex items-center gap-2">
-                <Volume2 className="w-3.5 h-3.5 text-purple-400" />
-                Audio Snippet URL (optional — 15sec clip from BunnyCDN)
-              </label>
-              <Input value={audioUrl} onChange={e => setAudioUrl(e.target.value)}
-                placeholder="https://apesonus-images.b-cdn.net/snippets/clip-name.mp3" />
-              {audioUrl.trim() && (
-                <div className="mt-2 flex items-center gap-2 p-2 rounded-lg bg-purple-900/20 border border-purple-500/20">
-                  <audio controls src={audioUrl.trim()} className="h-8 flex-1" style={{ maxWidth: "100%" }} />
-                  <span className="text-[10px] text-purple-400 shrink-0">Preview</span>
-                </div>
+            {/* Audio snippet(s) */}
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm text-gray-400 mb-1 flex items-center gap-2">
+                  <Volume2 className="w-3.5 h-3.5 text-purple-400" />
+                  {isOddOneOut ? "Snippet A URL" : "Audio Snippet URL"} (15sec clip)
+                </label>
+                <Input value={audioUrl} onChange={e => setAudioUrl(e.target.value)}
+                  placeholder="https://apesonus-audio.b-cdn.net/snippets/clip.m4a" />
+              </div>
+              {isOddOneOut && (
+                <>
+                  <div>
+                    <label className="text-sm text-gray-400 mb-1 flex items-center gap-2">
+                      <Volume2 className="w-3.5 h-3.5 text-violet-400" /> Snippet B URL
+                    </label>
+                    <Input value={audioUrl2} onChange={e => setAudioUrl2(e.target.value)}
+                      placeholder="https://apesonus-audio.b-cdn.net/snippets/clip-b.m4a" />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-400 mb-1 flex items-center gap-2">
+                      <Volume2 className="w-3.5 h-3.5 text-blue-400" /> Snippet C URL
+                    </label>
+                    <Input value={audioUrl3} onChange={e => setAudioUrl3(e.target.value)}
+                      placeholder="https://apesonus-audio.b-cdn.net/snippets/clip-c.m4a" />
+                  </div>
+                </>
               )}
             </div>
 
             {/* Correct Answer */}
             <div>
               <label className="text-sm text-gray-400 mb-1 block">
-                {type === "name_the_artist" ? "Correct Artist" : type === "identify_the_mood" ? "Correct Mood" : "Correct Missing Word(s)"}
+                {type === "name_the_artist" || type === "name_the_artist_instrumental" ? "Correct Artist" :
+                 isMoodType ? "Correct Mood" :
+                 type === "which_track" ? "Correct Track Name" :
+                 isOddOneOut ? "Correct Answer (Snippet A, Snippet B, or Snippet C)" :
+                 "Correct Answer (the missing lyric)"}
               </label>
-              {type === "identify_the_mood" ? (
+              {isMoodType ? (
                 <select value={correctAnswer} onChange={e => setCorrectAnswer(e.target.value)}
                   className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 text-sm border border-gray-700">
                   <option value="">Select mood...</option>
                   {MOODS.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
+              ) : isOddOneOut ? (
+                <select value={correctAnswer} onChange={e => setCorrectAnswer(e.target.value)}
+                  className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 text-sm border border-gray-700">
+                  <option value="">Select the odd snippet...</option>
+                  <option value="Snippet A">Snippet A</option>
+                  <option value="Snippet B">Snippet B</option>
+                  <option value="Snippet C">Snippet C</option>
+                </select>
               ) : (
                 <Input value={correctAnswer} onChange={e => setCorrectAnswer(e.target.value)}
-                  placeholder={type === "name_the_artist" ? "e.g. Down Bad Dave" : "e.g. wide"} />
+                  placeholder={type === "which_track" ? "e.g. Four AM Panic" : type.includes("artist") ? "e.g. Down Bad Dave" : "e.g. wide awake"} />
               )}
             </div>
 
-            {/* Wrong Options (not for mood type) */}
-            {type !== "identify_the_mood" && (
+            {/* Wrong Options (not for mood or odd one out) */}
+            {!isMoodType && !isOddOneOut && (
               <div>
                 <label className="text-sm text-gray-400 mb-1 block">Wrong Options (at least 2)</label>
                 <div className="space-y-2">
                   {wrongOptions.map((opt, i) => (
                     <Input key={i} value={opt} onChange={e => {
-                      const updated = [...wrongOptions]
-                      updated[i] = e.target.value
-                      setWrongOptions(updated)
+                      const updated = [...wrongOptions]; updated[i] = e.target.value; setWrongOptions(updated)
                     }} placeholder={`Wrong option ${i + 1}`} />
                   ))}
                 </div>
@@ -265,7 +270,7 @@ export default function ChallengesPage() {
             {/* Rewards */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-sm text-gray-400 mb-1 block">$ONUS Reward (per correct answer)</label>
+                <label className="text-sm text-gray-400 mb-1 block">$ONUS Reward (per correct)</label>
                 <Input type="number" value={onusReward} onChange={e => setOnusReward(Number(e.target.value))} min={1} />
               </div>
               <div>
@@ -275,7 +280,7 @@ export default function ChallengesPage() {
                 </label>
                 {starsEligible && (
                   <Input type="number" value={starsWinnerCount} onChange={e => setStarsWinnerCount(Number(e.target.value))}
-                    min={1} max={100} placeholder="# of fastest winners" />
+                    min={1} max={100} placeholder="# of winners" />
                 )}
               </div>
             </div>
@@ -295,7 +300,7 @@ export default function ChallengesPage() {
             </div>
 
             <div className="flex gap-2">
-              <Button onClick={handleCreate} disabled={creating || !lyricSnippet.trim() || !correctAnswer.trim() || !startsAt || !endsAt}
+              <Button onClick={handleCreate} disabled={creating || !lyricSnippet.trim() || !correctAnswer.trim() || !audioUrl.trim() || !startsAt || !endsAt}
                 className="bg-purple-600 hover:bg-purple-700">
                 {creating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                 Create Challenge
@@ -311,9 +316,7 @@ export default function ChallengesPage() {
         <Card className="border-yellow-500/30">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Users className="w-4 h-4" /> Submissions — Challenge #{viewSubs}
-              </CardTitle>
+              <CardTitle className="text-base flex items-center gap-2"><Users className="w-4 h-4" /> Submissions — #{viewSubs}</CardTitle>
               <Button variant="ghost" size="sm" onClick={() => setViewSubs(null)}>Close</Button>
             </div>
           </CardHeader>
@@ -366,22 +369,18 @@ export default function ChallengesPage() {
                         <span className="text-xs text-yellow-400 font-semibold">+{c.onus_reward} $ONUS</span>
                         {c.stars_eligible && <span className="text-xs text-yellow-300">⭐ Top {c.stars_winner_count}</span>}
                         {c.audio_url && <Badge variant="outline" className="text-[10px] border-purple-500/30 text-purple-400">🔊 Audio</Badge>}
+                        {c.audio_url_2 && <Badge variant="outline" className="text-[10px] border-pink-500/30 text-pink-400">×3</Badge>}
                       </div>
                       <p className="text-sm text-gray-300 whitespace-pre-wrap font-mono leading-relaxed mb-2">
                         {c.lyric_snippet.length > 150 ? c.lyric_snippet.slice(0, 150) + "..." : c.lyric_snippet}
                       </p>
-                      {c.audio_url && (
-                        <div className="mb-2">
-                          <audio controls src={c.audio_url} className="h-7 w-full max-w-[280px]" />
-                        </div>
-                      )}
                       <div className="flex items-center gap-4 text-xs text-gray-500">
                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {timeLeft(c.ends_at)}</span>
                         <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {c.submissionCount} submitted</span>
                         <span className="flex items-center gap-1"><CheckCircle className="w-3 h-3" /> {c.correctCount} correct</span>
                       </div>
                       <p className="text-[10px] text-gray-600 mt-1">
-                        Answer: <span className="text-gray-400">{c.correct_answer}</span> · Created {new Date(c.created_at).toLocaleDateString()}
+                        Answer: <span className="text-gray-400">{c.correct_answer}</span>
                       </p>
                     </div>
                     <div className="flex flex-col gap-1 shrink-0">
