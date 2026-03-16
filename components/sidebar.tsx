@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
-  Activity, Megaphone, Coins, TrendingUp, Flame, Zap, Swords,
+  Activity, Megaphone, Coins, TrendingUp, Flame, Zap, Swords, Radio,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -19,6 +19,7 @@ const navigation = [
   { name: "Streaks",       href: "/dashboard/streaks",      icon: Flame           },
   { name: "Users",         href: "/dashboard/users",        icon: Users           },
   { name: "Banners",       href: "/dashboard/banners",      icon: Megaphone       },
+  { name: "Broadcast",     href: "/dashboard/broadcast",    icon: Radio           },
   { name: "$ONUS",         href: "/dashboard/onus",         icon: Coins           },
   { name: "Analytics",     href: "/dashboard/analytics",    icon: BarChart3       },
   { name: "Settings",      href: "/dashboard/settings",     icon: Settings        },
