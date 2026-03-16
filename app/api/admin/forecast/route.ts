@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
+import { resolveMultiplier } from "@/lib/constants/tiers"
 import crypto from "crypto"
+
+// Fan forecast resolve reward bases
+const FORECAST_CORRECT_BASE = 100   // Correct vote base reward
+const FORECAST_WRONG_BASE = 10      // Wrong vote consolation base
 
 /**
  * GET /api/admin/forecast — list all forecasts
@@ -139,22 +144,27 @@ export async function POST(request: Request) {
         .select("id, telegram_id, vote")
         .eq("forecast_id", forecast.id)
 
+      // Fetch tier info for all voters
       const voterIds = (votes || []).map(v => v.telegram_id)
-      let premiumSet = new Set<string>()
+      const multiplierMap: Record<string, number> = {}
       if (voterIds.length > 0) {
-        const { data: pu } = await supabase
+        const { data: userRecords } = await supabase
           .from("users")
-          .select("telegram_id")
+          .select("telegram_id, verification_tier, onus_multiplier")
           .in("telegram_id", voterIds)
-          .eq("is_premium", true)
-        premiumSet = new Set((pu || []).map(u => u.telegram_id))
+        if (userRecords) {
+          for (const u of userRecords) {
+            multiplierMap[u.telegram_id] = resolveMultiplier(u.onus_multiplier, u.verification_tier)
+          }
+        }
       }
 
       let totalAwarded = 0
       for (const vote of votes || []) {
         const correct = vote.vote === result
-        const premium = premiumSet.has(vote.telegram_id)
-        const amount = correct ? (premium ? 250 : 50) : (premium ? 25 : 5)
+        const userMultiplier = multiplierMap[vote.telegram_id] ?? 0.25
+        const base = correct ? FORECAST_CORRECT_BASE : FORECAST_WRONG_BASE
+        const amount = Math.round(base * userMultiplier)
 
         // Insert onus transaction
         await supabase.from("onus_transactions").insert({
