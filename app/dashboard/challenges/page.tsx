@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Plus, Trash2, Loader2, RefreshCw, Trophy, Users, Clock, Eye, CheckCircle, XCircle, Star, Swords, Volume2 } from "lucide-react"
+import { Plus, Minus, Trash2, Loader2, RefreshCw, Trophy, Users, Clock, Eye, CheckCircle, XCircle, Star, Swords, Volume2 } from "lucide-react"
 
 const CHALLENGE_TYPES = [
   { id: "name_the_artist", label: "🎤 Name the Artist", description: "Play vocal snippet — user picks the artist", defaultReward: 50 },
@@ -256,14 +256,29 @@ export default function ChallengesPage() {
             {/* Wrong Options (not for mood or odd one out) */}
             {!isMoodType && !isOddOneOut && (
               <div>
-                <label className="text-sm text-gray-400 mb-1 block">Wrong Options (at least 2)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-sm text-gray-400">Wrong Options (at least 2)</label>
+                  <button type="button" onClick={() => setWrongOptions([...wrongOptions, ""])}
+                    className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 px-2 py-1 rounded-lg hover:bg-purple-500/10 transition-colors">
+                    <Plus className="w-3 h-3" /> Add option
+                  </button>
+                </div>
                 <div className="space-y-2">
                   {wrongOptions.map((opt, i) => (
-                    <Input key={i} value={opt} onChange={e => {
-                      const updated = [...wrongOptions]; updated[i] = e.target.value; setWrongOptions(updated)
-                    }} placeholder={`Wrong option ${i + 1}`} />
+                    <div key={i} className="flex items-center gap-2">
+                      <Input className="flex-1" value={opt} onChange={e => {
+                        const updated = [...wrongOptions]; updated[i] = e.target.value; setWrongOptions(updated)
+                      }} placeholder={`Wrong option ${i + 1}`} />
+                      {wrongOptions.length > 2 && (
+                        <button type="button" onClick={() => { const updated = wrongOptions.filter((_, idx) => idx !== i); setWrongOptions(updated) }}
+                          className="p-2 rounded-lg hover:bg-red-900/20 text-gray-500 hover:text-red-400 transition-colors shrink-0">
+                          <Minus className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
+                <p className="text-[10px] text-gray-600 mt-1">{wrongOptions.filter(o => o.trim()).length + 1} total options (including correct answer)</p>
               </div>
             )}
 
