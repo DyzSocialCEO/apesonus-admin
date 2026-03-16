@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
-import { awardOnus } from "@/lib/award-onus"
 import { resolveMultiplier } from "@/lib/constants/tiers"
+import { batchAwardOnus } from "@/lib/batch-award-onus"
 
 // GET — list all challenges
 export async function GET(request: Request) {
@@ -176,11 +176,17 @@ export async function POST(request: Request) {
 
       if (!challenge) return NextResponse.json({ error: "Challenge not found" }, { status: 404 })
 
-      // Mark as completed + revealed
-      await supabase
+      // Atomic: only transition if not already completed (prevent double-processing)
+      const { data: updated } = await supabase
         .from("challenges")
         .update({ status: "completed", is_revealed: true, updated_at: new Date().toISOString() })
         .eq("id", id)
+        .neq("status", "completed") // Guard against double-click
+        .select("id")
+
+      if (!updated || updated.length === 0) {
+        return NextResponse.json({ error: "Challenge already completed", alreadyCompleted: true }, { status: 409 })
+      }
 
       // Get all submissions
       const { data: submissions } = await supabase
@@ -193,11 +199,18 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true, message: "No submissions", awarded: 0 })
       }
 
-      // Award ONUS to correct answers — scaled by user's tier multiplier
-      let awarded = 0
-      let starsAwarded = 0
-      let totalOnusDistributed = 0
       const correctSubs = submissions.filter(s => s.is_correct)
+
+      if (correctSubs.length === 0) {
+        return NextResponse.json({
+          success: true,
+          totalSubmissions: submissions.length,
+          correctSubmissions: 0,
+          onusAwarded: 0,
+          totalOnusDistributed: 0,
+          starsAwarded: 0,
+        })
+      }
 
       // Batch-fetch all correct users' multipliers
       const correctTgIds = correctSubs.map(s => s.telegram_id)
@@ -213,36 +226,58 @@ export async function POST(request: Request) {
         }
       }
 
-      for (let i = 0; i < correctSubs.length; i++) {
-        const sub = correctSubs[i]
-        const userMultiplier = multiplierMap[sub.telegram_id] ?? 0.25 // free = 0.25×
+      // ── Build award entries ──
+      const awardEntries = correctSubs.map((sub, i) => {
+        const userMultiplier = multiplierMap[sub.telegram_id] ?? 0.25
         const reward = Math.floor(challenge.onus_reward * Math.max(userMultiplier, 0.25))
+        return {
+          telegramId: sub.telegram_id,
+          amount: reward,
+          reason: "challenge_reward",
+          referenceId: `challenge_${id}`,
+          subId: sub.id,
+          isStarsWinner: challenge.stars_eligible && i < challenge.stars_winner_count,
+        }
+      })
 
-        // Award ONUS
-        await awardOnus(supabase, sub.telegram_id, reward, "challenge_reward", `challenge_${id}`)
-        awarded++
-        totalOnusDistributed += reward
+      // ── Batch award — checks 8B supply cap ONCE ──
+      const batchResult = await batchAwardOnus(
+        supabase,
+        awardEntries.map(e => ({
+          telegramId: e.telegramId,
+          amount: e.amount,
+          reason: e.reason,
+          referenceId: e.referenceId,
+        }))
+      )
 
-        // Mark Stars-eligible (fastest N correct)
-        const isStarsWinner = challenge.stars_eligible && i < challenge.stars_winner_count
+      // Build awarded amount map
+      const awardedMap: Record<string, number> = {}
+      for (const r of batchResult.results) {
+        awardedMap[r.telegramId] = r.amount
+      }
+
+      // Update submission records
+      let starsAwarded = 0
+      for (const entry of awardEntries) {
+        const awarded = awardedMap[entry.telegramId] || 0
+        if (entry.isStarsWinner) starsAwarded++
 
         await supabase
           .from("challenge_submissions")
           .update({
-            onus_awarded: reward,
-            stars_awarded: isStarsWinner,
+            onus_awarded: awarded,
+            stars_awarded: entry.isStarsWinner,
           })
-          .eq("id", sub.id)
-
-        if (isStarsWinner) starsAwarded++
+          .eq("id", entry.subId)
       }
 
       return NextResponse.json({
         success: true,
         totalSubmissions: submissions.length,
         correctSubmissions: correctSubs.length,
-        onusAwarded: awarded,
-        totalOnusDistributed,
+        onusAwarded: batchResult.awarded,
+        totalOnusDistributed: batchResult.totalOnus,
         starsAwarded,
       })
     }

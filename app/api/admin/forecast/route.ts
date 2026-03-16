@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
 import { resolveMultiplier } from "@/lib/constants/tiers"
+import { batchAwardOnus } from "@/lib/batch-award-onus"
 import crypto from "crypto"
 
 // Fan forecast resolve reward bases
@@ -138,13 +139,13 @@ export async function POST(request: Request) {
 
       const result = actualValue >= forecast.target_value
 
-      // Get votes and award ONUS
+      // Get votes
       const { data: votes } = await supabase
         .from("fan_forecast_votes")
         .select("id, telegram_id, vote")
         .eq("forecast_id", forecast.id)
 
-      // Fetch tier info for all voters
+      // Fetch tier info for all voters in one batch
       const voterIds = (votes || []).map(v => v.telegram_id)
       const multiplierMap: Record<string, number> = {}
       if (voterIds.length > 0) {
@@ -159,33 +160,44 @@ export async function POST(request: Request) {
         }
       }
 
-      let totalAwarded = 0
-      for (const vote of votes || []) {
+      // ── Build award entries and use batchAwardOnus (respects 8B cap) ──
+      const awardEntries = (votes || []).map(vote => {
         const correct = vote.vote === result
         const userMultiplier = multiplierMap[vote.telegram_id] ?? 0.25
         const base = correct ? FORECAST_CORRECT_BASE : FORECAST_WRONG_BASE
         const amount = Math.round(base * userMultiplier)
-
-        // Insert onus transaction
-        await supabase.from("onus_transactions").insert({
-          telegram_id: vote.telegram_id,
+        return {
+          voteId: vote.id,
+          telegramId: vote.telegram_id,
           amount,
           reason: "forecast_reward",
-          reference_id: `forecast_${forecast.id}`,
-        })
+          referenceId: `forecast_${forecast.id}`,
+        }
+      })
 
-        // Increment balance
-        await supabase.rpc("increment_onus", {
-          p_telegram_id: vote.telegram_id,
-          p_amount: amount,
-        })
+      const batchResult = await batchAwardOnus(
+        supabase,
+        awardEntries.map(e => ({
+          telegramId: e.telegramId,
+          amount: e.amount,
+          reason: e.reason,
+          referenceId: e.referenceId,
+        }))
+      )
 
+      // Build a map of actual awarded amounts
+      const awardedMap: Record<string, number> = {}
+      for (const r of batchResult.results) {
+        awardedMap[r.telegramId] = r.amount
+      }
+
+      // Update vote records with actual awarded amounts
+      for (const entry of awardEntries) {
+        const awarded = awardedMap[entry.telegramId] || entry.amount
         await supabase
           .from("fan_forecast_votes")
-          .update({ onus_earned: amount })
-          .eq("id", vote.id)
-
-        totalAwarded += amount
+          .update({ onus_earned: awarded })
+          .eq("id", entry.voteId)
       }
 
       // Update forecast
@@ -207,7 +219,7 @@ export async function POST(request: Request) {
         actualValue,
         targetValue: forecast.target_value,
         totalVoters: (votes || []).length,
-        totalAwarded,
+        totalAwarded: batchResult.totalOnus,
         proofHashes: proofHashes.length,
       })
     }
