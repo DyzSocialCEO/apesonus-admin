@@ -1,11 +1,53 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Plus, Minus, Trash2, Loader2, RefreshCw, Trophy, Users, Clock, Eye, CheckCircle, XCircle, Star, Swords, Volume2 } from "lucide-react"
+import { Plus, Minus, Trash2, Loader2, RefreshCw, Trophy, Users, Clock, Eye, CheckCircle, XCircle, Star, Swords, Volume2, Play, Pause } from "lucide-react"
+
+// Signed audio preview — fetches signed URL from admin API
+function SignedAudioPreview({ url }: { url: string }) {
+  const [signedUrl, setSignedUrl] = useState<string | null>(null)
+  const [playing, setPlaying] = useState(false)
+  const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null)
+  const [error, setError] = useState(false)
+
+  const sign = useCallback(async () => {
+    if (!url.trim()) return
+    try {
+      const res = await fetch("/api/admin/sign-audio", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() }),
+      })
+      if (res.ok) { const d = await res.json(); setSignedUrl(d.signedUrl); setError(false) }
+      else setError(true)
+    } catch { setError(true) }
+  }, [url])
+
+  useEffect(() => { sign() }, [sign])
+  useEffect(() => { return () => { if (audioEl) { audioEl.pause() } } }, [audioEl])
+
+  const toggle = () => {
+    if (!signedUrl) return
+    if (playing && audioEl) { audioEl.pause(); setPlaying(false); return }
+    const a = new Audio(signedUrl)
+    a.addEventListener("ended", () => setPlaying(false))
+    a.addEventListener("error", () => { setPlaying(false); setError(true) })
+    a.play().then(() => { setPlaying(true); setAudioEl(a) }).catch(() => setError(true))
+  }
+
+  if (error) return <span className="text-[10px] text-red-400">Failed to load</span>
+  if (!signedUrl) return <span className="text-[10px] text-gray-500">Signing...</span>
+
+  return (
+    <button onClick={toggle} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 transition-colors">
+      {playing ? <Pause className="w-3 h-3 text-purple-400" /> : <Play className="w-3 h-3 text-purple-400" />}
+      <span className="text-[10px] text-purple-400 font-semibold">{playing ? "Stop" : "Preview"}</span>
+    </button>
+  )
+}
 
 const CHALLENGE_TYPES = [
   { id: "name_the_artist", label: "🎤 Name the Artist", description: "Play vocal snippet — user picks the artist", defaultReward: 50 },
@@ -201,8 +243,11 @@ export default function ChallengesPage() {
                   <Volume2 className="w-3.5 h-3.5 text-purple-400" />
                   {isOddOneOut ? "Snippet A URL" : "Audio Snippet URL"} (15sec clip)
                 </label>
-                <Input value={audioUrl} onChange={e => setAudioUrl(e.target.value)}
-                  placeholder="https://apesonus-audio.b-cdn.net/snippets/clip.m4a" />
+                <div className="flex items-center gap-2">
+                  <Input className="flex-1" value={audioUrl} onChange={e => setAudioUrl(e.target.value)}
+                    placeholder="https://apesonus-audio.b-cdn.net/snippets/clip.m4a" />
+                  {audioUrl.trim() && <SignedAudioPreview url={audioUrl.trim()} />}
+                </div>
               </div>
               {isOddOneOut && (
                 <>
@@ -210,15 +255,21 @@ export default function ChallengesPage() {
                     <label className="text-sm text-gray-400 mb-1 flex items-center gap-2">
                       <Volume2 className="w-3.5 h-3.5 text-violet-400" /> Snippet B URL
                     </label>
-                    <Input value={audioUrl2} onChange={e => setAudioUrl2(e.target.value)}
-                      placeholder="https://apesonus-audio.b-cdn.net/snippets/clip-b.m4a" />
+                    <div className="flex items-center gap-2">
+                      <Input className="flex-1" value={audioUrl2} onChange={e => setAudioUrl2(e.target.value)}
+                        placeholder="https://apesonus-audio.b-cdn.net/snippets/clip-b.m4a" />
+                      {audioUrl2.trim() && <SignedAudioPreview url={audioUrl2.trim()} />}
+                    </div>
                   </div>
                   <div>
                     <label className="text-sm text-gray-400 mb-1 flex items-center gap-2">
                       <Volume2 className="w-3.5 h-3.5 text-blue-400" /> Snippet C URL
                     </label>
-                    <Input value={audioUrl3} onChange={e => setAudioUrl3(e.target.value)}
-                      placeholder="https://apesonus-audio.b-cdn.net/snippets/clip-c.m4a" />
+                    <div className="flex items-center gap-2">
+                      <Input className="flex-1" value={audioUrl3} onChange={e => setAudioUrl3(e.target.value)}
+                        placeholder="https://apesonus-audio.b-cdn.net/snippets/clip-c.m4a" />
+                      {audioUrl3.trim() && <SignedAudioPreview url={audioUrl3.trim()} />}
+                    </div>
                   </div>
                 </>
               )}
@@ -270,7 +321,7 @@ export default function ChallengesPage() {
                         const updated = [...wrongOptions]; updated[i] = e.target.value; setWrongOptions(updated)
                       }} placeholder={`Wrong option ${i + 1}`} />
                       {wrongOptions.length > 2 && (
-                        <button type="button" onClick={() => { const updated = wrongOptions.filter((_, idx) => idx !== i); setWrongOptions(updated) }}
+                        <button type="button" onClick={() => setWrongOptions(wrongOptions.filter((_, idx) => idx !== i))}
                           className="p-2 rounded-lg hover:bg-red-900/20 text-gray-500 hover:text-red-400 transition-colors shrink-0">
                           <Minus className="w-4 h-4" />
                         </button>
@@ -384,6 +435,7 @@ export default function ChallengesPage() {
                         <span className="text-xs text-yellow-400 font-semibold">+{c.onus_reward} $ONUS</span>
                         {c.stars_eligible && <span className="text-xs text-yellow-300">⭐ Top {c.stars_winner_count}</span>}
                         {c.audio_url && <Badge variant="outline" className="text-[10px] border-purple-500/30 text-purple-400">🔊 Audio</Badge>}
+                        {c.audio_url && <SignedAudioPreview url={c.audio_url} />}
                         {c.audio_url_2 && <Badge variant="outline" className="text-[10px] border-pink-500/30 text-pink-400">×3</Badge>}
                       </div>
                       <p className="text-sm text-gray-300 whitespace-pre-wrap font-mono leading-relaxed mb-2">
