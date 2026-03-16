@@ -80,7 +80,7 @@ export async function POST(request: Request) {
 
     // ── CREATE ──
     if (action === "create") {
-      const { type, trackId, lyricSnippet, audioUrl, audioUrl2, audioUrl3, correctAnswer, options, onusReward, starsEligible, starsWinnerCount, startsAt, endsAt } = body
+      const { type, trackId, lyricSnippet, audioUrl, audioUrl2, audioUrl3, correctAnswer, options, onusReward, starsEligible, starsWinnerCount, verifiedOnly, startsAt, endsAt } = body
 
       if (!type || !lyricSnippet || !correctAnswer || !options || !startsAt || !endsAt) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
@@ -116,6 +116,7 @@ export async function POST(request: Request) {
           onus_reward: onusReward || 50,
           stars_eligible: starsEligible || false,
           stars_winner_count: starsWinnerCount || 0,
+          verified_only: verifiedOnly || false,
           starts_at: startsAt,
           ends_at: endsAt,
           status,
@@ -142,6 +143,7 @@ export async function POST(request: Request) {
       if (fields.onusReward !== undefined) updateData.onus_reward = fields.onusReward
       if (fields.starsEligible !== undefined) updateData.stars_eligible = fields.starsEligible
       if (fields.starsWinnerCount !== undefined) updateData.stars_winner_count = fields.starsWinnerCount
+      if (fields.verifiedOnly !== undefined) updateData.verified_only = fields.verifiedOnly
       if (fields.startsAt !== undefined) updateData.starts_at = fields.startsAt
       if (fields.endsAt !== undefined) updateData.ends_at = fields.endsAt
       if (fields.status !== undefined) updateData.status = fields.status

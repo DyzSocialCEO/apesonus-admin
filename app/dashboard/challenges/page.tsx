@@ -95,6 +95,7 @@ export default function ChallengesPage() {
   const [onusReward, setOnusReward] = useState(50)
   const [starsEligible, setStarsEligible] = useState(false)
   const [starsWinnerCount, setStarsWinnerCount] = useState(5)
+  const [verifiedOnly, setVerifiedOnly] = useState(false)
   const [startsAt, setStartsAt] = useState("")
   const [endsAt, setEndsAt] = useState("")
 
@@ -114,7 +115,7 @@ export default function ChallengesPage() {
     setLyricSnippet(""); setAudioUrl(""); setAudioUrl2(""); setAudioUrl3("")
     setCorrectAnswer(""); setWrongOptions(["", "", ""])
     setOnusReward(currentType?.defaultReward || 50)
-    setStarsEligible(false); setStarsWinnerCount(5); setStartsAt(""); setEndsAt("")
+    setStarsEligible(false); setStarsWinnerCount(5); setVerifiedOnly(false); setStartsAt(""); setEndsAt("")
   }
 
   const handleTypeChange = (newType: string) => {
@@ -153,6 +154,7 @@ export default function ChallengesPage() {
           audioUrl3: audioUrl3.trim() || null,
           correctAnswer, options: allOptions, onusReward,
           starsEligible, starsWinnerCount: starsEligible ? starsWinnerCount : 0,
+          verifiedOnly,
           startsAt: new Date(startsAt).toISOString(), endsAt: new Date(endsAt).toISOString(),
         }),
       })
@@ -351,6 +353,12 @@ export default function ChallengesPage() {
               </div>
             </div>
 
+            {/* Verified Only */}
+            <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+              <input type="checkbox" checked={verifiedOnly} onChange={e => setVerifiedOnly(e.target.checked)} />
+              Verified Only — exclusive to paid members (creates FOMO)
+            </label>
+
             {/* Timing */}
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -437,6 +445,7 @@ export default function ChallengesPage() {
                         {c.audio_url && <Badge variant="outline" className="text-[10px] border-purple-500/30 text-purple-400">🔊 Audio</Badge>}
                         {c.audio_url && <SignedAudioPreview url={c.audio_url} />}
                         {c.audio_url_2 && <Badge variant="outline" className="text-[10px] border-pink-500/30 text-pink-400">×3</Badge>}
+                        {c.verified_only && <Badge variant="outline" className="text-[10px] border-yellow-500/30 text-yellow-400">🔒 Verified</Badge>}
                       </div>
                       <p className="text-sm text-gray-300 whitespace-pre-wrap font-mono leading-relaxed mb-2">
                         {c.lyric_snippet.length > 150 ? c.lyric_snippet.slice(0, 150) + "..." : c.lyric_snippet}
