@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { TrendingUp, Plus, Loader2, RefreshCw, CheckCircle, XCircle, Clock, Zap, Lock, Hash } from "lucide-react"
+import { TrendingUp, Plus, Loader2, RefreshCw, CheckCircle, XCircle, Clock, Zap, Lock, Hash, Trash2, Pencil } from "lucide-react"
 
 interface Forecast {
   id: number
@@ -127,6 +127,21 @@ export default function ForecastPage() {
       } else {
         setMsg(data.error || "Failed")
       }
+    } catch { setMsg("Failed") }
+  }
+
+  const handleDelete = async (forecastId: number) => {
+    if (!confirm("Delete this forecast and all votes? This cannot be undone.")) return
+    setMsg("")
+    try {
+      const res = await fetch("/api/admin/forecast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", forecastId }),
+      })
+      const data = await res.json()
+      if (data.success) { setMsg("Forecast deleted"); fetchData() }
+      else setMsg(data.error || "Delete failed")
     } catch { setMsg("Failed") }
   }
 
@@ -261,7 +276,7 @@ export default function ForecastPage() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex gap-2 shrink-0 flex-wrap">
                     {f.status === "open" && (
                       <>
                         <Button variant="outline" size="sm" onClick={() => handleAction(f.id, "close")}>
@@ -275,6 +290,12 @@ export default function ForecastPage() {
                     {f.status === "closed" && (
                       <Button size="sm" onClick={() => handleAction(f.id, "resolve")} className="bg-primary text-black">
                         <Zap className="w-3.5 h-3.5 mr-1" /> Resolve
+                      </Button>
+                    )}
+                    {f.status !== "resolved" && (
+                      <Button variant="outline" size="sm" className="text-red-400 border-red-500/30 hover:bg-red-900/20"
+                        onClick={() => handleDelete(f.id)}>
+                        <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     )}
                   </div>

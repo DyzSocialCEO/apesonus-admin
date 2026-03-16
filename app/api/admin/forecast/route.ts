@@ -202,6 +202,37 @@ export async function POST(request: Request) {
       })
     }
 
+    if (action === "edit") {
+      const { forecastId, question, artistId, targetValue, periodStart, periodEnd, voteDeadline } = body
+      if (!forecastId) return NextResponse.json({ error: "forecastId required" }, { status: 400 })
+
+      const updateData: Record<string, any> = {}
+      if (question) updateData.question = question
+      if (artistId) updateData.artist_id = artistId
+      if (targetValue) updateData.target_value = parseInt(targetValue)
+      if (periodStart) updateData.target_period_start = periodStart
+      if (periodEnd) updateData.target_period_end = periodEnd
+      if (voteDeadline) updateData.vote_deadline = voteDeadline
+
+      if (Object.keys(updateData).length === 0) return NextResponse.json({ error: "Nothing to update" }, { status: 400 })
+
+      const { error } = await supabase.from("fan_forecasts").update(updateData).eq("id", forecastId)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ success: true })
+    }
+
+    if (action === "delete") {
+      const { forecastId } = body
+      if (!forecastId) return NextResponse.json({ error: "forecastId required" }, { status: 400 })
+
+      // Delete votes first (FK constraint)
+      await supabase.from("fan_forecast_votes").delete().eq("forecast_id", forecastId)
+      // Delete forecast
+      const { error } = await supabase.from("fan_forecasts").delete().eq("id", forecastId)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ success: true })
+    }
+
     return NextResponse.json({ error: "Unknown action" }, { status: 400 })
   } catch {
     return NextResponse.json({ error: "Failed" }, { status: 500 })
