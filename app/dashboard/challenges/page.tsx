@@ -51,7 +51,7 @@ function SignedAudioPreview({ url }: { url: string }) {
 
 const CHALLENGE_TYPES = [
   { id: "name_the_artist", label: "🎤 Name the Artist", description: "Play vocal snippet — user picks the artist", defaultReward: 50 },
-  { id: "name_the_artist_instrumental", label: "🎹 Instrumental", description: "Play instrumental only — user guesses artist (harder, 2× reward)", defaultReward: 100 },
+  { id: "name_the_artist_instrumental", label: "🎹 Instrumental", description: "Play instrumental only — identify the artist by ear (harder, 2× reward)", defaultReward: 100 },
   { id: "finish_the_lyric", label: "✍️ Finish the Lyric", description: "Audio stops mid-line — user picks what comes next", defaultReward: 50 },
   { id: "identify_the_mood", label: "🌍 What Mood Is This?", description: "Play snippet — user picks the mood world", defaultReward: 30 },
   { id: "which_track", label: "🎵 Which Track?", description: "Play snippet — user picks the track name", defaultReward: 50 },
