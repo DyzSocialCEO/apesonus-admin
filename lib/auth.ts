@@ -2,7 +2,7 @@ import { cookies } from "next/headers"
 import crypto from "crypto"
 
 const ADMIN_COOKIE_NAME = "apesonus_admin_session"
-const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000
+const SESSION_DURATION = 24 * 60 * 60 * 1000 // 24 hours
 
 // Login attempt tracking (in-memory, resets on deploy — Upstash upgrade later)
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>()
@@ -17,7 +17,7 @@ interface AdminSession {
 
 // Get signing secret — REQUIRES env var, no fallback
 function getSigningSecret(): string {
-  const secret = process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD
+  const secret = process.env.SESSION_SECRET
   if (!secret) {
     throw new Error("SESSION_SECRET or ADMIN_PASSWORD must be set")
   }
@@ -127,7 +127,7 @@ export async function createSession(username: string): Promise<void> {
   cookieStore.set(ADMIN_COOKIE_NAME, signedToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "strict",
     maxAge: SESSION_DURATION / 1000,
     path: "/",
   })

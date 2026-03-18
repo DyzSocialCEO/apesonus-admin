@@ -173,12 +173,13 @@ export async function POST(request: Request) {
     // REVOKE PREMIUM
     // ────────────────────────────────────────────
     if (action === "revoke_premium") {
-      // Set is_premium false but preserve verification_tier and onus_multiplier
+      // Set is_premium false, reset onus_multiplier to stop earning at tier rate
       const { error: revokeErr } = await supabase
         .from("users")
         .update({
           is_premium: false,
           premium_expires_at: null,
+          onus_multiplier: 0,
         })
         .eq("telegram_id", telegramId)
 

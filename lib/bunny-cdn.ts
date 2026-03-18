@@ -3,8 +3,7 @@ import crypto from "crypto"
 export function signBunnyCdnUrl(url: string): string {
   const tokenKey = process.env.BUNNY_TOKEN_KEY
   if (!tokenKey) {
-    // No signing key — return unsigned URL (may work if CDN allows public access)
-    return url
+    throw new Error("BUNNY_TOKEN_KEY is not configured — cannot serve unsigned CDN URLs")
   }
 
   const urlObj = new URL(url)

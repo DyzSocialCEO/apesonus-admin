@@ -296,7 +296,7 @@ export async function POST(request: Request) {
       if (error) throw error
 
       // Get usernames
-      const telegramIds = [...new Set((data || []).map(s => s.telegram_id))]
+      const telegramIds = Array.from(new Set((data || []).map((s: any) => s.telegram_id)))
       let userMap: Record<string, string> = {}
       if (telegramIds.length > 0) {
         const { data: users } = await supabase
