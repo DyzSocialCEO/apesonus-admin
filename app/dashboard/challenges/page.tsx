@@ -302,7 +302,7 @@ export default function ChallengesPage() {
                 </select>
               ) : (
                 <Input value={correctAnswer} onChange={e => setCorrectAnswer(e.target.value)}
-                  placeholder={type === "which_track" ? "e.g. Four AM Panic" : type.includes("artist") ? "e.g. Down Bad Dave" : "e.g. wide awake"} />
+                  placeholder={type === "which_track" ? "e.g. Four AM Panic" : type.includes("artist") ? "e.g. Chartnobyl Bro" : "e.g. wide awake"} />
               )}
             </div>
 

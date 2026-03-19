@@ -26,14 +26,11 @@ interface Forecast {
 }
 
 const ARTISTS = [
-  { id: "aunty-rugsy", name: "Aunty Rugsy" },
   { id: "chartnobyl-bro", name: "Chartnobyl Bro" },
   { id: "coinalisa", name: "Coinalisa" },
-  { id: "down-bad-dave", name: "Down Bad Dave" },
+  { id: "dj-dustwallet", name: "DJ Dustwallet" },
   { id: "lola-likwidity", name: "Lola Likwidity" },
-  { id: "miss-candlesticker", name: "Miss Candlesticker" },
-  { id: "satoshi-deluxe", name: "Satoshi Deluxe" },
-  { id: "shill-shady", name: "Shill Shady" },
+  { id: "mcbagholder", name: "McBagholder" },
   { id: "shilliam-dafoe", name: "Shilliam Dafoe" },
   { id: "satosheek", name: "Satosheek" },
 ]

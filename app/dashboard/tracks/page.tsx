@@ -33,16 +33,13 @@ const AUDIO_CDN = "https://apesonus-audio.b-cdn.net"
 const IMAGE_CDN = "https://apesonus-images.b-cdn.net"
 
 const ARTISTS = [
-  { id: "aunty-rugsy",       name: "Aunty Rugsy"       },
   { id: "chartnobyl-bro",    name: "Chartnobyl Bro"    },
-  { id: "coinalisa",  name: "Coinalisa"  },
-  { id: "down-bad-dave",     name: "Down Bad Dave"      },
-  { id: "lola-likwidity",    name: "Lola Likwidity"    },
-  { id: "miss-candlesticker",name: "Miss Candlesticker" },
-  { id: "satoshi-deluxe",    name: "Satoshi Deluxe"    },
-  { id: "shill-shady",       name: "Shill Shady"       },
-  { id: "shilliam-dafoe",    name: "Shilliam Dafoe"    },
-  { id: "satosheek",         name: "Satosheek"         },
+  { id: "coinalisa",         name: "Coinalisa"          },
+  { id: "dj-dustwallet",     name: "DJ Dustwallet"      },
+  { id: "lola-likwidity",    name: "Lola Likwidity"     },
+  { id: "mcbagholder",       name: "McBagholder"        },
+  { id: "shilliam-dafoe",    name: "Shilliam Dafoe"     },
+  { id: "satosheek",         name: "Satosheek"          },
 ]
 
 function expandAudioUrl(input: string): string {
