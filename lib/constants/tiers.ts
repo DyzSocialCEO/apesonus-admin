@@ -110,8 +110,8 @@ export function getMoodVoteReward(multiplier: number): number {
 export const FORECAST_REWARDS = {
   PARTICIPATION: 100,           // everyone gets this on submission
   CORRECT_PICK: 1_000,          // per correct pick in top 3 (any order) × multiplier
-  JACKPOT_POOL: 1_000_000,     // shared among perfect-order winners
-  JACKPOT_STARS: 10_000,       // Telegram Stars for perfect order
+  GRAND_PRIZE_POOL: 1_000_000,  // shared among perfect-order winners
+  GRAND_PRIZE_STARS: 10_000,    // Telegram Stars for perfect order
 } as const
 
 // Legacy — kept for backward compat
@@ -128,19 +128,19 @@ export function calculateForecastV2Reward(
   perfectOrder: boolean,
   multiplier: number,
   perfectOrderWinners: number
-): { pickReward: number; jackpotShare: number; total: number } {
+): { pickReward: number; grandPrizeShare: number; total: number } {
   // Pick reward: 700 per correct × multiplier (free users earn at 0.25×)
   const pickReward = correctCount * FORECAST_REWARDS.CORRECT_PICK * Math.max(multiplier, 0)
 
-  // Jackpot: split among all perfect-order winners (minimum 1 to avoid /0)
-  const jackpotShare = perfectOrder && perfectOrderWinners > 0
-    ? Math.floor(FORECAST_REWARDS.JACKPOT_POOL / perfectOrderWinners)
+  // Grand prize: split among all perfect-order winners (minimum 1 to avoid /0)
+  const grandPrizeShare = perfectOrder && perfectOrderWinners > 0
+    ? Math.floor(FORECAST_REWARDS.GRAND_PRIZE_POOL / perfectOrderWinners)
     : 0
 
   return {
     pickReward,
-    jackpotShare,
-    total: pickReward + jackpotShare,
+    grandPrizeShare,
+    total: pickReward + grandPrizeShare,
   }
 }
 

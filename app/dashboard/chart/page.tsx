@@ -137,7 +137,7 @@ export default function ChartPage() {
                       {r.total_participants} participants · {r.perfect_order_count} perfect order · {r.total_onus_awarded?.toLocaleString()} $ONUS awarded
                     </p>
                   </div>
-                  {r.jackpot_split && <Badge className="bg-yellow-600">Jackpot Split</Badge>}
+                  {r.jackpot_split && <Badge className="bg-yellow-600">Grand Prize Split</Badge>}
                 </div>
               ))}
             </div>
