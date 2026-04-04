@@ -187,13 +187,19 @@ export async function DELETE(request: Request) {
     const id = searchParams.get("id")
     if (!id) return NextResponse.json({ error: "Track ID required" }, { status: 400 })
 
+    const trackId = parseInt(id)
     const supabase = await createAdminClient()
-    const { error } = await supabase.from("tracks").delete().eq("id", parseInt(id))
+
+    // Clean up FK references before deleting track
+    await supabase.from("favorites").delete().eq("track_id", trackId)
+    await supabase.from("play_history").delete().eq("track_id", trackId)
+    await supabase.from("unique_listens").delete().eq("track_id", trackId)
+
+    const { error } = await supabase.from("tracks").delete().eq("id", trackId)
 
     if (error) throw error
     return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error("Error deleting track:", error)
-    return NextResponse.json({ error: "Failed to delete track" }, { status: 500 })
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Failed to delete track" }, { status: 500 })
   }
 }
