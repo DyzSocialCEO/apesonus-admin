@@ -1,98 +1,158 @@
 /**
- * APESONUS — Verification Tier System
+ * APESONUS — Founders Pass Economic Model
  *
- * Genesis  → first 10,000 verified  → 3x multiplier → ORIGIN CARD (Gold)
- * Early    → next 65,000 (up to 75K) → 2x multiplier → SIGNAL CARD (Silver)
- * Standard → unlimited, monthly     → 1x multiplier → HOLDER CARD (Bronze)
- * Free     → no verification        → 0x (no $ONUS)
+ * Two states:
+ *   free   → 0.25× base earning, full catalog, ads (when live), no Stars pool
+ *   wagmi  → 2× base earning, ad-free, 100 $ONUS daily auto-grant, Stars pool eligible
  *
- * Price: 200 Telegram Stars/month for all tiers.
- * Verification is a monthly subscription. The card reflects when you showed up.
+ * Unlock: 750 Stars one-time, permanent. Mints Genesis Badge if within 45-day window.
+ * Boosts: consumables that multiply the BASE rate (base × active boost).
+ *   Free user with 2× SURGE: 0.25 × 2 = 0.5×
+ *   WAGMI with 3× MEGA SURGE: 2 × 3 = 6×
+ *   Multiple active boosts: only the HIGHEST multiplier applies.
  */
 
-export const TIER_CAPS = {
-  GENESIS: 10_000,
-  EARLY: 75_000,
-} as const
+// ── User state ──
+export type UserTier = "free" | "wagmi"
 
-export const TIER_MULTIPLIERS = {
-  genesis: 3,
-  early: 2,
-  standard: 1,
+// ── Base multipliers ──
+export const BASE_MULTIPLIERS: Record<UserTier, number> = {
   free: 0.25,
+  wagmi: 2.0,
 } as const
 
-export const TIER_PRICES = {
-  genesis:  { amount: 200, label: "Stars", currency: "XTR", recurring: false },
-  early:    { amount: 200, label: "Stars", currency: "XTR", recurring: false },
-  standard: { amount: 200, label: "Stars", currency: "XTR", recurring: true },
-} as const
+// ── Founders Pass ──
+export const FOUNDERS_PASS_PRICE_STARS = 750
+export const FOUNDERS_PASS_NAME = "Founders Pass"
 
-export const TIER_COMPANION_LIMITS = {
-  genesis:  100,
-  early:    100,
-  standard: 20,
-  free:     5,
-} as const
+// ── Genesis window ──
+export const GENESIS_WINDOW_DAYS = 45
+export const TOP_FOUNDER_THRESHOLD = 100 // first 100 holders get special marker
 
-export const TIER_LABELS = {
-  genesis:  "Genesis",
-  early:    "Early",
-  standard: "Standard",
-  free:     "Free",
-} as const
+// ── Daily grant ──
+export const WAGMI_DAILY_GRANT = 100
+export const DAILY_GRANT_INTERVAL_HOURS = 24
 
-export const TIER_BADGES = {
-  genesis:  "🔵",
-  early:    "🟢",
-  standard: "⚪",
-  free:     "",
-} as const
+// ── Boost catalog defaults (source of truth is the DB boost_catalog table) ──
+export type BoostKind = "multiplier" | "single_use"
+export type SingleUseType = "predict_insurance" | "arena_retry"
 
-// Card names — displayed to users
-export const TIER_CARD_NAMES = {
-  genesis:  "Genesis Card",
-  early:    "Early Card",
-  standard: "Standard Card",
-} as const
-
-export const TIER_CARD_COLORS = {
-  genesis:  { bg: "rgba(255,200,71,0.15)",  border: "rgba(255,200,71,0.5)",  label: "#ffc847", name: "Gold"   },
-  early:    { bg: "rgba(148,163,184,0.15)", border: "rgba(148,163,184,0.5)", label: "#94a3b8", name: "Silver" },
-  standard: { bg: "rgba(180,140,100,0.15)", border: "rgba(180,140,100,0.5)", label: "#b48c64", name: "Bronze" },
-} as const
-
-export type VerificationTier = "genesis" | "early" | "standard"
-export type TierOrFree = VerificationTier | "free"
-
-export function assignTier(totalVerifiedCount: number): VerificationTier {
-  if (totalVerifiedCount < TIER_CAPS.GENESIS) return "genesis"
-  if (totalVerifiedCount < TIER_CAPS.EARLY)   return "early"
-  return "standard"
+export interface BoostDefinition {
+  slug: string
+  name: string
+  description: string
+  multiplier: number | null
+  durationHours: number | null
+  starsPrice: number
+  kind: BoostKind
+  singleUseType: SingleUseType | null
+  sortOrder: number
 }
 
-export function getMultiplier(tier: TierOrFree | null | undefined): number {
-  if (!tier) return 0.25
-  return TIER_MULTIPLIERS[tier] ?? 0.25
+export const BOOST_CATALOG_DEFAULTS: BoostDefinition[] = [
+  {
+    slug: "surge_2x_24h",
+    name: "SURGE",
+    description: "2× $ONUS for 24 hours on everything you do",
+    multiplier: 2.0,
+    durationHours: 24,
+    starsPrice: 50,
+    kind: "multiplier",
+    singleUseType: null,
+    sortOrder: 10,
+  },
+  {
+    slug: "mega_3x_24h",
+    name: "MEGA SURGE",
+    description: "3× $ONUS for 24 hours — maximum rate",
+    multiplier: 3.0,
+    durationHours: 24,
+    starsPrice: 100,
+    kind: "multiplier",
+    singleUseType: null,
+    sortOrder: 20,
+  },
+  {
+    slug: "weekend_2x_72h",
+    name: "WEEKEND WARRIOR",
+    description: "2× $ONUS for 72 hours — Fri through Mon",
+    multiplier: 2.0,
+    durationHours: 72,
+    starsPrice: 120,
+    kind: "multiplier",
+    singleUseType: null,
+    sortOrder: 30,
+  },
+  {
+    slug: "predict_insurance",
+    name: "PREDICT INSURANCE",
+    description: "Refunds your prediction bonus if you call it wrong",
+    multiplier: null,
+    durationHours: null,
+    starsPrice: 30,
+    kind: "single_use",
+    singleUseType: "predict_insurance",
+    sortOrder: 40,
+  },
+  {
+    slug: "arena_retry",
+    name: "ARENA RETRY",
+    description: "Retry one Arena challenge you already lost",
+    multiplier: null,
+    durationHours: null,
+    starsPrice: 25,
+    kind: "single_use",
+    singleUseType: "arena_retry",
+    sortOrder: 50,
+  },
+]
+
+// ── Core multiplier functions ──
+
+/**
+ * Get the BASE multiplier for a tier (no boosts applied).
+ * Free users: 0.25×. WAGMI: 2×.
+ */
+export function getBaseMultiplier(tier: UserTier | string | null | undefined): number {
+  if (tier === "wagmi") return BASE_MULTIPLIERS.wagmi
+  return BASE_MULTIPLIERS.free
 }
 
 /**
- * Resolve the actual multiplier for a user.
- * Handles the case where onus_multiplier is 0 in the DB (free users)
- * — the ?? operator doesn't catch 0, so we need explicit logic.
+ * Compute the EFFECTIVE multiplier for a reward: base × active boost.
+ * Pass boostMultiplier=null (or 1) when no boost is active.
+ * Multiple boosts should NOT be passed here — resolve highest upstream.
  */
-export function resolveMultiplier(dbMultiplier: number | null | undefined, tier: string | null | undefined): number {
+export function getEffectiveMultiplier(
+  tier: UserTier | string | null | undefined,
+  boostMultiplier: number | null | undefined
+): number {
+  const base = getBaseMultiplier(tier)
+  if (!boostMultiplier || boostMultiplier <= 1) return base
+  return base * boostMultiplier
+}
+
+/**
+ * Legacy resolver kept for backward compat with older call sites.
+ * Reads the cached onus_multiplier column OR falls back to base tier rate.
+ * Does NOT include boosts — callers that need boosts must use getEffectiveMultiplier().
+ */
+export function resolveMultiplier(
+  dbMultiplier: number | null | undefined,
+  tier: string | null | undefined
+): number {
   if (typeof dbMultiplier === "number" && dbMultiplier > 0) return dbMultiplier
-  return getMultiplier(tier as TierOrFree | null | undefined)
+  return getBaseMultiplier(tier)
 }
 
 // ── ONUS SUPPLY ──
 export const ONUS_SUPPLY = {
-  TOTAL: 10_000_000_000,       // 10B total (minted at TGE)
-  USER_POOL: 8_000_000_000,    // 8B distributed to users
-  TEAM_RESERVE: 2_000_000_000, // 2B team reserve
+  TOTAL: 10_000_000_000,
+  USER_POOL: 8_000_000_000,
+  TEAM_RESERVE: 2_000_000_000,
 } as const
 
+// ── STREAK REWARDS ──
 const STREAK_BASE = [250, 300, 350, 500]
 
 export function getStreakReward(completedStreaks: number, multiplier: number): number {
@@ -100,21 +160,21 @@ export function getStreakReward(completedStreaks: number, multiplier: number): n
   return Math.round(STREAK_BASE[idx] * multiplier)
 }
 
+// ── MOOD VOTE REWARDS ──
 const MOOD_VOTE_BASE = 15
 
 export function getMoodVoteReward(multiplier: number): number {
   return Math.round(MOOD_VOTE_BASE * multiplier)
 }
 
-// ── Forecast v2 rewards ──
+// ── FORECAST REWARDS ──
 export const FORECAST_REWARDS = {
-  PARTICIPATION: 100,           // everyone gets this on submission
-  CORRECT_PICK: 1_000,          // per correct pick in top 3 (any order) × multiplier
-  GRAND_PRIZE_POOL: 1_000_000,  // shared among perfect-order winners
-  GRAND_PRIZE_STARS: 10_000,    // Telegram Stars for perfect order
+  PARTICIPATION: 100,
+  CORRECT_PICK: 1_000,
+  GRAND_PRIZE_POOL: 1_000_000,
+  GRAND_PRIZE_STARS: 10_000,
 } as const
 
-// Legacy — kept for backward compat
 const FORECAST_CORRECT_BASE = 100
 
 export function getForecastReward(isCorrect: boolean, multiplier: number): number {
@@ -122,28 +182,67 @@ export function getForecastReward(isCorrect: boolean, multiplier: number): numbe
   return isCorrect ? FORECAST_CORRECT_BASE * multiplier : 0
 }
 
-// v2: Calculate forecast rewards for a user
 export function calculateForecastV2Reward(
   correctCount: number,
   perfectOrder: boolean,
   multiplier: number,
   perfectOrderWinners: number
 ): { pickReward: number; grandPrizeShare: number; total: number } {
-  // Pick reward: 700 per correct × multiplier (free users earn at 0.25×)
   const pickReward = correctCount * FORECAST_REWARDS.CORRECT_PICK * Math.max(multiplier, 0)
-
-  // Grand prize: split among all perfect-order winners (minimum 1 to avoid /0)
   const grandPrizeShare = perfectOrder && perfectOrderWinners > 0
     ? Math.floor(FORECAST_REWARDS.GRAND_PRIZE_POOL / perfectOrderWinners)
     : 0
-
-  return {
-    pickReward,
-    grandPrizeShare,
-    total: pickReward + grandPrizeShare,
-  }
+  return { pickReward, grandPrizeShare, total: pickReward + grandPrizeShare }
 }
 
-export function getBattleRewardMultiplier(tier: TierOrFree): number {
-  return TIER_MULTIPLIERS[tier as keyof typeof TIER_MULTIPLIERS] ?? 0.25
+// ── LEGACY EXPORTS kept for backward compatibility ──
+// Old code may still import these; they now just point at the new model.
+
+export type VerificationTier = UserTier | "whale" | "chad" | "ngmi" | "genesis" | "early" | "standard"
+export type TierOrFree = VerificationTier
+
+export const TIER_MULTIPLIERS: Record<string, number> = BASE_MULTIPLIERS
+
+export const TIER_LABELS: Record<string, string> = {
+  wagmi: "WAGMI",
+  free:  "Free",
+}
+
+export const TIER_CARD_NAMES: Record<string, string> = {
+  wagmi: "WAGMI",
+}
+
+export const TIER_CARD_COLORS: Record<string, { bg: string; border: string; label: string; name: string }> = {
+  wagmi: { bg: "rgba(255,200,71,0.15)", border: "rgba(255,200,71,0.5)", label: "#ffc847", name: "Gold" },
+}
+
+export const TIER_BADGES: Record<string, string> = {
+  wagmi: "⚡",
+  free:  "",
+}
+
+/** @deprecated Legacy shim — Founders Pass is a single 750 Stars one-time price. */
+export const TIER_PRICES: Record<string, { amount: number; label: string; currency: string; usd: number; recurring: boolean }> = {
+  wagmi: { amount: FOUNDERS_PASS_PRICE_STARS, label: "Stars", currency: "XTR", usd: 0, recurring: false },
+}
+
+export function getMultiplier(tier: UserTier | null | undefined): number {
+  return getBaseMultiplier(tier)
+}
+
+export function getBattleRewardMultiplier(tier: UserTier): number {
+  return getBaseMultiplier(tier)
+}
+
+// Dead exports from migration 017 era — kept as empty objects so old imports don't crash
+export const TIER_CAPS = { GENESIS: 0, EARLY: 0 } as const
+export const TIER_COMPANION_LIMITS = { wagmi: 100, free: 5 } as const
+export const TIER_DESCRIPTIONS = {
+  wagmi: "Founders Pass. 2× $ONUS on everything, 100 $ONUS daily, ad-free, Stars pool eligible.",
+  free:  "Full app access at 0.25× earning. Unlock WAGMI to multiply everything.",
+} as const
+
+/** @deprecated Under Founders Pass model, all paid users become wagmi directly. */
+export function assignTier(_totalVerifiedCount: number): UserTier {
+  return "wagmi"
 }

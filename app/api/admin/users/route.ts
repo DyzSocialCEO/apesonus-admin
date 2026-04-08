@@ -105,10 +105,11 @@ export async function POST(request: Request) {
       const tier = assignTier(totalVerified)
       const multiplier = TIER_MULTIPLIERS[tier as keyof typeof TIER_MULTIPLIERS] || 1
 
-      // 3. Increment the correct counter
+      // 3. Increment the correct counter (legacy — verification_counter is deprecated)
+      const tierStr = tier as string
       const incrementField =
-        tier === "genesis" ? "genesis_count" :
-        tier === "early" ? "early_count" : "standard_count"
+        tierStr === "genesis" ? "genesis_count" :
+        tierStr === "early" ? "early_count" : "standard_count"
 
       const newCount = (counter as any)[incrementField] + 1
 
