@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Database, Key, Shield, Crown, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react"
+import { Database, Key, Shield, Crown, Loader2, AlertTriangle, CheckCircle2, Tag, Save } from "lucide-react"
 
 interface GenesisStatus {
   state: "not_started" | "active" | "expired"
@@ -22,6 +22,59 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState("")
 
+  // Founders Pass price state
+  const [currentPrice, setCurrentPrice] = useState<number | null>(null)
+  const [priceInput, setPriceInput] = useState<string>("")
+  const [priceBusy, setPriceBusy] = useState(false)
+  const [priceMsg, setPriceMsg] = useState("")
+  const [priceLoading, setPriceLoading] = useState(true)
+
+  const fetchPrice = async () => {
+    setPriceLoading(true)
+    try {
+      const res = await fetch("/api/admin/founders-pass-price")
+      const data = await res.json()
+      if (typeof data.amount === "number") {
+        setCurrentPrice(data.amount)
+        setPriceInput(String(data.amount))
+      }
+    } catch {} finally { setPriceLoading(false) }
+  }
+
+  const handleUpdatePrice = async () => {
+    const amount = parseInt(priceInput, 10)
+    if (!Number.isFinite(amount) || amount < 1 || amount > 100000) {
+      setPriceMsg("Price must be a whole number between 1 and 100000 Stars")
+      return
+    }
+    if (amount === currentPrice) {
+      setPriceMsg("Price unchanged")
+      return
+    }
+    if (!confirm(
+      `Change the Founders Pass price from ${currentPrice} Stars to ${amount} Stars?\n\n` +
+      "This change applies immediately. All new purchases use the new price. Existing Founders Pass holders are unaffected.\n\n" +
+      "Be careful: lowering the price while the Genesis Window is active may feel unfair to early buyers who paid more."
+    )) return
+
+    setPriceBusy(true)
+    setPriceMsg("")
+    try {
+      const res = await fetch("/api/admin/founders-pass-price", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setCurrentPrice(data.amount)
+        setPriceMsg(`Updated to ${data.amount} Stars. Live now.`)
+      } else {
+        setPriceMsg(data.error || "Failed to update price")
+      }
+    } catch { setPriceMsg("Failed to update price") } finally { setPriceBusy(false) }
+  }
+
   const fetchStatus = async () => {
     setLoading(true)
     try {
@@ -31,7 +84,7 @@ export default function SettingsPage() {
     } catch {} finally { setLoading(false) }
   }
 
-  useEffect(() => { fetchStatus() }, [])
+  useEffect(() => { fetchStatus(); fetchPrice() }, [])
 
   const handleStart = async () => {
     if (!confirm(
@@ -192,6 +245,84 @@ export default function SettingsPage() {
               </div>
 
               {msg && <p className="text-xs text-gray-300">{msg}</p>}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── FOUNDERS PASS PRICE ─────────────────────────────── */}
+      <Card className="bg-gray-900 border-gray-800">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-yellow-400/10">
+              <Tag className="w-5 h-5 text-yellow-400" />
+            </div>
+            <div className="flex-1">
+              <CardTitle className="text-lg text-white">Founders Pass Price</CardTitle>
+              <CardDescription>One-time unlock price in Telegram Stars. Changes apply immediately to all new purchases.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {priceLoading ? (
+            <div className="flex items-center gap-2 text-gray-500 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading current price...
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="p-3 rounded-lg bg-gray-800/60">
+                <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Current Price</p>
+                <p className="text-2xl font-bold text-yellow-400">{currentPrice} <span className="text-sm font-normal text-gray-400">Stars</span></p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 mb-2 uppercase tracking-wider">
+                  New Price (Stars)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={100000}
+                    step={1}
+                    value={priceInput}
+                    onChange={(e) => setPriceInput(e.target.value)}
+                    disabled={priceBusy}
+                    className="flex-1 px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-yellow-400/50 disabled:opacity-50"
+                    placeholder="e.g., 300"
+                  />
+                  <Button
+                    onClick={handleUpdatePrice}
+                    disabled={priceBusy || priceInput === String(currentPrice) || !priceInput}
+                    className="bg-yellow-400 text-black hover:bg-yellow-300 disabled:opacity-50"
+                  >
+                    {priceBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                      <><Save className="w-4 h-4 mr-1.5" /> Update</>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-[11px] text-gray-500 mt-2">
+                  Range: 1 – 100,000 Stars. Whole numbers only. Change takes effect on the next purchase attempt.
+                </p>
+              </div>
+
+              {priceMsg && (
+                <div className={`p-2 rounded-lg text-xs ${
+                  priceMsg.toLowerCase().includes("fail") || priceMsg.toLowerCase().includes("must")
+                    ? "bg-red-400/10 text-red-300"
+                    : "bg-green-400/10 text-green-300"
+                }`}>
+                  {priceMsg}
+                </div>
+              )}
+
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-400/5 border border-amber-400/20">
+                <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                <div className="text-[11px] text-amber-200/80">
+                  <p className="font-semibold mb-1">Price change guidelines</p>
+                  <p>Raising the price is safe. Lowering it during the active Genesis Window may feel unfair to early buyers who paid more. Consider keeping the price stable through the full 45-day window for trust.</p>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>
