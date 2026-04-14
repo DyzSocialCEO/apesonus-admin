@@ -238,7 +238,7 @@ export default function WhalePoolPage() {
           {/* ── WHALE leaderboard ────────────────────────── */}
           <Card className="bg-gray-900 border-gray-800">
             <CardHeader>
-              <CardTitle className="text-base text-white">WHALE Leaderboard (by weekly $ONUS earned)</CardTitle>
+              <CardTitle className="text-base text-white">WHALE Leaderboard (by weekly $ONUS collected)</CardTitle>
             </CardHeader>
             <CardContent>
               {data.whales.length === 0 ? (

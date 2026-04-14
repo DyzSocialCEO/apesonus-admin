@@ -2,8 +2,8 @@
  * APESONUS — Founders Pass Economic Model
  *
  * Two states:
- *   free   → 0.25× base earning, full catalog, ads (when live), no Stars pool
- *   wagmi  → 2× base earning, ad-free, 100 $ONUS daily auto-grant, Stars pool eligible
+ *   free   → 0.25× base reward rate, full catalog, ads (when live), no Stars pool
+ *   wagmi  → 2× base reward rate, ad-free, 100 $ONUS daily auto-grant, Stars pool eligible
  *
  * Unlock: 750 Stars one-time, permanent. Mints Genesis Badge if within 45-day window.
  * Boosts: consumables that multiply the BASE rate (base × active boost).
@@ -239,7 +239,7 @@ export const TIER_CAPS = { GENESIS: 0, EARLY: 0 } as const
 export const TIER_COMPANION_LIMITS = { wagmi: 100, free: 5 } as const
 export const TIER_DESCRIPTIONS = {
   wagmi: "Founders Pass. 2× $ONUS on everything, 100 $ONUS daily, ad-free, Stars pool eligible.",
-  free:  "Full app access at 0.25× earning. Unlock WAGMI to multiply everything.",
+  free:  "Full app access at 0.25× reward rate. Unlock WAGMI to multiply everything.",
 } as const
 
 /** @deprecated Under Founders Pass model, all paid users become wagmi directly. */

@@ -89,7 +89,7 @@ export default function SettingsPage() {
   const handleStart = async () => {
     if (!confirm(
       "Start the Genesis Window NOW?\n\n" +
-      "This begins the official 45-day countdown. Every paid subscriber from this moment until the window closes earns the PERMANENT Genesis Badge. After 45 days, new subs no longer earn it.\n\n" +
+      "This begins the official 45-day countdown. Every paid subscriber from this moment until the window closes is granted the PERMANENT Genesis Badge. After 45 days, new subs no longer get it.\n\n" +
       "This action cannot be undone."
     )) return
 
@@ -184,7 +184,7 @@ export default function SettingsPage() {
                   <CheckCircle2 className="w-4 h-4 text-green-400 mt-0.5 shrink-0" />
                   <div className="text-xs text-green-200/80">
                     <p className="font-semibold mb-1">Window is live</p>
-                    <p>Countdown is running. Every paid subscription right now earns the permanent Genesis Badge.</p>
+                    <p>Countdown is running. Every paid subscription right now is granted the permanent Genesis Badge.</p>
                   </div>
                 </div>
               )}
@@ -194,7 +194,7 @@ export default function SettingsPage() {
                   <CheckCircle2 className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
                   <div className="text-xs text-gray-400">
                     <p className="font-semibold mb-1">Window closed</p>
-                    <p>The Genesis Window has ended. Existing badge holders keep their badge permanently. New subs do not earn it.</p>
+                    <p>The Genesis Window has ended. Existing badge holders keep their badge permanently. New subs do not get it.</p>
                   </div>
                 </div>
               )}
