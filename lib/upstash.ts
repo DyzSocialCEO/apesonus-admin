@@ -154,10 +154,10 @@ class InMemoryRateLimiter {
 
   private prune() {
     const now = Date.now()
-    for (const [key, entry] of this.store) {
+    this.store.forEach((entry, key) => {
       entry.timestamps = entry.timestamps.filter((t) => t > now - this.windowMs)
       if (entry.timestamps.length === 0) this.store.delete(key)
-    }
+    })
   }
 }
 
