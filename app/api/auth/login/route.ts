@@ -1,11 +1,31 @@
 import { NextResponse } from "next/server"
-import { verifyCredentials, createSession, checkLoginAttempts, recordFailedAttempt, clearAttempts } from "@/lib/auth"
+import {
+  verifyCredentials,
+  createSession,
+  checkLoginAttempts,
+  recordFailedAttempt,
+  clearAttempts,
+} from "@/lib/auth"
+import { adminLoginRatelimit, getClientIp } from "@/lib/upstash"
 
 export async function POST(request: Request) {
-  const ip = request.headers.get("x-forwarded-for") || "unknown"
+  const ip = getClientIp(request)
 
-  // Check if IP is blocked
-  const { allowed, remainingSeconds } = checkLoginAttempts(ip)
+  // Hard rate limit at the Upstash level — this runs BEFORE we even
+  // look at credentials. Stops brute force cold even if the
+  // login-attempt tracker is somehow bypassed.
+  if (adminLoginRatelimit) {
+    const { success } = await adminLoginRatelimit.limit(`login:${ip}`)
+    if (!success) {
+      return NextResponse.json(
+        { error: "Too many login attempts. Try again in 15 minutes." },
+        { status: 429 }
+      )
+    }
+  }
+
+  // Softer per-IP tracker (persists across deploys via Upstash)
+  const { allowed, remainingSeconds } = await checkLoginAttempts(ip)
   if (!allowed) {
     return NextResponse.json(
       { error: `Too many attempts. Try again in ${remainingSeconds}s` },
@@ -26,21 +46,15 @@ export async function POST(request: Request) {
     const isValid = await verifyCredentials(username, password)
 
     if (!isValid) {
-      recordFailedAttempt(ip)
-      return NextResponse.json(
-        { error: "Invalid credentials" },
-        { status: 401 }
-      )
+      await recordFailedAttempt(ip)
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
     }
 
-    clearAttempts(ip)
+    await clearAttempts(ip)
     await createSession(username)
 
     return NextResponse.json({ success: true })
   } catch {
-    return NextResponse.json(
-      { error: "Authentication failed" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Authentication failed" }, { status: 500 })
   }
 }

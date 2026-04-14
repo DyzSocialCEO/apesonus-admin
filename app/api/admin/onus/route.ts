@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
 import { awardOnus } from "@/lib/award-onus"
 import { ONUS_SUPPLY } from "@/lib/constants/tiers"
+import { adminOnusRatelimit, getClientIp } from "@/lib/upstash"
 
 export async function GET() {
   try {
@@ -78,24 +79,54 @@ export async function GET() {
   }
 }
 
+/**
+ * POST /api/admin/onus
+ *
+ * Manual ONUS award from the admin panel.
+ * Rate limited to 3 requests per minute per IP — a legitimate admin
+ * never needs to batch-mint manually, and this caps the damage if a
+ * session cookie is ever stolen.
+ */
 export async function POST(request: Request) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    // Rate limit — 3 mint requests per minute per IP
+    if (adminOnusRatelimit) {
+      const ip = getClientIp(request)
+      const { success } = await adminOnusRatelimit.limit(`onus-mint:${ip}`)
+      if (!success) {
+        return NextResponse.json(
+          { error: "Rate limit exceeded. Mint endpoint allows 3 requests per minute." },
+          { status: 429 }
+        )
+      }
+    }
 
     const { telegramId, amount, reason } = await request.json()
     if (!telegramId || !amount || !reason) {
       return NextResponse.json({ error: "telegramId, amount, and reason required" }, { status: 400 })
     }
 
+    // Hard cap on single-mint amount — prevents a stolen session from
+    // emptying the supply in one shot even if they get past the rate limit.
+    const parsedAmount = parseInt(amount)
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || parsedAmount > 1_000_000) {
+      return NextResponse.json(
+        { error: "Amount must be a positive integer up to 1,000,000" },
+        { status: 400 }
+      )
+    }
+
     const supabase = await createAdminClient()
-    const ok = await awardOnus(supabase, telegramId, parseInt(amount), `admin_award: ${reason}`, `admin_${Date.now()}`)
+    const ok = await awardOnus(supabase, telegramId, parsedAmount, `admin_award: ${reason}`, `admin_${Date.now()}`)
 
     if (!ok) {
       return NextResponse.json({ error: "Award failed — supply cap may be reached or user not found" }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, amountAwarded: amount })
+    return NextResponse.json({ success: true, amountAwarded: parsedAmount })
   } catch (error) {
     console.error("Error:", error)
     return NextResponse.json({ error: "Failed" }, { status: 500 })

@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
-  Activity, Megaphone, Coins, TrendingUp, Flame, Zap, Swords, Radio, Trophy, Star,
+  Activity, Megaphone, Coins, TrendingUp, Flame, Zap, Swords, Trophy, Star,
   ScrollText,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -22,7 +22,6 @@ const navigation = [
   { name: "WHALE Pool",      href: "/dashboard/whale-pool",   icon: Star            },
   { name: "Users",           href: "/dashboard/users",        icon: Users           },
   { name: "Banners",         href: "/dashboard/banners",      icon: Megaphone       },
-  { name: "Broadcast",       href: "/dashboard/broadcast",    icon: Radio           },
   { name: "$ONUS",           href: "/dashboard/onus",         icon: Coins           },
   { name: "Analytics",       href: "/dashboard/analytics",    icon: BarChart3       },
   { name: "Logs",            href: "/dashboard/logs",         icon: ScrollText      },

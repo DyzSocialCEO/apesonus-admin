@@ -1,13 +1,48 @@
 import { cookies } from "next/headers"
 import crypto from "crypto"
+import { kvGet, kvSet, kvDelete } from "./upstash"
 
 const ADMIN_COOKIE_NAME = "apesonus_admin_session"
 const SESSION_DURATION = 24 * 60 * 60 * 1000 // 24 hours
 
-// Login attempt tracking (in-memory, resets on deploy — Upstash upgrade later)
-const loginAttempts = new Map<string, { count: number; blockedUntil: number }>()
+// ── Login attempt tracking ──────────────────────────────────────
+// Persists to Upstash Redis so attempts survive Railway redeploys
+// and are shared across multiple container instances. Falls back
+// to in-memory Map if Upstash is not configured (local dev only).
+
 const MAX_ATTEMPTS = 5
 const BLOCK_DURATION = 15 * 60 * 1000 // 15 minutes
+const BLOCK_TTL_SECONDS = 16 * 60 // slightly longer than block duration so keys expire naturally
+
+interface AttemptEntry {
+  count: number
+  blockedUntil: number
+}
+
+// In-memory fallback store (used when Upstash is not configured)
+const fallbackAttempts = new Map<string, AttemptEntry>()
+
+function attemptKey(ip: string): string {
+  return `admin-login-attempts:${ip}`
+}
+
+async function readAttempts(ip: string): Promise<AttemptEntry | null> {
+  const fromRedis = await kvGet<AttemptEntry>(attemptKey(ip))
+  if (fromRedis) return fromRedis
+  return fallbackAttempts.get(ip) || null
+}
+
+async function writeAttempts(ip: string, entry: AttemptEntry): Promise<void> {
+  await kvSet(attemptKey(ip), entry, BLOCK_TTL_SECONDS)
+  fallbackAttempts.set(ip, entry)
+}
+
+async function clearAttemptsForIp(ip: string): Promise<void> {
+  await kvDelete(attemptKey(ip))
+  fallbackAttempts.delete(ip)
+}
+
+// ── Session helpers ─────────────────────────────────────────────
 
 interface AdminSession {
   username: string
@@ -15,28 +50,24 @@ interface AdminSession {
   expiresAt: number
 }
 
-// Get signing secret — REQUIRES env var, no fallback
 function getSigningSecret(): string {
   const secret = process.env.SESSION_SECRET
   if (!secret) {
-    throw new Error("SESSION_SECRET or ADMIN_PASSWORD must be set")
+    throw new Error("SESSION_SECRET must be set in environment")
   }
   return secret
 }
 
-// Sign session data with HMAC-SHA256
 function signSession(payload: string): string {
   return crypto.createHmac("sha256", getSigningSecret()).update(payload).digest("hex")
 }
 
-// Create signed token: base64(payload).signature
 function createSignedToken(session: AdminSession): string {
   const payload = Buffer.from(JSON.stringify(session)).toString("base64")
   const signature = signSession(payload)
   return `${payload}.${signature}`
 }
 
-// Verify and parse signed token
 function verifySignedToken(token: string): AdminSession | null {
   const parts = token.split(".")
   if (parts.length !== 2) return null
@@ -44,7 +75,6 @@ function verifySignedToken(token: string): AdminSession | null {
   const [payload, signature] = parts
   const expectedSignature = signSession(payload)
 
-  // Timing-safe comparison to prevent timing attacks
   if (signature.length !== expectedSignature.length) return null
   const sigBuffer = Buffer.from(signature)
   const expectedBuffer = Buffer.from(expectedSignature)
@@ -57,35 +87,52 @@ function verifySignedToken(token: string): AdminSession | null {
   }
 }
 
-// Check if IP is blocked from too many login attempts
-export function checkLoginAttempts(ip: string): { allowed: boolean; remainingSeconds: number } {
-  const entry = loginAttempts.get(ip)
+// ── Public API ──────────────────────────────────────────────────
+
+/**
+ * Check if an IP is currently blocked from logging in due to too
+ * many failed attempts. Returns { allowed, remainingSeconds }.
+ *
+ * Async because it reads from Upstash.
+ */
+export async function checkLoginAttempts(
+  ip: string
+): Promise<{ allowed: boolean; remainingSeconds: number }> {
+  const entry = await readAttempts(ip)
   if (!entry) return { allowed: true, remainingSeconds: 0 }
 
   if (entry.blockedUntil > Date.now()) {
-    return { allowed: false, remainingSeconds: Math.ceil((entry.blockedUntil - Date.now()) / 1000) }
+    return {
+      allowed: false,
+      remainingSeconds: Math.ceil((entry.blockedUntil - Date.now()) / 1000),
+    }
   }
 
   // Block expired, reset
   if (entry.count >= MAX_ATTEMPTS) {
-    loginAttempts.delete(ip)
+    await clearAttemptsForIp(ip)
   }
   return { allowed: true, remainingSeconds: 0 }
 }
 
-// Record a failed login attempt
-export function recordFailedAttempt(ip: string): void {
-  const entry = loginAttempts.get(ip) || { count: 0, blockedUntil: 0 }
-  entry.count += 1
-  if (entry.count >= MAX_ATTEMPTS) {
-    entry.blockedUntil = Date.now() + BLOCK_DURATION
+/**
+ * Record a failed login attempt. Escalates to a block once MAX_ATTEMPTS
+ * is reached within the window.
+ */
+export async function recordFailedAttempt(ip: string): Promise<void> {
+  const existing = (await readAttempts(ip)) || { count: 0, blockedUntil: 0 }
+  existing.count += 1
+  if (existing.count >= MAX_ATTEMPTS) {
+    existing.blockedUntil = Date.now() + BLOCK_DURATION
   }
-  loginAttempts.set(ip, entry)
+  await writeAttempts(ip, existing)
 }
 
-// Clear attempts on successful login
-export function clearAttempts(ip: string): void {
-  loginAttempts.delete(ip)
+/**
+ * Clear attempts for an IP after a successful login.
+ */
+export async function clearAttempts(ip: string): Promise<void> {
+  await clearAttemptsForIp(ip)
 }
 
 export async function verifyCredentials(
@@ -100,7 +147,6 @@ export async function verifyCredentials(
     return false
   }
 
-  // Timing-safe comparison for both username and password
   const usernameMatch =
     username.length === validUsername.length &&
     crypto.timingSafeEqual(Buffer.from(username), Buffer.from(validUsername))
