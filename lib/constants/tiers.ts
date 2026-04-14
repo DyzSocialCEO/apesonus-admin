@@ -2,14 +2,19 @@
  * APESONUS — Founders Pass Economic Model
  *
  * Two states:
- *   free   → 0.25× base reward rate, full catalog, ads (when live), no Stars pool
- *   wagmi  → 2× base reward rate, ad-free, 100 $ONUS daily auto-grant, Stars pool eligible
+ *   free   → 0.25× base reward rate, full catalog, ads (when live)
+ *   wagmi  → 2× base reward rate, ad-free, 100 $ONUS daily auto-grant,
+ *            real Telegram Stars rewards on Arena/Forecast wins
  *
- * Unlock: 750 Stars one-time, permanent. Mints Genesis Badge if within 45-day window.
+ * Unlock: 500 Stars one-time, permanent. Mints Genesis Badge if within 45-day window.
+ * Genesis holders earn extra whenever Stars rewards are paid out.
  * Boosts: consumables that multiply the BASE rate (base × active boost).
  *   Free user with 2× SURGE: 0.25 × 2 = 0.5×
  *   WAGMI with 3× MEGA SURGE: 2 × 3 = 6×
  *   Multiple active boosts: only the HIGHEST multiplier applies.
+ *
+ * NOTE: The live price is read from app_settings.founders_pass_price at runtime.
+ * The constant below is only the FALLBACK used when the DB row is missing.
  */
 
 // ── User state ──
@@ -22,7 +27,8 @@ export const BASE_MULTIPLIERS: Record<UserTier, number> = {
 } as const
 
 // ── Founders Pass ──
-export const FOUNDERS_PASS_PRICE_STARS = 750
+// Fallback only — live price comes from app_settings.founders_pass_price.
+export const FOUNDERS_PASS_PRICE_STARS = 500
 export const FOUNDERS_PASS_NAME = "Founders Pass"
 
 // ── Genesis window ──
@@ -221,7 +227,7 @@ export const TIER_BADGES: Record<string, string> = {
   free:  "",
 }
 
-/** @deprecated Legacy shim — Founders Pass is a single 750 Stars one-time price. */
+/** @deprecated Legacy shim — Founders Pass is a single 500 Stars one-time price. */
 export const TIER_PRICES: Record<string, { amount: number; label: string; currency: string; usd: number; recurring: boolean }> = {
   wagmi: { amount: FOUNDERS_PASS_PRICE_STARS, label: "Stars", currency: "XTR", usd: 0, recurring: false },
 }
