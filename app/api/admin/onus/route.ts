@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth"
 import { awardOnus } from "@/lib/award-onus"
 import { ONUS_SUPPLY } from "@/lib/constants/tiers"
 import { adminOnusRatelimit, getClientIp } from "@/lib/upstash"
+import { logAdminAction } from "@/lib/admin-audit"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -121,11 +122,23 @@ export async function POST(request: Request) {
     }
 
     const supabase = await createAdminClient()
-    const ok = await awardOnus(supabase, telegramId, parsedAmount, `admin_award: ${reason}`, `admin_${Date.now()}`)
+    // Embed admin actor in the reason so onus_transactions retains who minted what.
+    // Format: "admin_award[<actor>]: <reason>" — keeps the legacy "admin_award" prefix
+    // recognized by the user-facing rewards list while adding accountability.
+    const actor = session.username || "unknown"
+    const reasonWithActor = `admin_award[${actor}]: ${reason}`
+    const ok = await awardOnus(supabase, telegramId, parsedAmount, reasonWithActor, `admin_${Date.now()}`)
 
     if (!ok) {
       return NextResponse.json({ error: "Award failed — supply cap may be reached or user not found" }, { status: 500 })
     }
+
+    // Audit log — durable record of every mint, separate from onus_transactions.
+    await logAdminAction(supabase, request, actor, "onus.mint", {
+      target_telegram_id: telegramId,
+      amount: parsedAmount,
+      reason,
+    })
 
     return NextResponse.json({ success: true, amountAwarded: parsedAmount })
   } catch (error) {

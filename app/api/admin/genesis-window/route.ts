@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
+import { adminGeneralRatelimit, getClientIp } from "@/lib/upstash"
+import { logAdminAction } from "@/lib/admin-audit"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -82,6 +84,13 @@ export async function POST(request: Request) {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+    // Rate limit — 60/min per IP. Plenty for legitimate admin work.
+    const ip = getClientIp(request)
+    const { success } = await adminGeneralRatelimit().limit(`gw:${ip}`)
+    if (!success) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 })
+    }
+
     const { action } = await request.json()
     const supabase = await createAdminClient()
     const current = await readWindow(supabase)
@@ -98,6 +107,13 @@ export async function POST(request: Request) {
           { onConflict: "key" }
         )
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+      // Audit log — who started, when.
+      await logAdminAction(supabase, request, session.username, "genesis_window.start", {
+        startedAt: next.started_at,
+        windowDays: WINDOW_DAYS,
+      })
+
       return NextResponse.json({ success: true, ...computeStatus(next) })
     }
 
@@ -113,6 +129,13 @@ export async function POST(request: Request) {
           { onConflict: "key" }
         )
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+      // Audit log — who closed it, when.
+      await logAdminAction(supabase, request, session.username, "genesis_window.close", {
+        startedAt: current.started_at,
+        closedAt: new Date().toISOString(),
+      })
+
       return NextResponse.json({ success: true, ...computeStatus(next) })
     }
 
