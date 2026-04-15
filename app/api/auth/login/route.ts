@@ -1,15 +1,9 @@
 import { NextResponse } from "next/server"
-import {
+import { verifyCredentials, createSession, checkLoginAttempts, recordFailedAttempt, clearAttempts } from "@/lib/auth"
+import { adminLoginRatelimit, getClientIp } from "@/lib/upstash"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
-  verifyCredentials,
-  createSession,
-  checkLoginAttempts,
-  recordFailedAttempt,
-  clearAttempts,
-} from "@/lib/auth"
-import { adminLoginRatelimit, getClientIp } from "@/lib/upstash"
 
 export async function POST(request: Request) {
   const ip = getClientIp(request)
