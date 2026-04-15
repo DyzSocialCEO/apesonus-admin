@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server"
 import {
+
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
   verifyCredentials,
   createSession,
   checkLoginAttempts,

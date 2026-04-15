@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
 const WINDOW_DAYS = 45
 
 interface GenesisWindow {

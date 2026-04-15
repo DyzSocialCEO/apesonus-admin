@@ -5,6 +5,9 @@ import { awardOnus } from "@/lib/award-onus"
 import { ONUS_SUPPLY } from "@/lib/constants/tiers"
 import { adminOnusRatelimit, getClientIp } from "@/lib/upstash"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
 export async function GET() {
   try {
     const session = await getSession()

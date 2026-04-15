@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
 /**
  * Admin API: read/set Founders Pass price in Stars.
  * The price is stored in app_settings under key 'founders_pass_price'

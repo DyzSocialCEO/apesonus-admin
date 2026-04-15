@@ -5,6 +5,9 @@ import { resolveMultiplier } from "@/lib/constants/tiers"
 import { batchAwardOnus } from "@/lib/batch-award-onus"
 import crypto from "crypto"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
 const FORECAST_CORRECT_BASE = 100
 const FORECAST_WRONG_BASE = 10
 

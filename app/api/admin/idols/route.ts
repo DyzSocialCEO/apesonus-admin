@@ -4,6 +4,9 @@ import { getSession } from "@/lib/auth"
 import { resolveMultiplier } from "@/lib/constants/tiers"
 import { batchAwardOnus } from "@/lib/batch-award-onus"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
 const ARTISTS = [
   { id: "chartnobyl-bro", name: "Chartnobyl Bro" },
   { id: "coinalisa", name: "Coinalisa" },

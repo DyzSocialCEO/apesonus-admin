@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { signBunnyCdnUrl } from "@/lib/bunny-cdn"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
 export async function POST(request: Request) {
   try {
     const session = await getSession()

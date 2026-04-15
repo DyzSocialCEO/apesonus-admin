@@ -3,6 +3,9 @@ import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
 import { signBunnyCdnUrl } from "@/lib/bunny-cdn"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
 // ── Auto-detect m4a duration server-side ──
 async function detectDuration(audioUrl: string): Promise<number> {
   try {

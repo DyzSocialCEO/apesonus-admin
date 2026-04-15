@@ -4,6 +4,9 @@ import { getSession } from "@/lib/auth"
 import { resolveMultiplier } from "@/lib/constants/tiers"
 import { batchAwardOnus } from "@/lib/batch-award-onus"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
 // GET — list all challenges
 export async function GET(request: Request) {
   try {

@@ -4,6 +4,9 @@ import { getSession } from "@/lib/auth"
 import { assignTier, TIER_MULTIPLIERS } from "@/lib/constants/tiers"
 import { awardOnus } from "@/lib/award-onus"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
 export async function GET() {
   try {
     const session = await getSession()
