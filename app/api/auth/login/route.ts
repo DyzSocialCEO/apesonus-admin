@@ -11,8 +11,8 @@ export async function POST(request: Request) {
   // Hard rate limit at the Upstash level — this runs BEFORE we even
   // look at credentials. Stops brute force cold even if the
   // login-attempt tracker is somehow bypassed.
-  if (adminLoginRatelimit) {
-    const { success } = await adminLoginRatelimit.limit(`login:${ip}`)
+  {
+    const { success } = await adminLoginRatelimit().limit(`login:${ip}`)
     if (!success) {
       return NextResponse.json(
         { error: "Too many login attempts. Try again in 15 minutes." },

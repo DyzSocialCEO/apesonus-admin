@@ -8,29 +8,18 @@
  * This means local development works without Upstash, but production
  * SHOULD set these vars so state persists across Railway deploys and
  * multiple container instances.
+ *
+ * IMPORTANT — module-eval ordering note:
+ * All non-trivial init is done LAZILY. Top-level `export const` statements
+ * that synchronously call factories cause webpack TDZ errors during Next.js
+ * page data collection. Everything in this file is either pure type/class
+ * definitions, or functions that defer initialization until first call.
  */
 
 import { Redis } from "@upstash/redis"
 import { Ratelimit } from "@upstash/ratelimit"
 
-// ── Redis client (lazy singleton) ────────────────────────────────
-
-let redisClient: Redis | null = null
-
-export function getRedis(): Redis | null {
-  if (redisClient) return redisClient
-  const url = process.env.UPSTASH_REDIS_REST_URL
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN
-  if (!url || !token) return null
-  try {
-    redisClient = new Redis({ url, token })
-    return redisClient
-  } catch {
-    return null
-  }
-}
-
-// ── Rate limit factory ───────────────────────────────────────────
+// ── Types ────────────────────────────────────────────────────────
 
 export interface RateLimitResult {
   success: boolean
@@ -39,36 +28,111 @@ export interface RateLimitResult {
   reset: number
 }
 
-function createRatelimiter(opts: { maxRequests: number; windowMs: number; prefix: string }) {
+interface RateLimitEntry {
+  timestamps: number[]
+}
+
+interface RateLimiterLike {
+  limit(key: string): Promise<RateLimitResult>
+}
+
+// ── In-memory fallback class (declared FIRST so it's available to factories) ──
+
+class InMemoryRateLimiter implements RateLimiterLike {
+  private store = new Map<string, RateLimitEntry>()
+  private maxRequests: number
+  private windowMs: number
+
+  constructor(opts: { maxRequests: number; windowMs: number; prefix?: string }) {
+    this.maxRequests = opts.maxRequests
+    this.windowMs = opts.windowMs
+  }
+
+  async limit(key: string): Promise<RateLimitResult> {
+    const now = Date.now()
+    const windowStart = now - this.windowMs
+    let entry = this.store.get(key)
+    if (!entry) {
+      entry = { timestamps: [] }
+      this.store.set(key, entry)
+    }
+    entry.timestamps = entry.timestamps.filter((t) => t > windowStart)
+    if (entry.timestamps.length >= this.maxRequests) {
+      return {
+        success: false,
+        limit: this.maxRequests,
+        remaining: 0,
+        reset: entry.timestamps[0] + this.windowMs,
+      }
+    }
+    entry.timestamps.push(now)
+    return {
+      success: true,
+      limit: this.maxRequests,
+      remaining: this.maxRequests - entry.timestamps.length,
+      reset: now + this.windowMs,
+    }
+  }
+}
+
+// ── Redis client (lazy singleton) ────────────────────────────────
+
+let _redisClient: Redis | null | undefined = undefined
+
+function getRedis(): Redis | null {
+  if (_redisClient !== undefined) return _redisClient
+  const url = process.env.UPSTASH_REDIS_REST_URL
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN
+  if (!url || !token) {
+    _redisClient = null
+    return null
+  }
+  try {
+    _redisClient = new Redis({ url, token })
+    return _redisClient
+  } catch {
+    _redisClient = null
+    return null
+  }
+}
+
+// ── Rate limiter factories (lazy — no top-level instantiation) ──
+
+const _limiterCache = new Map<string, RateLimiterLike>()
+
+function getLimiter(opts: { maxRequests: number; windowMs: number; prefix: string }): RateLimiterLike {
+  const cached = _limiterCache.get(opts.prefix)
+  if (cached) return cached
+
   const r = getRedis()
+  let limiter: RateLimiterLike
   if (r) {
-    return new Ratelimit({
+    limiter = new Ratelimit({
       redis: r,
       limiter: Ratelimit.slidingWindow(opts.maxRequests, `${opts.windowMs}ms`),
       prefix: `admin-rl:${opts.prefix}`,
     })
+  } else {
+    limiter = new InMemoryRateLimiter(opts)
   }
-  return new InMemoryRateLimiter(opts)
+  _limiterCache.set(opts.prefix, limiter)
+  return limiter
 }
 
-// Admin rate limiters
-export const adminOnusRatelimit = createRatelimiter({
-  maxRequests: 3,
-  windowMs: 60_000,
-  prefix: "onus-mint",
-})
+// Public API: each is a function that lazily resolves the limiter.
+// This is the safest pattern for Next.js — no module-eval-time side effects.
 
-export const adminGeneralRatelimit = createRatelimiter({
-  maxRequests: 60,
-  windowMs: 60_000,
-  prefix: "general",
-})
+export function adminOnusRatelimit() {
+  return getLimiter({ maxRequests: 3, windowMs: 60_000, prefix: "onus-mint" })
+}
 
-export const adminLoginRatelimit = createRatelimiter({
-  maxRequests: 5,
-  windowMs: 15 * 60_000, // 5 attempts per 15 minutes
-  prefix: "login",
-})
+export function adminGeneralRatelimit() {
+  return getLimiter({ maxRequests: 60, windowMs: 60_000, prefix: "general" })
+}
+
+export function adminLoginRatelimit() {
+  return getLimiter({ maxRequests: 5, windowMs: 15 * 60_000, prefix: "login" })
+}
 
 // ── Generic async KV helpers for login attempt tracking ──────────
 
@@ -102,63 +166,6 @@ export async function kvDelete(key: string): Promise<void> {
   try {
     await r.del(key)
   } catch {}
-}
-
-// ── In-memory fallback (only used when Upstash is not configured) ──
-
-interface RateLimitEntry {
-  timestamps: number[]
-}
-
-class InMemoryRateLimiter {
-  private store = new Map<string, RateLimitEntry>()
-  private maxRequests: number
-  private windowMs: number
-
-  constructor(opts: { maxRequests: number; windowMs: number; prefix?: string }) {
-    this.maxRequests = opts.maxRequests
-    this.windowMs = opts.windowMs
-    if (typeof globalThis !== "undefined") {
-      const interval = setInterval(() => this.prune(), 60_000)
-      if (typeof interval === "object" && "unref" in interval) {
-        ;(interval as any).unref()
-      }
-    }
-  }
-
-  async limit(key: string): Promise<RateLimitResult> {
-    const now = Date.now()
-    const windowStart = now - this.windowMs
-    let entry = this.store.get(key)
-    if (!entry) {
-      entry = { timestamps: [] }
-      this.store.set(key, entry)
-    }
-    entry.timestamps = entry.timestamps.filter((t) => t > windowStart)
-    if (entry.timestamps.length >= this.maxRequests) {
-      return {
-        success: false,
-        limit: this.maxRequests,
-        remaining: 0,
-        reset: entry.timestamps[0] + this.windowMs,
-      }
-    }
-    entry.timestamps.push(now)
-    return {
-      success: true,
-      limit: this.maxRequests,
-      remaining: this.maxRequests - entry.timestamps.length,
-      reset: now + this.windowMs,
-    }
-  }
-
-  private prune() {
-    const now = Date.now()
-    this.store.forEach((entry, key) => {
-      entry.timestamps = entry.timestamps.filter((t) => t > now - this.windowMs)
-      if (entry.timestamps.length === 0) this.store.delete(key)
-    })
-  }
 }
 
 // ── Helper: extract client IP from a request ─────────────────────

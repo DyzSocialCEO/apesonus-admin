@@ -96,15 +96,13 @@ export async function POST(request: Request) {
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     // Rate limit — 3 mint requests per minute per IP
-    if (adminOnusRatelimit) {
-      const ip = getClientIp(request)
-      const { success } = await adminOnusRatelimit.limit(`onus-mint:${ip}`)
-      if (!success) {
-        return NextResponse.json(
-          { error: "Rate limit exceeded. Mint endpoint allows 3 requests per minute." },
-          { status: 429 }
-        )
-      }
+    const ip = getClientIp(request)
+    const { success } = await adminOnusRatelimit().limit(`onus-mint:${ip}`)
+    if (!success) {
+      return NextResponse.json(
+        { error: "Rate limit exceeded. Mint endpoint allows 3 requests per minute." },
+        { status: 429 }
+      )
     }
 
     const { telegramId, amount, reason } = await request.json()
