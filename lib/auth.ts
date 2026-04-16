@@ -147,15 +147,37 @@ export async function verifyCredentials(
     return false
   }
 
+  // Username check: timing-safe comparison
   const usernameMatch =
     username.length === validUsername.length &&
     crypto.timingSafeEqual(Buffer.from(username), Buffer.from(validUsername))
 
+  if (!usernameMatch) return false
+
+  // Password check: supports two formats.
+  // 1. Hash format "scrypt:<salt>:<hash>" — production recommendation.
+  //    Generate with: node -e "const c=require('crypto');const s=c.randomBytes(16).toString('hex');const h=c.scryptSync('YOUR_PASSWORD',s,64).toString('hex');console.log('scrypt:'+s+':'+h)"
+  // 2. Plaintext fallback — backward compat during transition.
+  if (validPassword.startsWith("scrypt:")) {
+    const parts = validPassword.split(":")
+    if (parts.length !== 3) return false
+    const [, salt, storedHash] = parts
+    try {
+      const derivedHash = crypto.scryptSync(password, salt, 64).toString("hex")
+      // Timing-safe comparison on the hex strings
+      if (derivedHash.length !== storedHash.length) return false
+      return crypto.timingSafeEqual(Buffer.from(derivedHash), Buffer.from(storedHash))
+    } catch {
+      return false
+    }
+  }
+
+  // Plaintext fallback (remove once ADMIN_PASSWORD is migrated to scrypt hash)
   const passwordMatch =
     password.length === validPassword.length &&
     crypto.timingSafeEqual(Buffer.from(password), Buffer.from(validPassword))
 
-  return usernameMatch && passwordMatch
+  return passwordMatch
 }
 
 export async function createSession(username: string): Promise<void> {
