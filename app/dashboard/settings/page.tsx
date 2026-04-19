@@ -4,8 +4,14 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Database, Key, Shield, Crown, Loader2, AlertTriangle, CheckCircle2, Tag, Save } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import {
+  Database, Key, Shield, Crown, Loader2, AlertTriangle, CheckCircle2, Save, Sliders,
+} from "lucide-react"
 
+// ──────────────────────────────────────────────────────────
+// TYPES
+// ──────────────────────────────────────────────────────────
 interface GenesisStatus {
   state: "not_started" | "active" | "expired"
   startedAt: string | null
@@ -14,83 +20,83 @@ interface GenesisStatus {
   closed: boolean
   windowDays: number
   genesisBadgeCount: number
+  threshold: number
+  maxHolders: number
+  slotsLeft: number
+}
+
+interface GenesisConfig {
+  threshold: number
+  maxHolders: number
+  holdersIssued: number
+  slotsLeft: number
+  windowStartedAt: string | null
+  windowClosed: boolean
+  bounds: {
+    minThreshold: number
+    maxThreshold: number
+    minMaxHolders: number
+    maxMaxHolders: number
+  }
 }
 
 export default function SettingsPage() {
+  // ── Genesis window state ──
   const [status, setStatus] = useState<GenesisStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState("")
 
-  // Founders Pass price state
-  const [currentPrice, setCurrentPrice] = useState<number | null>(null)
-  const [priceInput, setPriceInput] = useState<string>("")
-  const [priceBusy, setPriceBusy] = useState(false)
-  const [priceMsg, setPriceMsg] = useState("")
-  const [priceLoading, setPriceLoading] = useState(true)
+  // ── Genesis config state (threshold + maxHolders) ──
+  const [config, setConfig] = useState<GenesisConfig | null>(null)
+  const [configLoading, setConfigLoading] = useState(true)
+  const [thresholdInput, setThresholdInput] = useState<string>("")
+  const [maxHoldersInput, setMaxHoldersInput] = useState<string>("")
+  const [configBusy, setConfigBusy] = useState(false)
+  const [configMsg, setConfigMsg] = useState("")
 
-  const fetchPrice = async () => {
-    setPriceLoading(true)
-    try {
-      const res = await fetch("/api/admin/founders-pass-price")
-      const data = await res.json()
-      if (typeof data.amount === "number") {
-        setCurrentPrice(data.amount)
-        setPriceInput(String(data.amount))
-      }
-    } catch {} finally { setPriceLoading(false) }
-  }
-
-  const handleUpdatePrice = async () => {
-    const amount = parseInt(priceInput, 10)
-    if (!Number.isFinite(amount) || amount < 1 || amount > 100000) {
-      setPriceMsg("Price must be a whole number between 1 and 100000 Stars")
-      return
-    }
-    if (amount === currentPrice) {
-      setPriceMsg("Price unchanged")
-      return
-    }
-    if (!confirm(
-      `Change the Founders Pass price from ${currentPrice} Stars to ${amount} Stars?\n\n` +
-      "This change applies immediately. All new purchases use the new price. Existing Founders Pass holders are unaffected.\n\n" +
-      "Be careful: lowering the price while the Genesis Window is active may feel unfair to early buyers who paid more."
-    )) return
-
-    setPriceBusy(true)
-    setPriceMsg("")
-    try {
-      const res = await fetch("/api/admin/founders-pass-price", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        setCurrentPrice(data.amount)
-        setPriceMsg(`Updated to ${data.amount} Stars. Live now.`)
-      } else {
-        setPriceMsg(data.error || "Failed to update price")
-      }
-    } catch { setPriceMsg("Failed to update price") } finally { setPriceBusy(false) }
-  }
-
+  // ──────────────────────────────────────────────
+  // FETCHERS
+  // ──────────────────────────────────────────────
   const fetchStatus = async () => {
     setLoading(true)
     try {
       const res = await fetch("/api/admin/genesis-window")
       const data = await res.json()
-      if (!data.error) setStatus(data)
-    } catch {} finally { setLoading(false) }
+      if (res.ok) setStatus(data)
+      else setStatus(null)
+    } catch {
+      setStatus(null)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  useEffect(() => { fetchStatus(); fetchPrice() }, [])
+  const fetchConfig = async () => {
+    setConfigLoading(true)
+    try {
+      const res = await fetch("/api/admin/genesis-config")
+      const data = await res.json()
+      if (res.ok) {
+        setConfig(data)
+        setThresholdInput(String(data.threshold))
+        setMaxHoldersInput(String(data.maxHolders))
+      }
+    } catch {} finally {
+      setConfigLoading(false)
+    }
+  }
 
+  useEffect(() => { fetchStatus(); fetchConfig() }, [])
+
+  // ──────────────────────────────────────────────
+  // WINDOW START / CLOSE
+  // ──────────────────────────────────────────────
   const handleStart = async () => {
     if (!confirm(
       "Start the Genesis Window NOW?\n\n" +
-      "This begins the official 45-day countdown. Every paid subscriber from this moment until the window closes is granted the PERMANENT Genesis Badge. After 45 days, new subs no longer get it.\n\n" +
-      "This action cannot be undone."
+      "This begins the official 45-day countdown. From this moment, every user who earns 10,000 $ONUS during the window is granted the PERMANENT Genesis Badge, up to the max holders cap.\n\n" +
+      "Only the first N users (current max: " + (config?.maxHolders ?? 100) + ") to hit the threshold will mint. After 45 days or once the cap fills, no new badges are issued."
     )) return
 
     setBusy(true)
@@ -104,17 +110,20 @@ export default function SettingsPage() {
       const data = await res.json()
       if (data.success) {
         setMsg("Genesis Window started. Countdown is live.")
-        fetchStatus()
+        await fetchStatus()
+        await fetchConfig()
       } else {
         setMsg(data.error || "Failed to start window")
       }
-    } catch { setMsg("Failed to start window") } finally { setBusy(false) }
+    } catch {
+      setMsg("Failed to start window")
+    } finally { setBusy(false) }
   }
 
   const handleClose = async () => {
     if (!confirm(
       "Force-close the Genesis Window early?\n\n" +
-      "After this, no new subscribers will receive the Genesis Badge — only those who subscribed during the window keep theirs (permanently)."
+      "After this, no new users will receive the Genesis Badge — only those who minted during the window keep theirs (permanently)."
     )) return
 
     setBusy(true)
@@ -128,19 +137,95 @@ export default function SettingsPage() {
       const data = await res.json()
       if (data.success) {
         setMsg("Genesis Window closed.")
-        fetchStatus()
+        await fetchStatus()
+        await fetchConfig()
       } else {
         setMsg(data.error || "Failed to close window")
       }
-    } catch { setMsg("Failed to close window") } finally { setBusy(false) }
+    } catch {
+      setMsg("Failed to close window")
+    } finally { setBusy(false) }
   }
 
-  const fmtDate = (iso: string | null) => iso ? new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit"
-  }) : "—"
+  // ──────────────────────────────────────────────
+  // CONFIG SAVE (threshold + maxHolders)
+  // ──────────────────────────────────────────────
+  const handleSaveConfig = async () => {
+    if (!config) return
+    const t = parseInt(thresholdInput, 10)
+    const m = parseInt(maxHoldersInput, 10)
 
+    if (!Number.isFinite(t) || !Number.isFinite(m)) {
+      setConfigMsg("Both values must be whole numbers")
+      return
+    }
+    if (t === config.threshold && m === config.maxHolders) {
+      setConfigMsg("No changes")
+      return
+    }
+    if (t < config.bounds.minThreshold || t > config.bounds.maxThreshold) {
+      setConfigMsg(`Threshold must be between ${config.bounds.minThreshold} and ${config.bounds.maxThreshold}`)
+      return
+    }
+    if (m < config.bounds.minMaxHolders || m > config.bounds.maxMaxHolders) {
+      setConfigMsg(`Max holders must be between ${config.bounds.minMaxHolders} and ${config.bounds.maxMaxHolders}`)
+      return
+    }
+    if (m < config.holdersIssued) {
+      setConfigMsg(`Cannot set max holders below current (${config.holdersIssued} already minted)`)
+      return
+    }
+
+    const windowActive = config.windowStartedAt !== null && !config.windowClosed
+    const warnText = windowActive
+      ? "⚠️ The window is currently OPEN. Changing these values now may feel unfair to users who have already started earning. Continue?\n\n"
+      : ""
+
+    if (!confirm(
+      warnText +
+      `Threshold: ${config.threshold.toLocaleString()} $ONUS → ${t.toLocaleString()} $ONUS\n` +
+      `Max holders: ${config.maxHolders} → ${m}\n\n` +
+      "Live changes apply immediately."
+    )) return
+
+    setConfigBusy(true)
+    setConfigMsg("")
+    try {
+      const res = await fetch("/api/admin/genesis-config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threshold: t, maxHolders: m }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setConfigMsg(`Updated. Threshold ${data.threshold.toLocaleString()} · Max ${data.maxHolders}`)
+        await fetchStatus()
+        await fetchConfig()
+      } else {
+        setConfigMsg(data.error || "Failed to update config")
+      }
+    } catch {
+      setConfigMsg("Failed to update config")
+    } finally { setConfigBusy(false) }
+  }
+
+  // ──────────────────────────────────────────────
+  // RENDER HELPERS
+  // ──────────────────────────────────────────────
+  const fmtDate = (iso: string | null) => {
+    if (!iso) return "—"
+    try {
+      return new Date(iso).toLocaleDateString("en-US", {
+        month: "short", day: "numeric", year: "numeric",
+      })
+    } catch { return "—" }
+  }
+
+  // ──────────────────────────────────────────────
+  // RENDER
+  // ──────────────────────────────────────────────
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Settings</h1>
         <p className="text-gray-400">Configure your admin panel</p>
@@ -155,7 +240,7 @@ export default function SettingsPage() {
             </div>
             <div className="flex-1">
               <CardTitle className="text-lg text-white">Genesis Window</CardTitle>
-              <CardDescription>45-day launch window that mints the permanent Genesis Badge for paid subscribers</CardDescription>
+              <CardDescription>45-day launch window that mints the permanent Genesis Badge for the first N users to collect {config?.threshold?.toLocaleString() ?? "10,000"} $ONUS</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -168,13 +253,13 @@ export default function SettingsPage() {
             <p className="text-sm text-red-400">Failed to load Genesis Window status.</p>
           ) : (
             <div className="space-y-4">
-              {/* Soft launch warning */}
+              {/* State banner */}
               {status.state === "not_started" && (
                 <div className="flex items-start gap-2 p-3 rounded-lg bg-yellow-400/10 border border-yellow-400/20">
                   <AlertTriangle className="w-4 h-4 text-yellow-400 mt-0.5 shrink-0" />
                   <div className="text-xs text-yellow-200/80">
-                    <p className="font-semibold mb-1">Soft launch mode</p>
-                    <p>The window has not officially started. All paid subscribers currently auto-receive the Genesis Badge (safe for testing). Click <strong>Start</strong> to begin the official 45-day countdown.</p>
+                    <p className="font-semibold mb-1">Window not started</p>
+                    <p>The Genesis race has not officially started. No user can mint the badge yet. Click <strong>Start</strong> to begin the 45-day countdown.</p>
                   </div>
                 </div>
               )}
@@ -184,7 +269,7 @@ export default function SettingsPage() {
                   <CheckCircle2 className="w-4 h-4 text-green-400 mt-0.5 shrink-0" />
                   <div className="text-xs text-green-200/80">
                     <p className="font-semibold mb-1">Window is live</p>
-                    <p>Countdown is running. Every paid subscription right now is granted the permanent Genesis Badge.</p>
+                    <p>Countdown is running. The first {status.maxHolders} users to earn {status.threshold.toLocaleString()} $ONUS are minting the permanent Genesis Badge.</p>
                   </div>
                 </div>
               )}
@@ -194,13 +279,13 @@ export default function SettingsPage() {
                   <CheckCircle2 className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
                   <div className="text-xs text-gray-400">
                     <p className="font-semibold mb-1">Window closed</p>
-                    <p>The Genesis Window has ended. Existing badge holders keep their badge permanently. New subs do not get it.</p>
+                    <p>The Genesis Window has ended. Existing badge holders keep their badge permanently. No new mints possible.</p>
                   </div>
                 </div>
               )}
 
-              {/* Stats grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {/* Stats grid: 6 values */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div className="p-3 rounded-lg bg-gray-800/60">
                   <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">State</p>
                   <p className="text-sm font-bold text-white">
@@ -219,12 +304,14 @@ export default function SettingsPage() {
                   <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Days Left</p>
                   <p className="text-sm font-bold text-yellow-400">{status.daysRemaining ?? "—"}</p>
                 </div>
-              </div>
-
-              <div className="p-3 rounded-lg bg-gray-800/30 border border-gray-800">
-                <p className="text-xs text-gray-400">
-                  <span className="text-yellow-400 font-bold">{status.genesisBadgeCount}</span> users currently hold the Genesis Badge
-                </p>
+                <div className="p-3 rounded-lg bg-gray-800/60">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Slots Left</p>
+                  <p className="text-sm font-bold text-yellow-400">{status.slotsLeft} / {status.maxHolders}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-gray-800/60">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Holders</p>
+                  <p className="text-sm font-bold text-white">{status.genesisBadgeCount}</p>
+                </div>
               </div>
 
               {/* Actions */}
@@ -250,85 +337,89 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* ── FOUNDERS PASS PRICE ─────────────────────────────── */}
+      {/* ── GENESIS CONFIG (threshold + max holders) ────────── */}
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-yellow-400/10">
-              <Tag className="w-5 h-5 text-yellow-400" />
+              <Sliders className="w-5 h-5 text-yellow-400" />
             </div>
             <div className="flex-1">
-              <CardTitle className="text-lg text-white">Founders Pass Price</CardTitle>
-              <CardDescription>One-time unlock price in Telegram Stars. Changes apply immediately to all new purchases.</CardDescription>
+              <CardTitle className="text-lg text-white">Genesis Badge Config</CardTitle>
+              <CardDescription>Tune the race threshold and max holder cap. Live changes apply immediately.</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          {priceLoading ? (
+          {configLoading ? (
             <div className="flex items-center gap-2 text-gray-500 text-sm">
-              <Loader2 className="w-4 h-4 animate-spin" /> Loading current price...
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading config...
             </div>
+          ) : !config ? (
+            <p className="text-sm text-red-400">Failed to load Genesis config.</p>
           ) : (
             <div className="space-y-4">
-              <div className="p-3 rounded-lg bg-gray-800/60">
-                <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Current Price</p>
-                <p className="text-2xl font-bold text-yellow-400">{currentPrice} <span className="text-sm font-normal text-gray-400">Stars</span></p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 mb-2 uppercase tracking-wider">
-                  New Price (Stars)
-                </label>
-                <div className="flex gap-2">
-                  <input
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                    $ONUS Threshold to Mint
+                  </label>
+                  <Input
                     type="number"
-                    min={1}
-                    max={100000}
-                    step={1}
-                    value={priceInput}
-                    onChange={(e) => setPriceInput(e.target.value)}
-                    disabled={priceBusy}
-                    className="flex-1 px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-yellow-400/50 disabled:opacity-50"
-                    placeholder="e.g., 300"
+                    value={thresholdInput}
+                    onChange={(e) => setThresholdInput(e.target.value)}
+                    placeholder="10000"
+                    min={config.bounds.minThreshold}
+                    max={config.bounds.maxThreshold}
                   />
-                  <Button
-                    onClick={handleUpdatePrice}
-                    disabled={priceBusy || priceInput === String(currentPrice) || !priceInput}
-                    className="bg-yellow-400 text-black hover:bg-yellow-300 disabled:opacity-50"
-                  >
-                    {priceBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : (
-                      <><Save className="w-4 h-4 mr-1.5" /> Update</>
-                    )}
-                  </Button>
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    Range: {config.bounds.minThreshold.toLocaleString()} – {config.bounds.maxThreshold.toLocaleString()}
+                  </p>
                 </div>
-                <p className="text-[11px] text-gray-500 mt-2">
-                  Range: 1 – 100,000 Stars. Whole numbers only. Change takes effect on the next purchase attempt.
-                </p>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                    Max Genesis Holders
+                  </label>
+                  <Input
+                    type="number"
+                    value={maxHoldersInput}
+                    onChange={(e) => setMaxHoldersInput(e.target.value)}
+                    placeholder="100"
+                    min={config.bounds.minMaxHolders}
+                    max={config.bounds.maxMaxHolders}
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    Range: {config.bounds.minMaxHolders} – {config.bounds.maxMaxHolders} · Currently issued: {config.holdersIssued}
+                  </p>
+                </div>
               </div>
 
-              {priceMsg && (
-                <div className={`p-2 rounded-lg text-xs ${
-                  priceMsg.toLowerCase().includes("fail") || priceMsg.toLowerCase().includes("must")
-                    ? "bg-red-400/10 text-red-300"
-                    : "bg-green-400/10 text-green-300"
-                }`}>
-                  {priceMsg}
+              {config.windowStartedAt && !config.windowClosed && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-red-400/10 border border-red-400/20">
+                  <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                  <p className="text-xs text-red-200/80">
+                    <strong>Window is open.</strong> Changing these values now may feel unfair to users who have already started earning. Proceed with caution.
+                  </p>
                 </div>
               )}
 
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-400/5 border border-amber-400/20">
-                <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
-                <div className="text-[11px] text-amber-200/80">
-                  <p className="font-semibold mb-1">Price change guidelines</p>
-                  <p>Raising the price is safe. Lowering it during the active Genesis Window may feel unfair to early buyers who paid more. Consider keeping the price stable through the full 45-day window for trust.</p>
-                </div>
+              <div className="flex gap-2 flex-wrap items-center">
+                <Button
+                  onClick={handleSaveConfig}
+                  disabled={configBusy}
+                  className="bg-yellow-400 text-black hover:bg-yellow-300"
+                >
+                  {configBusy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+                  Save Config
+                </Button>
+                {configMsg && <p className="text-xs text-gray-300">{configMsg}</p>}
               </div>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* ── DATABASE ───────────────────────────────────────── */}
+      {/* ── DATABASE ─────────────────────────────────────── */}
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
           <div className="flex items-center gap-3">
@@ -348,6 +439,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* ── ENVIRONMENT VARIABLES ──────────────────────── */}
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
           <div className="flex items-center gap-3">
@@ -382,6 +474,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* ── SECURITY ──────────────────────────────── */}
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
           <div className="flex items-center gap-3">
