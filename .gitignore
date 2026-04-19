@@ -2,3 +2,23 @@
 .env*.local
 
 node_modules/
+
+# Next.js build output
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Misc
+coverage/
