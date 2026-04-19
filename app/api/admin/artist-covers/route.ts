@@ -65,12 +65,15 @@ export async function GET(request: Request) {
       }
       let dominant = ""
       let dominantCount = 0
-      for (const [cover, count] of counts) {
+      // Array.from sidesteps the Map iterator, which the admin repo's
+      // tsconfig does not allow iterating directly without the
+      // downlevelIteration flag. Behaviour is identical.
+      Array.from(counts.entries()).forEach(([cover, count]) => {
         if (count > dominantCount) {
           dominantCount = count
           dominant = cover
         }
-      }
+      })
 
       // Flag "mixed" state when tracks don't agree on a single cover.
       // Admin should see this and knows applying the bulk update will
