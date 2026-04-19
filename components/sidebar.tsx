@@ -4,28 +4,27 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
-  Activity, Megaphone, Coins, TrendingUp, Flame, Zap, Swords, Trophy, Star,
+  Activity, Megaphone, Coins, TrendingUp, Flame, Swords, Trophy, Crown,
   ScrollText,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
 const navigation = [
-  { name: "Dashboard",       href: "/dashboard",              icon: LayoutDashboard },
-  { name: "Tracks",          href: "/dashboard/tracks",       icon: Music           },
-  { name: "Challenge Arena", href: "/dashboard/challenges",   icon: Swords          },
-  { name: "Weekly Chart",    href: "/dashboard/chart",        icon: TrendingUp      },
-  { name: "Forecast",        href: "/dashboard/forecast",     icon: Zap             },
-  { name: "Culture Pulse",   href: "/dashboard/pulse",        icon: Activity        },
-  { name: "APE IDOLS",       href: "/dashboard/idols",        icon: Trophy          },
-  { name: "Streaks",         href: "/dashboard/streaks",      icon: Flame           },
-  { name: "WHALE Pool",      href: "/dashboard/whale-pool",   icon: Star            },
-  { name: "Users",           href: "/dashboard/users",        icon: Users           },
-  { name: "Banners",         href: "/dashboard/banners",      icon: Megaphone       },
-  { name: "$ONUS",           href: "/dashboard/onus",         icon: Coins           },
-  { name: "Analytics",       href: "/dashboard/analytics",    icon: BarChart3       },
-  { name: "Logs",            href: "/dashboard/logs",         icon: ScrollText      },
-  { name: "Settings",        href: "/dashboard/settings",     icon: Settings        },
+  { name: "Dashboard",     href: "/dashboard",            icon: LayoutDashboard },
+  { name: "Tracks",        href: "/dashboard/tracks",     icon: Music           },
+  { name: "Arena",         href: "/dashboard/challenges", icon: Swords          },
+  { name: "Chart",         href: "/dashboard/chart",      icon: TrendingUp      },
+  { name: "Culture Pulse", href: "/dashboard/pulse",      icon: Activity        },
+  { name: "Streaks",       href: "/dashboard/streaks",    icon: Flame           },
+  { name: "Genesis Badge", href: "/dashboard/genesis",    icon: Crown           },
+  { name: "Weekly Top 10", href: "/dashboard/top10",      icon: Trophy          },
+  { name: "Users",         href: "/dashboard/users",      icon: Users           },
+  { name: "Banners",       href: "/dashboard/banners",    icon: Megaphone       },
+  { name: "$ONUS",         href: "/dashboard/onus",       icon: Coins           },
+  { name: "Analytics",     href: "/dashboard/analytics",  icon: BarChart3       },
+  { name: "Logs",          href: "/dashboard/logs",       icon: ScrollText      },
+  { name: "Settings",      href: "/dashboard/settings",   icon: Settings        },
 ]
 
 export function Sidebar() {
