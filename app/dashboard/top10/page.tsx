@@ -50,6 +50,8 @@ export default function Top10Page() {
   // Input state for editable fields
   const [hallMsg, setHallMsg] = useState("")
   const [weeklyMsg, setWeeklyMsg] = useState("")
+  const [potInput, setPotInput] = useState("")
+  const [distInputs, setDistInputs] = useState<string[]>(Array(10).fill(""))
 
   // Leaderboard data
   const [hallRows, setHallRows] = useState<HallRow[]>([])
@@ -59,6 +61,7 @@ export default function Top10Page() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState("")
+  const [warnings, setWarnings] = useState<string[]>([])
 
   // ────────────────────────────────────────────
   // FETCHERS
@@ -76,6 +79,13 @@ export default function Top10Page() {
         setHallMsg(cfg.hallOfFame.coming_soon_message || "")
         setWeeklyCfg(cfg.weeklyTop10)
         setWeeklyMsg(cfg.weeklyTop10.coming_soon_message || "")
+        setPotInput(String(cfg.weeklyTop10.current_pot_stars ?? 0))
+        const dist: number[] = Array.isArray(cfg.weeklyTop10.pot_distribution)
+          ? cfg.weeklyTop10.pot_distribution
+          : []
+        const padded: string[] = []
+        for (let i = 0; i < 10; i++) padded.push(String(dist[i] ?? 0))
+        setDistInputs(padded)
       }
       if (dataRes.ok) {
         const data = await dataRes.json()
@@ -93,6 +103,7 @@ export default function Top10Page() {
   const patchConfig = async (body: any) => {
     setBusy(true)
     setMsg("")
+    setWarnings([])
     try {
       const res = await fetch("/api/admin/leaderboards-config", {
         method: "PATCH",
@@ -102,6 +113,9 @@ export default function Top10Page() {
       const data = await res.json()
       if (data.success) {
         setMsg("Saved.")
+        if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+          setWarnings(data.warnings)
+        }
         await fetchAll()
       } else {
         setMsg(data.error || "Failed to save")
@@ -143,6 +157,29 @@ export default function Top10Page() {
     patchConfig({ weeklyTop10: { coming_soon_message: weeklyMsg.trim() } })
   }
 
+  const savePot = () => {
+    if (!weeklyCfg) return
+    const pot = Number(potInput)
+    if (!Number.isFinite(pot) || !Number.isInteger(pot) || pot < 0) {
+      setMsg("Pot must be a non-negative whole number")
+      return
+    }
+    if (distInputs.length !== 10) {
+      setMsg("Distribution must have exactly 10 entries")
+      return
+    }
+    const dist: number[] = []
+    for (let i = 0; i < 10; i++) {
+      const n = Number(distInputs[i])
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
+        setMsg(`Rank #${i + 1} must be a non-negative whole number`)
+        return
+      }
+      dist.push(n)
+    }
+    patchConfig({ weeklyTop10: { current_pot_stars: pot, pot_distribution: dist } })
+  }
+
   // ────────────────────────────────────────────
   // RENDER
   // ────────────────────────────────────────────
@@ -150,7 +187,7 @@ export default function Top10Page() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Leaderboards</h1>
-        <p className="text-gray-400">Weekly Top 10 and Hall of Fame — activation, messaging, live data</p>
+        <p className="text-gray-400">Weekly Top 10 and Hall of Fame: activation, messaging, live data</p>
       </div>
 
       {/* Tab switcher */}
@@ -180,6 +217,13 @@ export default function Top10Page() {
       </div>
 
       {msg && <p className="text-xs text-gray-300">{msg}</p>}
+      {warnings.length > 0 && (
+        <div className="p-3 rounded-lg bg-yellow-400/10 border border-yellow-400/20 text-xs text-yellow-200/90 space-y-1">
+          {warnings.map((w, i) => (
+            <p key={i}>⚠ {w}</p>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center gap-2 text-gray-500 text-sm py-6 justify-center">
@@ -193,6 +237,17 @@ export default function Top10Page() {
           onMsgChange={setWeeklyMsg}
           onToggle={toggleWeekly}
           onSaveMsg={saveWeeklyMsg}
+          potInput={potInput}
+          onPotChange={setPotInput}
+          distInputs={distInputs}
+          onDistChange={(idx, val) => {
+            setDistInputs((prev) => {
+              const next = [...prev]
+              next[idx] = val
+              return next
+            })
+          }}
+          onSavePot={savePot}
           busy={busy}
         />
       ) : (
@@ -220,6 +275,11 @@ function WeeklySection(props: {
   onMsgChange: (s: string) => void
   onToggle: () => void
   onSaveMsg: () => void
+  potInput: string
+  onPotChange: (s: string) => void
+  distInputs: string[]
+  onDistChange: (idx: number, val: string) => void
+  onSavePot: () => void
   busy: boolean
 }) {
   const { cfg, rows, msgInput, onMsgChange, onToggle, onSaveMsg, busy } = props
@@ -244,28 +304,15 @@ function WeeklySection(props: {
         busy={busy}
       />
 
-      {/* Pot & Distribution placeholder (Commit 7b) */}
-      <Card className="bg-gray-900 border-gray-800">
-        <CardHeader>
-          <CardTitle className="text-sm text-white">Stars Pot & Distribution</CardTitle>
-          <CardDescription>Configure weekly pot size and per-rank payout amounts</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            <div className="p-3 rounded-lg bg-gray-800/60">
-              <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Current Pot</p>
-              <p className="text-sm font-bold text-yellow-400">{cfg.current_pot_stars.toLocaleString()} ★</p>
-            </div>
-            <div className="p-3 rounded-lg bg-gray-800/60 col-span-2 sm:col-span-3">
-              <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Distribution (#1 → #10)</p>
-              <p className="text-xs font-mono text-white break-all">{cfg.pot_distribution.join(" · ")}</p>
-            </div>
-          </div>
-          <p className="text-[11px] text-gray-600">
-            Pot and distribution editor coming in the next update. Values shown are live.
-          </p>
-        </CardContent>
-      </Card>
+      <PotEditorCard
+        cfg={cfg}
+        potInput={props.potInput}
+        onPotChange={props.onPotChange}
+        distInputs={props.distInputs}
+        onDistChange={props.onDistChange}
+        onSave={props.onSavePot}
+        busy={busy}
+      />
 
       <LeaderboardTable
         title="Live Weekly Rankings"
@@ -306,7 +353,7 @@ function HallSection(props: {
       <StatusBanner active={cfg.is_active} label="Hall of Fame" />
       <ActivationCard
         title="Activation"
-        description="Flip this on whenever you want users to see the all-time earners list. No payouts involved — purely prestige."
+        description="Flip this on whenever you want users to see the all-time earners list. No payouts involved. Purely prestige."
         isActive={cfg.is_active}
         busy={busy}
         onToggle={onToggle}
@@ -335,6 +382,105 @@ function HallSection(props: {
         }))}
       />
     </div>
+  )
+}
+
+// ────────────────────────────────────────────
+// POT EDITOR CARD
+// ────────────────────────────────────────────
+function PotEditorCard(props: {
+  cfg: WeeklyConfig
+  potInput: string
+  onPotChange: (s: string) => void
+  distInputs: string[]
+  onDistChange: (idx: number, val: string) => void
+  onSave: () => void
+  busy: boolean
+}) {
+  const { cfg, potInput, onPotChange, distInputs, onDistChange, onSave, busy } = props
+
+  const pot = Number(potInput)
+  const distNums = distInputs.map((s) => Number(s))
+  const distSum = distNums.reduce((a, b) => (Number.isFinite(b) ? a + b : a), 0)
+  const potValid = Number.isFinite(pot) && Number.isInteger(pot) && pot >= 0
+  const distValid = distNums.every((n) => Number.isFinite(n) && Number.isInteger(n) && n >= 0)
+  const sumMatches = potValid && distSum === pot
+
+  const savedPot = cfg.current_pot_stars
+  const savedDist = cfg.pot_distribution || []
+  const dirty =
+    pot !== savedPot ||
+    distNums.some((n, i) => n !== (savedDist[i] ?? 0))
+
+  return (
+    <Card className="bg-gray-900 border-gray-800">
+      <CardHeader>
+        <CardTitle className="text-sm text-white">Stars Pot & Distribution</CardTitle>
+        <CardDescription>Total pot and per-rank payout amounts. Sum of ranks should equal total pot.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold block mb-1.5">
+            Total Pot (★)
+          </label>
+          <Input
+            type="number"
+            value={potInput}
+            onChange={(e) => onPotChange(e.target.value)}
+            min={0}
+            max={1000000}
+            step={1}
+            className="bg-gray-800 border-gray-700 text-white max-w-[200px]"
+          />
+        </div>
+
+        <div>
+          <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold block mb-1.5">
+            Per-Rank Distribution (★)
+          </label>
+          <div className="grid grid-cols-5 gap-2">
+            {distInputs.map((val, i) => (
+              <div key={i}>
+                <p className="text-[10px] text-gray-500 mb-1">#{i + 1}</p>
+                <Input
+                  type="number"
+                  value={val}
+                  onChange={(e) => onDistChange(i, e.target.value)}
+                  min={0}
+                  step={1}
+                  className="bg-gray-800 border-gray-700 text-white text-sm"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className={`p-2.5 rounded-lg text-xs font-mono ${
+          sumMatches
+            ? "bg-green-400/10 border border-green-400/20 text-green-200/90"
+            : "bg-yellow-400/10 border border-yellow-400/20 text-yellow-200/90"
+        }`}>
+          Distribution sum: {distSum.toLocaleString()} ★ &nbsp;/&nbsp; Total pot: {potValid ? pot.toLocaleString() : "—"} ★
+          {!sumMatches && (
+            <span className="block mt-0.5 text-[10px] opacity-80">
+              Sum does not match pot. Save is allowed but double-check before activating.
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end">
+          <Button
+            onClick={onSave}
+            disabled={busy || !dirty || !potValid || !distValid}
+            size="sm"
+            className="bg-yellow-400 text-black hover:bg-yellow-300 disabled:opacity-40"
+          >
+            {busy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Save className="w-3 h-3 mr-1" />}
+            Save Pot & Distribution
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
