@@ -4,7 +4,20 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Crown, Trophy, Loader2, AlertTriangle, CheckCircle2, Save, Eye, EyeOff } from "lucide-react"
+import {
+  Crown,
+  Trophy,
+  Loader2,
+  AlertTriangle,
+  CheckCircle2,
+  Save,
+  Eye,
+  EyeOff,
+  ChevronDown,
+  ChevronRight,
+  Coins,
+  Clock,
+} from "lucide-react"
 
 interface HallConfig {
   is_active: boolean
@@ -38,6 +51,28 @@ interface WeeklyRow {
   genesisBadge: boolean
 }
 
+interface PayoutRow {
+  id: number
+  week_start: string
+  rank: number
+  telegram_id: string
+  username: string | null
+  first_name: string | null
+  onus_earned: number
+  stars_paid: number
+  paid_at: string | null
+  paid_by_admin: string | null
+  notes: string | null
+}
+
+interface PayoutWeek {
+  week_start: string
+  rows: PayoutRow[]
+  total_pending: number
+  total_paid: number
+  total_stars_paid: number
+}
+
 type Tab = "weekly" | "hall"
 
 export default function Top10Page() {
@@ -56,6 +91,10 @@ export default function Top10Page() {
   // Leaderboard data
   const [hallRows, setHallRows] = useState<HallRow[]>([])
   const [weeklyRows, setWeeklyRows] = useState<WeeklyRow[]>([])
+
+  // Payout history
+  const [payoutWeeks, setPayoutWeeks] = useState<PayoutWeek[]>([])
+  const [payoutsLoading, setPayoutsLoading] = useState(false)
 
   // UI state
   const [loading, setLoading] = useState(true)
@@ -95,7 +134,21 @@ export default function Top10Page() {
     } catch {} finally { setLoading(false) }
   }
 
-  useEffect(() => { fetchAll() }, [])
+  const fetchPayouts = async () => {
+    setPayoutsLoading(true)
+    try {
+      const res = await fetch("/api/admin/weekly-payouts")
+      if (res.ok) {
+        const data = await res.json()
+        setPayoutWeeks(data.weeks || [])
+      }
+    } catch {} finally { setPayoutsLoading(false) }
+  }
+
+  useEffect(() => {
+    fetchAll()
+    fetchPayouts()
+  }, [])
 
   // ────────────────────────────────────────────
   // ACTIONS
@@ -180,6 +233,39 @@ export default function Top10Page() {
     patchConfig({ weeklyTop10: { current_pot_stars: pot, pot_distribution: dist } })
   }
 
+  const markPaid = async (
+    weekStart: string,
+    rank: number,
+    telegramId: string,
+    starsPaid: number,
+    notes: string
+  ) => {
+    setBusy(true)
+    setMsg("")
+    try {
+      const res = await fetch("/api/admin/weekly-payouts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          week_start: weekStart,
+          rank,
+          telegram_id: telegramId,
+          stars_paid: starsPaid,
+          notes: notes.trim() || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setMsg(`Rank #${rank} for week of ${weekStart} marked paid.`)
+        await fetchPayouts()
+      } else {
+        setMsg(data.error || "Failed to mark paid")
+      }
+    } catch {
+      setMsg("Failed to mark paid")
+    } finally { setBusy(false) }
+  }
+
   // ────────────────────────────────────────────
   // RENDER
   // ────────────────────────────────────────────
@@ -248,6 +334,9 @@ export default function Top10Page() {
             })
           }}
           onSavePot={savePot}
+          payoutWeeks={payoutWeeks}
+          payoutsLoading={payoutsLoading}
+          onMarkPaid={markPaid}
           busy={busy}
         />
       ) : (
@@ -280,6 +369,9 @@ function WeeklySection(props: {
   distInputs: string[]
   onDistChange: (idx: number, val: string) => void
   onSavePot: () => void
+  payoutWeeks: PayoutWeek[]
+  payoutsLoading: boolean
+  onMarkPaid: (weekStart: string, rank: number, telegramId: string, stars: number, notes: string) => void
   busy: boolean
 }) {
   const { cfg, rows, msgInput, onMsgChange, onToggle, onSaveMsg, busy } = props
@@ -328,6 +420,14 @@ function WeeklySection(props: {
           isGenesis: r.genesisBadge,
           holderNumber: null,
         }))}
+      />
+
+      <PayoutsHistoryCard
+        weeks={props.payoutWeeks}
+        loading={props.payoutsLoading}
+        potDistribution={cfg.pot_distribution || []}
+        onMarkPaid={props.onMarkPaid}
+        busy={busy}
       />
     </div>
   )
@@ -481,6 +581,228 @@ function PotEditorCard(props: {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+// ────────────────────────────────────────────
+// PAYOUTS HISTORY CARD
+// ────────────────────────────────────────────
+function PayoutsHistoryCard(props: {
+  weeks: PayoutWeek[]
+  loading: boolean
+  potDistribution: number[]
+  onMarkPaid: (weekStart: string, rank: number, telegramId: string, stars: number, notes: string) => void
+  busy: boolean
+}) {
+  const { weeks, loading, potDistribution, onMarkPaid, busy } = props
+
+  return (
+    <Card className="bg-gray-900 border-gray-800">
+      <CardHeader>
+        <CardTitle className="text-sm text-white flex items-center gap-2">
+          <Coins className="w-4 h-4 text-yellow-400" />
+          Payouts History
+        </CardTitle>
+        <CardDescription>
+          Weekly Top 10 snapshots. Pay via Telegram Stars, then mark paid here.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="flex items-center gap-2 text-gray-500 text-sm py-4 justify-center">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading payouts...
+          </div>
+        ) : weeks.length === 0 ? (
+          <div className="py-8 text-center">
+            <Clock className="w-8 h-8 text-gray-700 mx-auto mb-2" />
+            <p className="text-sm text-gray-500">
+              No payout snapshots yet. The first Monday reset will auto-capture the closing week&apos;s top 10.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {weeks.map((wk, idx) => (
+              <WeekSection
+                key={wk.week_start}
+                week={wk}
+                potDistribution={potDistribution}
+                defaultOpen={idx < 2}
+                onMarkPaid={onMarkPaid}
+                busy={busy}
+              />
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function WeekSection(props: {
+  week: PayoutWeek
+  potDistribution: number[]
+  defaultOpen: boolean
+  onMarkPaid: (weekStart: string, rank: number, telegramId: string, stars: number, notes: string) => void
+  busy: boolean
+}) {
+  const { week, potDistribution, defaultOpen, onMarkPaid, busy } = props
+  const [open, setOpen] = useState(defaultOpen)
+
+  const allPaid = week.total_pending === 0 && week.total_paid > 0
+
+  return (
+    <div className="rounded-lg border border-gray-800 overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between p-3 bg-gray-800/40 hover:bg-gray-800/60 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          {open ? (
+            <ChevronDown className="w-4 h-4 text-gray-400" />
+          ) : (
+            <ChevronRight className="w-4 h-4 text-gray-400" />
+          )}
+          <span className="text-sm font-semibold text-white">Week of {week.week_start}</span>
+        </div>
+        <div className="flex items-center gap-3 text-[11px]">
+          {allPaid ? (
+            <span className="px-2 py-0.5 rounded-full bg-green-400/10 text-green-300 border border-green-400/20">
+              All Paid
+            </span>
+          ) : (
+            <span className="px-2 py-0.5 rounded-full bg-yellow-400/10 text-yellow-300 border border-yellow-400/20">
+              {week.total_pending} pending
+            </span>
+          )}
+          <span className="text-gray-400 font-mono">{week.total_stars_paid.toLocaleString()} ★ paid</span>
+        </div>
+      </button>
+      {open && (
+        <div className="divide-y divide-gray-800">
+          {week.rows.map((row) => (
+            <PayoutRowLine
+              key={row.id}
+              row={row}
+              defaultStars={potDistribution[row.rank - 1] ?? 0}
+              onMarkPaid={onMarkPaid}
+              busy={busy}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PayoutRowLine(props: {
+  row: PayoutRow
+  defaultStars: number
+  onMarkPaid: (weekStart: string, rank: number, telegramId: string, stars: number, notes: string) => void
+  busy: boolean
+}) {
+  const { row, defaultStars, onMarkPaid, busy } = props
+  const isPaid = row.paid_at !== null
+
+  const [editing, setEditing] = useState(false)
+  const [starsInput, setStarsInput] = useState(String(defaultStars))
+  const [notesInput, setNotesInput] = useState("")
+
+  const confirm = () => {
+    const stars = Number(starsInput)
+    if (!Number.isFinite(stars) || !Number.isInteger(stars) || stars < 0) return
+    onMarkPaid(row.week_start, row.rank, row.telegram_id, stars, notesInput)
+    setEditing(false)
+  }
+
+  return (
+    <div className="p-3 hover:bg-gray-800/20">
+      <div className="flex items-center gap-3">
+        <span className="text-xs font-bold text-white w-8">#{row.rank}</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm text-white truncate">
+            {row.first_name || row.username || "—"}
+            {row.username && (
+              <span className="text-[11px] text-gray-500 ml-2">@{row.username}</span>
+            )}
+          </div>
+          <div className="text-[10px] text-gray-500 font-mono">
+            ID {row.telegram_id} &nbsp;·&nbsp; {row.onus_earned.toLocaleString()} $ONUS earned
+          </div>
+        </div>
+
+        {isPaid ? (
+          <div className="text-right">
+            <div className="text-xs text-green-300 font-semibold flex items-center justify-end gap-1">
+              <CheckCircle2 className="w-3 h-3" />
+              {row.stars_paid.toLocaleString()} ★
+            </div>
+            <div className="text-[10px] text-gray-500">
+              {new Date(row.paid_at!).toLocaleDateString()} by {row.paid_by_admin || "?"}
+            </div>
+          </div>
+        ) : !editing ? (
+          <Button
+            onClick={() => {
+              setStarsInput(String(defaultStars))
+              setNotesInput("")
+              setEditing(true)
+            }}
+            disabled={busy}
+            size="sm"
+            className="bg-yellow-400 text-black hover:bg-yellow-300 disabled:opacity-40 text-xs h-7"
+          >
+            Mark Paid
+          </Button>
+        ) : null}
+      </div>
+
+      {editing && (
+        <div className="mt-3 pl-11 space-y-2 border-l-2 border-yellow-400/30">
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold w-16">Stars</label>
+            <Input
+              type="number"
+              value={starsInput}
+              onChange={(e) => setStarsInput(e.target.value)}
+              min={0}
+              step={1}
+              className="bg-gray-800 border-gray-700 text-white text-sm h-8 max-w-[140px]"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold w-16">Notes</label>
+            <Input
+              type="text"
+              value={notesInput}
+              onChange={(e) => setNotesInput(e.target.value)}
+              maxLength={500}
+              placeholder="Optional"
+              className="bg-gray-800 border-gray-700 text-white text-sm h-8 flex-1"
+            />
+          </div>
+          <div className="flex items-center gap-2 justify-end">
+            <Button
+              onClick={() => setEditing(false)}
+              disabled={busy}
+              size="sm"
+              variant="ghost"
+              className="text-gray-400 hover:text-white text-xs h-7"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirm}
+              disabled={busy}
+              size="sm"
+              className="bg-yellow-400 text-black hover:bg-yellow-300 disabled:opacity-40 text-xs h-7"
+            >
+              {busy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+              Confirm
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
