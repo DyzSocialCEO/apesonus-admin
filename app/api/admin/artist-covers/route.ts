@@ -28,6 +28,24 @@ function getPrimaryArtist(artistStr: string): string {
   return artistStr.split(/\s+ft\.?\s+|\s+feat\.?\s+/i)[0].trim()
 }
 
+// Images CDN hostname. Kept local to this module instead of a shared
+// constant because the admin tracks-page uses the same literal and
+// we want changes to be explicit and co-located with the route that
+// writes to the DB. If this ever moves to a shared location, update
+// both this route and app/dashboard/tracks/page.tsx together.
+const IMAGE_CDN = "https://apesonus-images.b-cdn.net"
+
+// Expand a short path like "/images-rekterapy/foo.png" to its full
+// CDN URL. The main app reads the DB cover column as-is with no
+// expansion, so we must store the full URL here. Mirrors the logic
+// in app/dashboard/tracks/page.tsx (expandImageUrl) so paste flows
+// behave identically between the two admin surfaces.
+function expandImageUrl(input: string): string {
+  if (!input) return ""
+  if (input.startsWith("http")) return input
+  return IMAGE_CDN + (input.startsWith("/") ? "" : "/") + input
+}
+
 // ── GET: return per-artist summary of current cover paths ──────
 // For each of the 7 artists, report:
 //   - tracks total
@@ -162,9 +180,14 @@ export async function POST(request: Request) {
       })
     }
 
+    // Expand short paths to full CDN URLs before writing. The DB
+    // invariant is that `cover` always holds a fully-qualified URL.
+    // The main app reads this column as-is with no expansion helper.
+    const finalCoverUrl = expandImageUrl(coverPath)
+
     const { error: writeErr } = await supabase
       .from("tracks")
-      .update({ cover: coverPath })
+      .update({ cover: finalCoverUrl })
       .in("id", targetIds)
     if (writeErr) return NextResponse.json({ error: writeErr.message }, { status: 500 })
 
@@ -178,7 +201,7 @@ export async function POST(request: Request) {
       "artist_covers.bulk_update",
       {
         artist: known.name,
-        coverPath,
+        coverPath: finalCoverUrl,
         trackIds: targetIds,
         updatedCount: targetIds.length,
       },
