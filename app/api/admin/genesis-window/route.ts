@@ -7,51 +7,58 @@ import { logAdminAction } from "@/lib/admin-audit"
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 
+/**
+ * Admin API: Genesis Window status + start/close controls.
+ *
+ * Single source of truth is migration 032's app_settings.genesis_badge_config
+ * row and the genesis_status view. This route is a thin UI adapter that:
+ *   - GET  → returns the current view row in admin-panel shape
+ *   - POST → calls open_genesis_window() or close_genesis_window() SQL fns
+ *
+ * The previous implementation wrote to a separate app_settings.genesis_window
+ * key that the main app never read. That drift has been resolved — all reads
+ * and writes now flow through the 032-era config + functions.
+ */
+
 const WINDOW_DAYS = 45
 
-interface GenesisWindow {
-  started_at: string | null
-  closed: boolean
-}
-
-async function readWindow(supabase: Awaited<ReturnType<typeof createAdminClient>>): Promise<GenesisWindow> {
-  const { data } = await supabase
-    .from("app_settings")
-    .select("value")
-    .eq("key", "genesis_window")
+async function readStatus(supabase: Awaited<ReturnType<typeof createAdminClient>>) {
+  // genesis_status view returns a single row with all race state.
+  const { data: statusRow } = await supabase
+    .from("genesis_status")
+    .select("threshold, max_holders, started_at, closed, is_open, holders_issued, slots_left, days_left")
     .maybeSingle()
 
-  if (!data?.value) return { started_at: null, closed: false }
-  // value column may be jsonb (returns object) or text (returns string)
-  if (typeof data.value === "string") {
-    try { return JSON.parse(data.value) as GenesisWindow } catch { return { started_at: null, closed: false } }
-  }
-  return data.value as GenesisWindow
-}
+  const threshold   = Number(statusRow?.threshold ?? 10000)
+  const maxHolders  = Number(statusRow?.max_holders ?? 100)
+  const startedAt   = statusRow?.started_at ?? null
+  const closed      = statusRow?.closed === true
+  const isOpen      = statusRow?.is_open === true
+  const slotsLeft   = Number(statusRow?.slots_left ?? maxHolders)
+  const daysLeft    = statusRow?.days_left ?? null
+  const issued      = Number(statusRow?.holders_issued ?? 0)
 
-function computeStatus(w: GenesisWindow) {
-  if (!w.started_at) {
-    return {
-      state: "not_started" as const,
-      startedAt: null,
-      endsAt: null,
-      daysRemaining: null,
-      closed: false,
-    }
-  }
-  const start = new Date(w.started_at)
-  const end = new Date(start.getTime() + WINDOW_DAYS * 86400000)
-  const now = new Date()
-  const msLeft = end.getTime() - now.getTime()
-  const daysRemaining = Math.max(0, Math.ceil(msLeft / 86400000))
-  const expired = msLeft <= 0
+  // Derive admin-panel shape from view data.
+  let state: "not_started" | "active" | "expired"
+  if (!startedAt) state = "not_started"
+  else if (isOpen) state = "active"
+  else state = "expired"
+
+  const endsAt = startedAt
+    ? new Date(new Date(startedAt).getTime() + WINDOW_DAYS * 86400000).toISOString()
+    : null
 
   return {
-    state: w.closed || expired ? ("expired" as const) : ("active" as const),
-    startedAt: start.toISOString(),
-    endsAt: end.toISOString(),
-    daysRemaining,
-    closed: w.closed || expired,
+    state,
+    startedAt,
+    endsAt,
+    daysRemaining: daysLeft,
+    closed: closed || state === "expired",
+    windowDays: WINDOW_DAYS,
+    genesisBadgeCount: issued,
+    threshold,
+    maxHolders,
+    slotsLeft,
   }
 }
 
@@ -61,19 +68,8 @@ export async function GET() {
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const supabase = await createAdminClient()
-    const window = await readWindow(supabase)
-
-    // Count current Genesis badges for context
-    const { count } = await supabase
-      .from("users")
-      .select("telegram_id", { count: "exact", head: true })
-      .eq("genesis_badge", true)
-
-    return NextResponse.json({
-      ...computeStatus(window),
-      windowDays: WINDOW_DAYS,
-      genesisBadgeCount: count || 0,
-    })
+    const status = await readStatus(supabase)
+    return NextResponse.json(status)
   } catch {
     return NextResponse.json({ error: "Failed" }, { status: 500 })
   }
@@ -84,7 +80,6 @@ export async function POST(request: Request) {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    // Rate limit — 60/min per IP. Plenty for legitimate admin work.
     const ip = getClientIp(request)
     const { success } = await adminGeneralRatelimit().limit(`gw:${ip}`)
     if (!success) {
@@ -93,50 +88,41 @@ export async function POST(request: Request) {
 
     const { action } = await request.json()
     const supabase = await createAdminClient()
-    const current = await readWindow(supabase)
+    const before = await readStatus(supabase)
 
     if (action === "start") {
-      if (current.started_at) {
+      if (before.startedAt) {
         return NextResponse.json({ error: "Window already started" }, { status: 409 })
       }
-      const next: GenesisWindow = { started_at: new Date().toISOString(), closed: false }
-      const { error } = await supabase
-        .from("app_settings")
-        .upsert(
-          { key: "genesis_window", value: next as any, updated_at: new Date().toISOString() },
-          { onConflict: "key" }
-        )
+
+      // Call the SQL function — records started_at = NOW() + closed = false.
+      const { error } = await supabase.rpc("open_genesis_window")
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-      // Audit log — who started, when.
       await logAdminAction(supabase, request, session.username, "genesis_window.start", {
-        startedAt: next.started_at,
+        startedAt: new Date().toISOString(),
         windowDays: WINDOW_DAYS,
       })
 
-      return NextResponse.json({ success: true, ...computeStatus(next) })
+      const after = await readStatus(supabase)
+      return NextResponse.json({ success: true, ...after })
     }
 
     if (action === "close") {
-      if (!current.started_at) {
+      if (!before.startedAt) {
         return NextResponse.json({ error: "Window has not started" }, { status: 400 })
       }
-      const next: GenesisWindow = { started_at: current.started_at, closed: true }
-      const { error } = await supabase
-        .from("app_settings")
-        .upsert(
-          { key: "genesis_window", value: next as any, updated_at: new Date().toISOString() },
-          { onConflict: "key" }
-        )
+
+      const { error } = await supabase.rpc("close_genesis_window")
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-      // Audit log — who closed it, when.
       await logAdminAction(supabase, request, session.username, "genesis_window.close", {
-        startedAt: current.started_at,
+        startedAt: before.startedAt,
         closedAt: new Date().toISOString(),
       })
 
-      return NextResponse.json({ success: true, ...computeStatus(next) })
+      const after = await readStatus(supabase)
+      return NextResponse.json({ success: true, ...after })
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 })
