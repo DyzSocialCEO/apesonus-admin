@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
-import { assignTier, TIER_MULTIPLIERS } from "@/lib/constants/tiers"
 import { awardOnus } from "@/lib/award-onus"
 
 export const dynamic = "force-dynamic"
@@ -51,154 +50,60 @@ export async function POST(request: Request) {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+    // Rate limit — matches /api/admin/onus hardening so a stolen session
+    // cannot drain the supply via this endpoint either.
+    const ip = getClientIp(request)
+    const { success } = await adminOnusRatelimit().limit(`admin-users:${ip}`)
+    if (!success) {
+      return NextResponse.json(
+        { error: "Rate limit exceeded. This endpoint allows 3 requests per minute." },
+        { status: 429 }
+      )
+    }
+
     const body = await request.json()
-    const { telegramId, action, amount } = body
+    const { telegramId, action, amount, reason } = body
 
     if (!telegramId || !action) {
       return NextResponse.json({ error: "telegramId and action required" }, { status: 400 })
     }
 
     const supabase = await createAdminClient()
+    const actor = session.username || "unknown"
 
     // ────────────────────────────────────────────
-    // GRANT COINS
+    // GRANT COINS — with per-call 1M cap + audit log
     // ────────────────────────────────────────────
     if (action === "grant_coins") {
-      const coinAmount = amount || 100
-      const ok = await awardOnus(supabase, telegramId, coinAmount, "admin_bonus", `admin_${Date.now()}`)
+      const parsedAmount = parseInt(String(amount ?? 100), 10)
+      if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || parsedAmount > 1_000_000) {
+        return NextResponse.json(
+          { error: "Amount must be a positive integer up to 1,000,000" },
+          { status: 400 }
+        )
+      }
+      const reasonTag = `admin_bonus[${actor}]${reason ? `: ${reason}` : ""}`
+      const ok = await awardOnus(supabase, telegramId, parsedAmount, reasonTag, `admin_${Date.now()}`)
       if (!ok) {
-        return NextResponse.json({ error: "Failed to grant ONUS — check if user exists" }, { status: 500 })
+        return NextResponse.json({ error: "Failed to grant ONUS — check if user exists or supply cap reached" }, { status: 500 })
       }
-      return NextResponse.json({ success: true, message: `Granted ${coinAmount} $ONUS` })
-    }
-
-    // ────────────────────────────────────────────
-    // GRANT PREMIUM
-    // ────────────────────────────────────────────
-    if (action === "grant_premium") {
-      // 1. Verify user exists
-      const { data: user, error: userErr } = await supabase
-        .from("users")
-        .select("is_premium, verification_tier")
-        .eq("telegram_id", telegramId)
-        .maybeSingle()
-
-      if (userErr) {
-        return NextResponse.json({ error: `DB lookup failed: ${userErr.message}` }, { status: 500 })
-      }
-      if (!user) {
-        return NextResponse.json({ error: "User not found in database" }, { status: 404 })
-      }
-      if (user.is_premium) {
-        return NextResponse.json({ error: "User is already verified" }, { status: 409 })
-      }
-
-      // 2. Get verification counter to determine tier
-      const { data: counter, error: counterErr } = await supabase
-        .from("verification_counter")
-        .select("genesis_count, early_count, standard_count")
-        .eq("id", 1)
-        .single()
-
-      if (counterErr || !counter) {
-        return NextResponse.json({ error: "Verification counter not found" }, { status: 500 })
-      }
-
-      const totalVerified = counter.genesis_count + counter.early_count + counter.standard_count
-      const tier = assignTier(totalVerified)
-      const multiplier = TIER_MULTIPLIERS[tier as keyof typeof TIER_MULTIPLIERS] || 1
-
-      // 3. Increment the correct counter (legacy — verification_counter is deprecated)
-      const tierStr = tier as string
-      const incrementField =
-        tierStr === "genesis" ? "genesis_count" :
-        tierStr === "early" ? "early_count" : "standard_count"
-
-      const newCount = (counter as any)[incrementField] + 1
-
-      const { error: counterUpdateErr } = await supabase
-        .from("verification_counter")
-        .update({ [incrementField]: newCount })
-        .eq("id", 1)
-
-      if (counterUpdateErr) {
-        return NextResponse.json({ error: `Counter update failed: ${counterUpdateErr.message}` }, { status: 500 })
-      }
-
-      // 4. Update user record
-      const now = new Date()
-      const expiresAt = new Date(now.getTime() + 30 * 86400000) // 30 days
-
-      const { error: userUpdateErr } = await supabase
-        .from("users")
-        .update({
-          is_premium: true,
-          verification_tier: tier,
-          onus_multiplier: multiplier,
-          premium_expires_at: expiresAt.toISOString(),
-        })
-        .eq("telegram_id", telegramId)
-
-      if (userUpdateErr) {
-        return NextResponse.json({ error: `User update failed: ${userUpdateErr.message}` }, { status: 500 })
-      }
-
-      // 5. Create subscription record (non-critical — catch and log)
-      const { error: subErr } = await supabase
-        .from("premium_subscriptions")
-        .insert({
-          telegram_id: telegramId,
-          ton_wallet: null,
-          amount_nano: 0,
-          currency: "ADMIN_GRANT",
-          tx_hash: `admin_grant_${telegramId}_${Date.now()}`,
-          starts_at: now.toISOString(),
-          expires_at: expiresAt.toISOString(),
-          status: "active",
-          verified_at: now.toISOString(),
-        })
-
-      if (subErr) {
-        console.error("Subscription insert failed (non-critical):", subErr.message)
-      }
-
-      // 6. Award activation bonus (non-critical)
-      const activationBonus = multiplier * 100
-      await awardOnus(supabase, telegramId, activationBonus, "premium_activation", `admin_grant_${Date.now()}`)
-
-      const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1)
-      return NextResponse.json({
-        success: true,
-        message: `${tierLabel} granted (${multiplier}×). +${activationBonus} $ONUS bonus. Expires ${expiresAt.toLocaleDateString()}.`,
+      await logAdminAction(supabase, request, actor, "users.grant_coins", {
+        target_telegram_id: telegramId,
+        amount: parsedAmount,
+        reason: reason || null,
       })
+      return NextResponse.json({ success: true, message: `Granted ${parsedAmount} $ONUS` })
     }
 
-    // ────────────────────────────────────────────
-    // REVOKE PREMIUM
-    // ────────────────────────────────────────────
-    if (action === "revoke_premium") {
-      // Set is_premium false, reset onus_multiplier to stop earning at tier rate
-      const { error: revokeErr } = await supabase
-        .from("users")
-        .update({
-          is_premium: false,
-          premium_expires_at: null,
-          onus_multiplier: 0,
-        })
-        .eq("telegram_id", telegramId)
-
-      if (revokeErr) {
-        return NextResponse.json({ error: `Revoke failed: ${revokeErr.message}` }, { status: 500 })
-      }
-
-      // Cancel active subscriptions
-      await supabase
-        .from("premium_subscriptions")
-        .update({ status: "cancelled" })
-        .eq("telegram_id", telegramId)
-        .eq("status", "active")
-
-      return NextResponse.json({ success: true, message: "Premium revoked. Card tier preserved." })
+    // grant_premium and revoke_premium removed on the Founders Pass pivot
+    // (migration 024). verification_counter was dropped and verification_tier
+    // is constrained to ('free','wagmi'). Any lingering admin-UI caller of
+    // those actions now gets a clean 410.
+    if (action === "grant_premium" || action === "revoke_premium") {
+      return NextResponse.json(
+        { error: "Gone. Premium tiers were removed. Use /api/admin/genesis-holders for badge management." },
+        { status: 410 }
+      )
     }
 
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 })
