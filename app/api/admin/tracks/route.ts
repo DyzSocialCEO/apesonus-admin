@@ -153,18 +153,37 @@ export async function PUT(request: Request) {
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const body = await request.json()
-    const { id, ...updates } = body
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid body" }, { status: 400 })
+    }
+    const { id } = body as { id?: number }
     if (!id) return NextResponse.json({ error: "Track ID required" }, { status: 400 })
 
-    // Auto-detect duration if updating audio URL with no duration
+    // Explicit field allowlist. Never spread the request body into .update() —
+    // a stolen admin session could otherwise set arbitrary columns including
+    // play_count (inflate/zero leaderboards) or repoint audio URLs.
+    // play_count, created_at, and id are intentionally excluded. If any of
+    // those ever need manual adjustment, use the Supabase table editor.
+    const updates: Record<string, any> = { updated_at: new Date().toISOString() }
+    const b = body as Record<string, any>
+    if (b.title !== undefined)              updates.title = b.title
+    if (b.artist !== undefined)             updates.artist = b.artist
+    if (b.mood !== undefined)               updates.mood = b.mood
+    if (b.cover !== undefined)              updates.cover = b.cover
+    if (b.audio !== undefined)              updates.audio = b.audio
+    if (b.duration !== undefined)           updates.duration = b.duration
+    if (b.is_instrumental !== undefined)    updates.is_instrumental = Boolean(b.is_instrumental)
+    if (b.soundbath_category !== undefined) updates.soundbath_category = b.soundbath_category
+    if (b.is_active !== undefined)          updates.is_active = Boolean(b.is_active)
+    if (b.is_featured !== undefined)        updates.is_featured = Boolean(b.is_featured)
+    if (b.is_editors_choice !== undefined)  updates.is_editors_choice = Boolean(b.is_editors_choice)
+    if (b.sort_order !== undefined)         updates.sort_order = b.sort_order
+
     if (updates.audio && (!updates.duration || updates.duration === 0)) {
       updates.duration = await detectDuration(updates.audio)
     }
 
     const supabase = await createAdminClient()
-
-    updates.updated_at = new Date().toISOString()
-
     const { data, error } = await supabase
       .from("tracks")
       .update(updates)
