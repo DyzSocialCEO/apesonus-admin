@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
 import { awardOnus } from "@/lib/award-onus"
+import { adminOnusRatelimit, getClientIp } from "@/lib/upstash"
+import { logAdminAction } from "@/lib/admin-audit"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
