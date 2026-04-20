@@ -60,8 +60,22 @@ export async function PUT(request: Request) {
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const body = await request.json()
-    const { id, ...updates } = body
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid body" }, { status: 400 })
+    }
+    const { id } = body as { id?: string | number }
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 })
+
+    // Explicit field allowlist. Columns match the live schema (migration 038).
+    const updates: Record<string, any> = {}
+    const b = body as Record<string, any>
+    if (b.message !== undefined)    updates.message = b.message
+    if (b.type !== undefined)       updates.type = b.type
+    if (b.cta_text !== undefined)   updates.cta_text = b.cta_text || null
+    if (b.cta_link !== undefined)   updates.cta_link = b.cta_link || null
+    if (b.is_active !== undefined)  updates.is_active = Boolean(b.is_active)
+    if (b.bg_color !== undefined)   updates.bg_color = b.bg_color || null
+    if (b.text_color !== undefined) updates.text_color = b.text_color || null
 
     const supabase = await createAdminClient()
     const { data, error } = await supabase
