@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Search, Loader2, User, CheckCircle, Flame, Coins, Crown, XCircle, Shield, RefreshCw } from "lucide-react"
+import { Search, Loader2, User, CheckCircle, Flame, Coins, Crown, RefreshCw } from "lucide-react"
 
 export default function UsersPage() {
   const [users, setUsers] = useState<any[]>([])
@@ -185,34 +185,6 @@ export default function UsersPage() {
                                 : <Coins className="w-3 h-3" />}
                             </button>
 
-                            {/* Grant / Revoke Premium */}
-                            {isPremium ? (
-                              <button
-                                onClick={() => {
-                                  if (confirm(`Revoke premium from ${user.first_name || user.telegram_id}? Card tier will be preserved.`)) {
-                                    handleAction(user.telegram_id, "revoke_premium")
-                                  }
-                                }}
-                                disabled={acting !== null}
-                                className="px-2 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 disabled:opacity-50"
-                                title="Revoke premium"
-                              >
-                                {acting === `${user.telegram_id}-revoke_premium`
-                                  ? <Loader2 className="w-3 h-3 animate-spin" />
-                                  : <XCircle className="w-3 h-3" />}
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleAction(user.telegram_id, "grant_premium")}
-                                disabled={acting !== null}
-                                className="px-2 py-1.5 rounded-lg text-[10px] font-medium bg-green-500/10 text-green-400 hover:bg-green-500/20 border border-green-500/20 disabled:opacity-50"
-                                title="Grant free premium"
-                              >
-                                {acting === `${user.telegram_id}-grant_premium`
-                                  ? <Loader2 className="w-3 h-3 animate-spin" />
-                                  : <Shield className="w-3 h-3" />}
-                              </button>
-                            )}
                           </div>
                         </td>
                       </tr>
