@@ -74,7 +74,15 @@ export async function GET() {
         premiumUsers,
         totalUsers: allUsers?.length || 0,
         dailyBurn,
-        estimatedDaysLeft: dailyBurn > 0 ? Math.round(remaining / dailyBurn) : null,
+        estimatedDaysLeft: (() => {
+          // Sanity cap: with tiny dailyBurn (pre-launch), the projection
+          // produces nonsense like 88,888,884 days. Below ~10K days
+          // (~27 years) the number is meaningful for capacity planning;
+          // above that, return null so the UI shows "∞" instead.
+          if (dailyBurn <= 0) return null
+          const days = Math.round(remaining / dailyBurn)
+          return days > 10_000 ? null : days
+        })(),
       },
     })
   } catch (error) {
