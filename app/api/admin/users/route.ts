@@ -103,7 +103,7 @@ export async function POST(request: Request) {
     // those actions now gets a clean 410.
     if (action === "grant_premium" || action === "revoke_premium") {
       return NextResponse.json(
-        { error: "Gone. Premium tiers were removed. Use /api/admin/genesis-holders for badge management." },
+        { error: "Gone. Premium tiers and Genesis Badge were removed. The app is fully free." },
         { status: 410 }
       )
     }
