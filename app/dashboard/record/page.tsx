@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { createAdminClient } from "@/lib/supabase"
 import { Card, CardContent } from "@/components/ui/card"
-import { Disc3, Users, Vote, ClipboardList, ArrowRight } from "lucide-react"
+import { Disc3, Users, Vote, ClipboardList, ArrowRight, Music } from "lucide-react"
 import { formatNumber } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
@@ -27,6 +27,7 @@ interface RecordCounts {
     total: number
   }
   visitingArtists: number
+  recordTracks: number
   voteWindows: {
     open: number
     total: number
@@ -44,6 +45,7 @@ async function getCounts(): Promise<RecordCounts> {
   const [
     entriesRes,
     artistsRes,
+    tracksRes,
     windowsOpenRes,
     windowsTotalRes,
     nomsPendingRes,
@@ -57,6 +59,10 @@ async function getCounts(): Promise<RecordCounts> {
     supabase
       .from("visiting_artists")
       .select("id", { count: "exact", head: true }),
+    supabase
+      .from("tracks")
+      .select("id", { count: "exact", head: true })
+      .eq("is_record_only", true),
     supabase
       .from("vote_windows")
       .select("id", { count: "exact", head: true })
@@ -95,6 +101,7 @@ async function getCounts(): Promise<RecordCounts> {
       total: entriesRes.count ?? 0,
     },
     visitingArtists: artistsRes.count ?? 0,
+    recordTracks: tracksRes.count ?? 0,
     voteWindows: {
       open: windowsOpenRes.count ?? 0,
       total: windowsTotalRes.count ?? 0,
@@ -159,6 +166,16 @@ export default async function RecordLandingPage() {
             description="One-off characters who perform a single Record entry."
             rows={[
               { label: "Total on roster", value: counts.visitingArtists },
+            ]}
+          />
+
+          <TileLink
+            href="/dashboard/record/tracks"
+            icon={<Music className="w-5 h-5 text-pink-400" />}
+            title="Record Tracks"
+            description="Upload one-off tracks with free-text artist names. Auto-hidden from the main catalog."
+            rows={[
+              { label: "Record-only tracks", value: counts.recordTracks },
             ]}
           />
 

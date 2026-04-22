@@ -134,6 +134,7 @@ export async function POST(request: Request) {
         is_featured: body.is_featured || false,
         is_editors_choice: body.is_editors_choice || false,
         sort_order: body.sort_order || 0,
+        is_record_only: body.is_record_only === true,
       })
       .select()
       .single()
@@ -178,6 +179,7 @@ export async function PUT(request: Request) {
     if (b.is_featured !== undefined)        updates.is_featured = Boolean(b.is_featured)
     if (b.is_editors_choice !== undefined)  updates.is_editors_choice = Boolean(b.is_editors_choice)
     if (b.sort_order !== undefined)         updates.sort_order = b.sort_order
+    if (b.is_record_only !== undefined)     updates.is_record_only = Boolean(b.is_record_only)
 
     if (updates.audio && (!updates.duration || updates.duration === 0)) {
       updates.duration = await detectDuration(updates.audio)
