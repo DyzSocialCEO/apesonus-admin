@@ -42,6 +42,8 @@ const SOURCES = [
   { value: "audio_provider",       label: "Audio provider"    },
   { value: "payment",              label: "Payment"           },
   { value: "api",                  label: "API"               },
+  { value: "wallet",               label: "Wallet"            },
+  { value: "auth",                 label: "Auth"              },
   { value: "other",                label: "Other"             },
 ]
 

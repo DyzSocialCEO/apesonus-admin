@@ -31,6 +31,8 @@ const VALID_SOURCES = new Set([
   "audio_provider",
   "payment",
   "api",
+  "wallet",
+  "auth",
   "other",
 ])
 
