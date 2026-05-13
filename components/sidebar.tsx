@@ -5,25 +5,26 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
   Activity, Megaphone, Coins, TrendingUp, Flame, Disc3,
-  ScrollText, UserCircle,
+  ScrollText, UserCircle, CreditCard,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
 const navigation = [
-  { name: "Dashboard",     href: "/dashboard",            icon: LayoutDashboard },
-  { name: "Tracks",        href: "/dashboard/tracks",     icon: Music           },
-  { name: "Artists",       href: "/dashboard/artists",    icon: UserCircle      },
-  { name: "The Record",    href: "/dashboard/record",     icon: Disc3          },
-  { name: "Chart",         href: "/dashboard/chart",      icon: TrendingUp      },
-  { name: "Culture Pulse", href: "/dashboard/pulse",      icon: Activity        },
-  { name: "Streaks",       href: "/dashboard/streaks",    icon: Flame           },
-  { name: "Users",         href: "/dashboard/users",      icon: Users           },
-  { name: "Banners",       href: "/dashboard/banners",    icon: Megaphone       },
-  { name: "$ONUS",         href: "/dashboard/onus",       icon: Coins           },
-  { name: "Analytics",     href: "/dashboard/analytics",  icon: BarChart3       },
-  { name: "Logs",          href: "/dashboard/logs",       icon: ScrollText      },
-  { name: "Settings",      href: "/dashboard/settings",   icon: Settings        },
+  { name: "Dashboard",     href: "/dashboard",              icon: LayoutDashboard },
+  { name: "Tracks",        href: "/dashboard/tracks",       icon: Music           },
+  { name: "Artists",       href: "/dashboard/artists",      icon: UserCircle      },
+  { name: "The Record",    href: "/dashboard/record",       icon: Disc3           },
+  { name: "Chart",         href: "/dashboard/chart",        icon: TrendingUp      },
+  { name: "Culture Pulse", href: "/dashboard/pulse",        icon: Activity        },
+  { name: "Streaks",       href: "/dashboard/streaks",      icon: Flame           },
+  { name: "Subscriptions", href: "/dashboard/subscriptions",icon: CreditCard      },
+  { name: "Users",         href: "/dashboard/users",        icon: Users           },
+  { name: "Banners",       href: "/dashboard/banners",      icon: Megaphone       },
+  { name: "$ONUS",         href: "/dashboard/onus",         icon: Coins           },
+  { name: "Analytics",     href: "/dashboard/analytics",    icon: BarChart3       },
+  { name: "Logs",          href: "/dashboard/logs",         icon: ScrollText      },
+  { name: "Settings",      href: "/dashboard/settings",     icon: Settings        },
 ]
 
 export function Sidebar() {
