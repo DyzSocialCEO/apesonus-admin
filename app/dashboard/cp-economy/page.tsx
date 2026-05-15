@@ -83,7 +83,7 @@ export default function CpEconomyPage() {
     try {
       const r = await fetch("/api/admin/settings", {
         method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
-        body: JSON.stringify({ settings: { genesis_window_starts_at: now } }),
+        body: JSON.stringify({ updates: { genesis_window_starts_at: now } }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? "Save failed")
@@ -102,7 +102,7 @@ export default function CpEconomyPage() {
       }
       const r = await fetch("/api/admin/settings", {
         method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
-        body: JSON.stringify({ settings: delta }),
+        body: JSON.stringify({ updates: delta }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? "Save failed")
