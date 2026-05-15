@@ -19,6 +19,7 @@ const navigation = [
   { name: "Culture Pulse", href: "/dashboard/pulse",        icon: Activity        },
   { name: "Streaks",       href: "/dashboard/streaks",      icon: Flame           },
   { name: "Subscriptions", href: "/dashboard/subscriptions",icon: CreditCard      },
+  { name: "CP Economy",    href: "/dashboard/cp-economy",   icon: Coins           },
   { name: "Users",         href: "/dashboard/users",        icon: Users           },
   { name: "Banners",       href: "/dashboard/banners",      icon: Megaphone       },
   { name: "$ONUS",         href: "/dashboard/onus",         icon: Coins           },

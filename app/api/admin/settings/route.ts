@@ -18,6 +18,7 @@ export const runtime = "nodejs"
  * here (or that doesn't belong here).
  */
 const ALLOWED_KEYS = new Set([
+  // Legacy subscription keys — kept for backwards compatibility
   "subscription_price_monthly_usd",
   "subscription_price_yearly_usd",
   "subscription_treasury_wallet",
@@ -26,6 +27,19 @@ const ALLOWED_KEYS = new Set([
   "sol_usd_manual_pin",
   "yearly_subscriber_cp_bonus",
   "admin_test_mode",
+  // Phase 3 — CP economy + Helius wallet-pay
+  "genesis_window_starts_at",
+  "genesis_window_duration_days",
+  "helius_treasury_wallet",
+  "helius_webhook_secret",
+  "cp_pack_topup_cents",
+  "cp_pack_bundle_cents",
+  "cp_pack_whale_cents",
+  "cp_pack_topup_amount",
+  "cp_pack_bundle_amount",
+  "cp_pack_whale_amount",
+  "daily_free_cp_grant",
+  "ledger_day_threshold",
 ])
 
 function looksLikeSolanaAddress(s: string): boolean {
@@ -64,6 +78,37 @@ function validate(key: string, value: string): string | null {
       if (!["true", "false"].includes(value)) {
         return "admin_test_mode must be 'true' or 'false'"
       }
+      return null
+    }
+    // ── Phase 3 — CP economy + Helius ─────────────────────────────────
+    case "genesis_window_starts_at": {
+      if (value === "") return null
+      const d = new Date(value)
+      if (Number.isNaN(d.getTime())) return "genesis_window_starts_at must be a valid datetime or empty"
+      return null
+    }
+    case "genesis_window_duration_days":
+    case "cp_pack_topup_cents":
+    case "cp_pack_bundle_cents":
+    case "cp_pack_whale_cents":
+    case "cp_pack_topup_amount":
+    case "cp_pack_bundle_amount":
+    case "cp_pack_whale_amount":
+    case "daily_free_cp_grant":
+    case "ledger_day_threshold": {
+      const n = Number(value)
+      if (!Number.isInteger(n) || n < 0) return `${key} must be a non-negative integer`
+      return null
+    }
+    case "helius_treasury_wallet": {
+      if (value === "") return null
+      return looksLikeSolanaAddress(value)
+        ? null
+        : "helius_treasury_wallet must be a valid Solana address (32-44 base58 chars)"
+    }
+    case "helius_webhook_secret": {
+      if (value === "") return null
+      if (value.length < 16) return "helius_webhook_secret must be at least 16 chars"
       return null
     }
     default:
