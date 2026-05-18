@@ -30,6 +30,7 @@ const ALLOWED_KEYS = new Set([
   // Phase 3 — CP economy + Helius wallet-pay
   "genesis_window_starts_at",
   "genesis_window_duration_days",
+  "genesis_window_duration_hours",
   "helius_treasury_wallet",
   "helius_webhook_secret",
   "cp_pack_topup_cents",
@@ -88,6 +89,7 @@ function validate(key: string, value: string): string | null {
       return null
     }
     case "genesis_window_duration_days":
+    case "genesis_window_duration_hours":
     case "cp_pack_topup_cents":
     case "cp_pack_bundle_cents":
     case "cp_pack_whale_cents":
