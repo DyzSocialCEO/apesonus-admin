@@ -86,147 +86,85 @@ export default function TracksPage() {
   const [filterArtist, setFilterArtist] = useState<string>("all")
 
   const durationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const audioElRef = useRef<HTMLAudioElement | null>(null)
+  // Duration detection now happens SERVER-SIDE via
+  // /api/admin/fix-duration (reliable for every upload; the old
+  // browser <audio> method failed with SRC_NOT_SUPPORTED on signed
+  // CDN URLs). batchFixDurations / fixSingleTrackDuration call it.
 
-  // Returns the duration in seconds, or 0 plus a reason string so the
-  // batch fix can report WHY a specific track failed instead of a
-  // silent "failed".
-  const detectSingleDuration = (signedUrl: string): Promise<{ dur: number; reason: string }> => {
-    return new Promise((resolve) => {
-      const audio = new Audio()
-      audio.preload = "metadata"
-      const timeout = setTimeout(() => {
-        audio.src = ""
-        resolve({ dur: 0, reason: "timeout: audio metadata did not load in 15s (CDN slow / unreachable URL)" })
-      }, 15000)
-      audio.onloadedmetadata = () => {
-        clearTimeout(timeout)
-        const d = audio.duration
-        if (d && isFinite(d) && d > 0) {
-          audio.src = ""
-          resolve({ dur: Math.round(d), reason: "" })
-        } else {
-          audio.src = ""
-          resolve({ dur: 0, reason: `metadata loaded but duration invalid (got: ${String(d)})` })
-        }
-      }
-      audio.onerror = () => {
-        clearTimeout(timeout)
-        const err = audio.error
-        const codes: Record<number, string> = {
-          1: "ABORTED", 2: "NETWORK (URL unreachable / 403 / CORS)",
-          3: "DECODE (file corrupt or not real audio)",
-          4: "SRC_NOT_SUPPORTED (wrong format/extension, or bad URL)",
-        }
-        audio.src = ""
-        resolve({ dur: 0, reason: `audio load error: ${err ? codes[err.code] || `code ${err.code}` : "unknown"}` })
-      }
-      audio.src = signedUrl
-    })
-  }
 
   const batchFixDurations = async () => {
     const broken = tracks.filter(t => (!t.duration || t.duration === 0) && t.audio)
     if (broken.length === 0) { setMsg("All tracks already have durations!"); return }
-    setBatchFixing(true); setBatchProgress(`Fixing 0/${broken.length}...`)
-    let fixed = 0, failed = 0
-    const failures: string[] = []
-    for (let i = 0; i < broken.length; i++) {
-      const track = broken[i]
-      setBatchProgress(`Fixing ${i + 1}/${broken.length}: ${track.title}...`)
-      try {
-        const signRes = await fetch("/api/admin/detect-duration", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ audioUrl: track.audio }),
-        })
-        if (!signRes.ok) {
-          let body = ""
-          try { body = JSON.stringify(await signRes.json()) } catch {}
-          failures.push(`"${track.title}": sign step failed (HTTP ${signRes.status}) ${body} | stored audio="${track.audio}"`)
-          failed++; continue
-        }
-        const { signedUrl } = await signRes.json()
-        const { dur, reason } = await detectSingleDuration(signedUrl)
-        if (dur <= 0) {
-          failures.push(`"${track.title}": ${reason} | url=${String(signedUrl).slice(0, 90)}…`)
-          failed++; continue
-        }
-        const saveRes = await fetch("/api/admin/tracks", {
-          method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: track.id, duration: dur }),
-        })
-        if (saveRes.ok) { fixed++ }
-        else {
-          let body = ""
-          try { body = JSON.stringify(await saveRes.json()) } catch {}
-          failures.push(`"${track.title}": save step failed (HTTP ${saveRes.status}) ${body}`)
-          failed++
-        }
-      } catch (e) {
-        failures.push(`"${track.title}": exception ${e instanceof Error ? e.message : String(e)}`)
-        failed++
+    setBatchFixing(true); setBatchProgress(`Detecting durations server-side...`)
+    try {
+      // Server-side detection: reliable for every upload (no browser
+      // <audio> element, which kept failing with SRC_NOT_SUPPORTED).
+      const res = await fetch("/api/admin/fix-duration", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      })
+      const data = await res.json()
+      setBatchFixing(false); setBatchProgress("")
+      await fetchTracks()
+      if (!res.ok) {
+        setMsg(`Duration fix failed: ${data.error || res.status}`)
+        return
       }
-      await new Promise(r => setTimeout(r, 300))
-    }
-    setBatchFixing(false); setBatchProgress("")
-    await fetchTracks()
-    if (failed > 0) {
-      setMsg(`Duration fix: ${fixed} fixed, ${failed} failed. REASONS — ${failures.join("  ||  ")}`)
-    } else {
-      setMsg(`Duration fix complete: ${fixed} fixed, 0 failed out of ${broken.length}`)
+      const fails = (data.results || []).filter((r: { ok: boolean }) => !r.ok)
+      if (data.failed > 0) {
+        const reasons = fails
+          .map((r: { title: string; reason: string }) => `"${r.title}": ${r.reason}`)
+          .join("  ||  ")
+        setMsg(`Duration fix: ${data.fixed} fixed, ${data.failed} failed of ${data.total}. REASONS — ${reasons}`)
+      } else {
+        setMsg(`Duration fix complete: ${data.fixed} fixed, 0 failed out of ${data.total}`)
+      }
+    } catch (e) {
+      setBatchFixing(false); setBatchProgress("")
+      setMsg(`Duration fix error: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
   const fixSingleTrackDuration = async (track: Track) => {
     try {
-      const signRes = await fetch("/api/admin/detect-duration", {
+      const res = await fetch("/api/admin/fix-duration", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ audioUrl: track.audio }),
+        body: JSON.stringify({ trackId: track.id }),
       })
-      if (!signRes.ok) { setMsg(`Failed to sign URL for "${track.title}"`); return }
-      const { signedUrl } = await signRes.json()
-      const { dur, reason } = await detectSingleDuration(signedUrl)
-      if (dur <= 0) { setMsg(`Could not detect duration for "${track.title}": ${reason}`); return }
-      await fetch("/api/admin/tracks", {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: track.id, duration: dur }),
-      })
-      await fetchTracks()
-      setMsg(`Fixed "${track.title}": ${Math.floor(dur / 60)}:${(dur % 60).toString().padStart(2, "0")}`)
-    } catch { setMsg(`Failed to fix "${track.title}"`) }
+      const data = await res.json()
+      if (!res.ok) { setMsg(`Failed for "${track.title}": ${data.error || res.status}`); return }
+      const r = (data.results || [])[0]
+      if (r && r.ok) {
+        await fetchTracks()
+        setMsg(`Fixed "${track.title}": ${Math.floor(r.duration / 60)}:${(r.duration % 60).toString().padStart(2, "0")}`)
+      } else {
+        setMsg(`Could not detect duration for "${track.title}": ${r ? r.reason : "unknown"}`)
+      }
+    } catch (e) { setMsg(`Failed to fix "${track.title}": ${e instanceof Error ? e.message : String(e)}`) }
   }
 
   const detectDuration = (rawUrl: string) => {
     if (durationTimerRef.current) clearTimeout(durationTimerRef.current)
-    if (audioElRef.current) { audioElRef.current.src = ""; audioElRef.current = null }
     if (!rawUrl || !rawUrl.startsWith("http")) return
     durationTimerRef.current = setTimeout(async () => {
       setDetectingDuration(true)
       try {
-        const res = await fetch("/api/admin/detect-duration", {
+        // Server-side detection (reliable for every upload). No
+        // browser <audio> element, which failed with SRC_NOT_SUPPORTED.
+        const res = await fetch("/api/admin/fix-duration", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ audioUrl: rawUrl }),
         })
-        if (!res.ok) throw new Error("Sign failed")
-        const { signedUrl } = await res.json()
-        const audio = new Audio()
-        audioElRef.current = audio; audio.preload = "metadata"
-        await new Promise<void>((resolve, reject) => {
-          audio.onloadedmetadata = () => {
-            if (audio.duration && isFinite(audio.duration)) {
-              setEditTrack(prev => prev ? { ...prev, duration: Math.round(audio.duration) } : prev)
-            }
-            resolve()
-          }
-          audio.onerror = () => reject(new Error("Audio load failed"))
-          setTimeout(() => reject(new Error("Timeout")), 8000)
-          audio.src = signedUrl
-        })
+        const data = await res.json()
+        if (data.ok && data.duration > 0) {
+          setEditTrack(prev => prev ? { ...prev, duration: Math.round(data.duration) } : prev)
+        } else {
+          console.warn("[Duration] Auto-detect failed:", data.reason)
+        }
       } catch (err) {
         console.warn("[Duration] Auto-detect failed:", err)
       } finally {
         setDetectingDuration(false)
-        if (audioElRef.current) { audioElRef.current.src = ""; audioElRef.current = null }
       }
     }, 800)
   }
