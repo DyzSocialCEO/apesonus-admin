@@ -88,17 +88,39 @@ export default function TracksPage() {
   const durationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const audioElRef = useRef<HTMLAudioElement | null>(null)
 
-  const detectSingleDuration = (signedUrl: string): Promise<number> => {
+  // Returns the duration in seconds, or 0 plus a reason string so the
+  // batch fix can report WHY a specific track failed instead of a
+  // silent "failed".
+  const detectSingleDuration = (signedUrl: string): Promise<{ dur: number; reason: string }> => {
     return new Promise((resolve) => {
       const audio = new Audio()
       audio.preload = "metadata"
-      const timeout = setTimeout(() => { audio.src = ""; resolve(0) }, 10000)
+      const timeout = setTimeout(() => {
+        audio.src = ""
+        resolve({ dur: 0, reason: "timeout: audio metadata did not load in 15s (CDN slow / unreachable URL)" })
+      }, 15000)
       audio.onloadedmetadata = () => {
         clearTimeout(timeout)
-        const dur = audio.duration && isFinite(audio.duration) ? Math.round(audio.duration) : 0
-        audio.src = ""; resolve(dur)
+        const d = audio.duration
+        if (d && isFinite(d) && d > 0) {
+          audio.src = ""
+          resolve({ dur: Math.round(d), reason: "" })
+        } else {
+          audio.src = ""
+          resolve({ dur: 0, reason: `metadata loaded but duration invalid (got: ${String(d)})` })
+        }
       }
-      audio.onerror = () => { clearTimeout(timeout); audio.src = ""; resolve(0) }
+      audio.onerror = () => {
+        clearTimeout(timeout)
+        const err = audio.error
+        const codes: Record<number, string> = {
+          1: "ABORTED", 2: "NETWORK (URL unreachable / 403 / CORS)",
+          3: "DECODE (file corrupt or not real audio)",
+          4: "SRC_NOT_SUPPORTED (wrong format/extension, or bad URL)",
+        }
+        audio.src = ""
+        resolve({ dur: 0, reason: `audio load error: ${err ? codes[err.code] || `code ${err.code}` : "unknown"}` })
+      }
       audio.src = signedUrl
     })
   }
@@ -108,6 +130,7 @@ export default function TracksPage() {
     if (broken.length === 0) { setMsg("All tracks already have durations!"); return }
     setBatchFixing(true); setBatchProgress(`Fixing 0/${broken.length}...`)
     let fixed = 0, failed = 0
+    const failures: string[] = []
     for (let i = 0; i < broken.length; i++) {
       const track = broken[i]
       setBatchProgress(`Fixing ${i + 1}/${broken.length}: ${track.title}...`)
@@ -116,21 +139,42 @@ export default function TracksPage() {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ audioUrl: track.audio }),
         })
-        if (!signRes.ok) { failed++; continue }
+        if (!signRes.ok) {
+          let body = ""
+          try { body = JSON.stringify(await signRes.json()) } catch {}
+          failures.push(`"${track.title}": sign step failed (HTTP ${signRes.status}) ${body} | stored audio="${track.audio}"`)
+          failed++; continue
+        }
         const { signedUrl } = await signRes.json()
-        const duration = await detectSingleDuration(signedUrl)
-        if (duration <= 0) { failed++; continue }
+        const { dur, reason } = await detectSingleDuration(signedUrl)
+        if (dur <= 0) {
+          failures.push(`"${track.title}": ${reason} | url=${String(signedUrl).slice(0, 90)}…`)
+          failed++; continue
+        }
         const saveRes = await fetch("/api/admin/tracks", {
           method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: track.id, duration }),
+          body: JSON.stringify({ id: track.id, duration: dur }),
         })
-        if (saveRes.ok) fixed++; else failed++
-      } catch { failed++ }
+        if (saveRes.ok) { fixed++ }
+        else {
+          let body = ""
+          try { body = JSON.stringify(await saveRes.json()) } catch {}
+          failures.push(`"${track.title}": save step failed (HTTP ${saveRes.status}) ${body}`)
+          failed++
+        }
+      } catch (e) {
+        failures.push(`"${track.title}": exception ${e instanceof Error ? e.message : String(e)}`)
+        failed++
+      }
       await new Promise(r => setTimeout(r, 300))
     }
     setBatchFixing(false); setBatchProgress("")
     await fetchTracks()
-    setMsg(`Duration fix complete: ${fixed} fixed, ${failed} failed out of ${broken.length}`)
+    if (failed > 0) {
+      setMsg(`Duration fix: ${fixed} fixed, ${failed} failed. REASONS — ${failures.join("  ||  ")}`)
+    } else {
+      setMsg(`Duration fix complete: ${fixed} fixed, 0 failed out of ${broken.length}`)
+    }
   }
 
   const fixSingleTrackDuration = async (track: Track) => {
@@ -141,14 +185,14 @@ export default function TracksPage() {
       })
       if (!signRes.ok) { setMsg(`Failed to sign URL for "${track.title}"`); return }
       const { signedUrl } = await signRes.json()
-      const duration = await detectSingleDuration(signedUrl)
-      if (duration <= 0) { setMsg(`Could not detect duration for "${track.title}"`); return }
+      const { dur, reason } = await detectSingleDuration(signedUrl)
+      if (dur <= 0) { setMsg(`Could not detect duration for "${track.title}": ${reason}`); return }
       await fetch("/api/admin/tracks", {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: track.id, duration }),
+        body: JSON.stringify({ id: track.id, duration: dur }),
       })
       await fetchTracks()
-      setMsg(`Fixed "${track.title}": ${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, "0")}`)
+      setMsg(`Fixed "${track.title}": ${Math.floor(dur / 60)}:${(dur % 60).toString().padStart(2, "0")}`)
     } catch { setMsg(`Failed to fix "${track.title}"`) }
   }
 
