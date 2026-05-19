@@ -16,6 +16,23 @@ export interface DurationResult {
   reason: string
 }
 
+// Bunny's pull zone accepts the PWA's browser playback requests but
+// 403s a bare server-side fetch (no Referer / no browser UA). We send
+// headers that match a legitimate media request so the duration probe
+// is treated the same as playback. The Referer host is the public app
+// origin; override with DURATION_FETCH_REFERER if your zone expects a
+// specific allowed referrer.
+const FETCH_HEADERS: Record<string, string> = {
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+  "Referer":
+    process.env.DURATION_FETCH_REFERER ||
+    process.env.MAIN_APP_URL ||
+    "https://apesonus-pwa-preview.up.railway.app/",
+  "Accept": "audio/mp4,audio/*;q=0.9,*/*;q=0.5",
+}
+
 export async function detectDurationServer(audioUrl: string): Promise<DurationResult> {
   let signed: string
   try {
@@ -31,9 +48,9 @@ export async function detectDurationServer(audioUrl: string): Promise<DurationRe
     if (dur !== null && dur > 0) return { duration: Math.round(dur), reason: "" }
 
     // 2. Last 128KB — non-faststart files keep moov at the end.
-    const head = await fetch(signed, { method: "HEAD" })
+    const head = await fetch(signed, { method: "HEAD", headers: FETCH_HEADERS })
     if (!head.ok) {
-      return { duration: 0, reason: `CDN HEAD ${head.status} (file missing or token rejected)` }
+      return { duration: 0, reason: `CDN HEAD ${head.status} (token rejected or referrer blocked by Bunny)` }
     }
     const len = parseInt(head.headers.get("content-length") || "0")
     if (len > 65536) {
@@ -44,7 +61,7 @@ export async function detectDurationServer(audioUrl: string): Promise<DurationRe
 
     // 3. Whole file if reasonably small.
     if (len > 0 && len < 25 * 1024 * 1024) {
-      const r = await fetch(signed)
+      const r = await fetch(signed, { headers: FETCH_HEADERS })
       if (!r.ok) return { duration: 0, reason: `CDN GET ${r.status}` }
       buf = new Uint8Array(await r.arrayBuffer())
       dur = parseMoov(buf)
@@ -63,7 +80,7 @@ export async function detectDurationServer(audioUrl: string): Promise<DurationRe
 }
 
 async function fetchRange(url: string, s: number, e: number): Promise<Uint8Array> {
-  const r = await fetch(url, { headers: { Range: `bytes=${s}-${e}` } })
+  const r = await fetch(url, { headers: { ...FETCH_HEADERS, Range: `bytes=${s}-${e}` } })
   return new Uint8Array(await r.arrayBuffer())
 }
 
