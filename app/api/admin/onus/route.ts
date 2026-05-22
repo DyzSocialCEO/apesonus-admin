@@ -16,10 +16,12 @@ export async function GET() {
 
     const supabase = await createAdminClient()
 
-    // Get ALL users with ONUS (no limit — need real total)
+    // Get ALL users with ONUS (no limit — need real total).
+    // Live columns: id (UUID), display_name, email, total_onus,
+    // premium_status (enum, not bool), verification_tier.
     const { data: allUsers } = await supabase
       .from("users")
-      .select("telegram_id, username, first_name, total_onus, is_premium, verification_tier")
+      .select("id, display_name, email, avatar_url, total_onus, premium_status, verification_tier")
       .order("total_onus", { ascending: false })
 
     // Calculate real total distributed
@@ -30,7 +32,7 @@ export async function GET() {
       for (const u of allUsers) {
         totalDistributed += (u.total_onus || 0)
         if ((u.total_onus || 0) > 0) usersWithPoints++
-        if (u.is_premium) premiumUsers++
+        if (u.premium_status === "active") premiumUsers++
       }
     }
 

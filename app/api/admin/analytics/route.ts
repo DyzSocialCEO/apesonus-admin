@@ -15,12 +15,24 @@ export async function GET() {
     const { count: totalUsers } = await supabase.from("users").select("*", { count: "exact", head: true })
 
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString()
-    const { count: activeUsers } = await supabase.from("users").select("*", { count: "exact", head: true }).gte("last_played_at", sevenDaysAgo)
+
+    // Active (7d) = distinct user_ids in play_history over the window.
+    // Previously read users.last_played_at which is no longer written.
+    const { data: recentPlays } = await supabase
+      .from("play_history")
+      .select("user_id")
+      .gte("played_at", sevenDaysAgo)
+    const activeUsers = recentPlays
+      ? new Set(recentPlays.map((p) => p.user_id)).size
+      : 0
 
     const { count: newUsers } = await supabase.from("users").select("*", { count: "exact", head: true }).gte("created_at", sevenDaysAgo)
 
-    const { data: playData } = await supabase.from("users").select("tracks_played")
-    const totalPlays = playData?.reduce((sum, u) => sum + (u.tracks_played || 0), 0) || 0
+    // Total plays = count of play_history rows.
+    // Previously summed users.tracks_played which is no longer written.
+    const { count: totalPlays } = await supabase
+      .from("play_history")
+      .select("*", { count: "exact", head: true })
 
     const { count: totalTracks } = await supabase.from("tracks").select("*", { count: "exact", head: true }).eq("is_active", true)
 
@@ -45,9 +57,9 @@ export async function GET() {
 
     return NextResponse.json({
       totalUsers: totalUsers || 0,
-      activeUsers: activeUsers || 0,
+      activeUsers,
       newUsers: newUsers || 0,
-      totalPlays,
+      totalPlays: totalPlays || 0,
       totalTracks: totalTracks || 0,
       todayVotes: todayVotes || 0,
       activeStreaks: activeStreaks || 0,

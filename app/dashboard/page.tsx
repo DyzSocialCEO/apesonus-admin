@@ -1,54 +1,122 @@
 import { createAdminClient } from "@/lib/supabase"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Users, Music, Play, TrendingUp, Activity, Flame } from "lucide-react"
 import { formatNumber } from "@/lib/utils"
+
+/**
+ * /dashboard — main admin home.
+ *
+ * Reads against the LIVE schema, not the legacy v1 columns. Source-of-truth
+ * mapping established post-migration v3 (Supabase auth) and migration 045
+ * (play_history canonical):
+ *
+ *   plays           → COUNT(*) FROM play_history
+ *   active 7d       → DISTINCT user_id FROM play_history WHERE played_at >= now - 7d
+ *   recent users    → users.{id, display_name, total_onus, created_at}
+ *                     plays count via per-user count from play_history
+ *                     streak via user_streaks.telegram_id (column kept legacy
+ *                     name despite holding a UUID — handoff §6.1, do NOT rename)
+ *
+ * Previously read users.tracks_played and users.last_played_at directly.
+ * Those columns exist (migration 010 added them) but the PWA no longer
+ * writes to them, so every value is 0 / null. They're effectively dead.
+ */
 
 async function getStats() {
   try {
     const supabase = await createAdminClient()
+    const nowIso = new Date().toISOString()
+    const sevenDaysAgoIso = new Date(Date.now() - 7 * 86400000).toISOString()
+    const today = nowIso.split("T")[0]
 
-    const { count: totalUsers } = await supabase.from("users").select("*", { count: "exact", head: true })
+    // Total users
+    const { count: totalUsers } = await supabase
+      .from("users")
+      .select("*", { count: "exact", head: true })
 
-    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString()
-    const { count: activeUsers } = await supabase.from("users").select("*", { count: "exact", head: true }).gte("last_played_at", sevenDaysAgo)
+    // Active (7d) — distinct user_ids who played in the last 7 days.
+    // play_history has no aggregation RPC, so we pull the user_id column
+    // and dedupe in JS. Cheap at expected scale.
+    const { data: recentPlays } = await supabase
+      .from("play_history")
+      .select("user_id")
+      .gte("played_at", sevenDaysAgoIso)
+    const activeUsers = recentPlays
+      ? new Set(recentPlays.map((p) => p.user_id)).size
+      : 0
 
-    const { data: playData } = await supabase.from("users").select("tracks_played")
-    const totalPlays = playData?.reduce((sum, u) => sum + (u.tracks_played || 0), 0) || 0
+    // Total plays — count of rows in play_history.
+    const { count: totalPlays } = await supabase
+      .from("play_history")
+      .select("*", { count: "exact", head: true })
 
-    const { count: totalTracks } = await supabase.from("tracks").select("*", { count: "exact", head: true }).eq("is_active", true)
+    const { count: totalTracks } = await supabase
+      .from("tracks")
+      .select("*", { count: "exact", head: true })
+      .eq("is_active", true)
 
-    const today = new Date().toISOString().split("T")[0]
-    const { count: todayVotes } = await supabase.from("market_sentiment_votes").select("*", { count: "exact", head: true }).eq("vote_date", today)
+    const { count: todayVotes } = await supabase
+      .from("market_sentiment_votes")
+      .select("*", { count: "exact", head: true })
+      .eq("vote_date", today)
 
-    const { count: activeStreaks } = await supabase.from("user_streaks").select("*", { count: "exact", head: true }).eq("is_active", true)
+    const { count: activeStreaks } = await supabase
+      .from("user_streaks")
+      .select("*", { count: "exact", head: true })
+      .eq("is_active", true)
 
-    // Get recent users with streak info
+    // Recent users — live columns only
     const { data: recentUsers } = await supabase
       .from("users")
-      .select("telegram_id, username, first_name, tracks_played, total_onus, created_at")
+      .select("id, display_name, email, avatar_url, total_onus, created_at, premium_status")
       .order("created_at", { ascending: false })
       .limit(8)
 
-    // Get streaks for recent users
-    const tids = recentUsers?.map((u) => u.telegram_id) || []
-    const { data: streaks } = await supabase
-      .from("user_streaks")
-      .select("telegram_id, current_day, is_active")
-      .eq("is_active", true)
-      .in("telegram_id", tids)
+    const userIds = recentUsers?.map((u) => u.id) || []
 
-    const streakMap = new Map(streaks?.map((s) => [s.telegram_id, s]) || [])
+    // Streaks: user_streaks.telegram_id holds the user UUID (legacy column
+    // name kept on purpose — see handoff). Match against userIds.
+    const { data: streaks } = userIds.length
+      ? await supabase
+          .from("user_streaks")
+          .select("telegram_id, current_day, is_active")
+          .eq("is_active", true)
+          .in("telegram_id", userIds)
+      : { data: [] as { telegram_id: string; current_day: number; is_active: boolean }[] }
+
+    const streakMap = new Map(
+      (streaks || []).map((s) => [s.telegram_id, s]),
+    )
+
+    // Per-user play counts — single fetch, group in JS. Avoids 8 round trips.
+    const { data: playRows } = userIds.length
+      ? await supabase
+          .from("play_history")
+          .select("user_id")
+          .in("user_id", userIds)
+      : { data: [] as { user_id: string }[] }
+
+    const playCount = new Map<string, number>()
+    for (const r of playRows || []) {
+      playCount.set(r.user_id, (playCount.get(r.user_id) || 0) + 1)
+    }
 
     const enrichedUsers = (recentUsers || []).map((u) => ({
-      ...u,
-      streak: streakMap.get(u.telegram_id) || null,
+      id: u.id,
+      display_name: u.display_name,
+      email: u.email,
+      avatar_url: u.avatar_url,
+      total_onus: u.total_onus,
+      created_at: u.created_at,
+      premium_status: u.premium_status,
+      plays: playCount.get(u.id) || 0,
+      streak: streakMap.get(u.id) || null,
     }))
 
     return {
       totalUsers: totalUsers || 0,
-      activeUsers: activeUsers || 0,
-      totalPlays,
+      activeUsers,
+      totalPlays: totalPlays || 0,
       totalTracks: totalTracks || 0,
       todayVotes: todayVotes || 0,
       activeStreaks: activeStreaks || 0,
@@ -56,20 +124,28 @@ async function getStats() {
     }
   } catch (error) {
     console.error("Error:", error)
-    return { totalUsers: 0, activeUsers: 0, totalPlays: 0, totalTracks: 0, todayVotes: 0, activeStreaks: 0, recentUsers: [] }
+    return {
+      totalUsers: 0, activeUsers: 0, totalPlays: 0, totalTracks: 0,
+      todayVotes: 0, activeStreaks: 0, recentUsers: [],
+    }
   }
+}
+
+function shortId(id: string | null | undefined): string {
+  if (!id) return "—"
+  return id.length > 8 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id
 }
 
 export default async function DashboardPage() {
   const stats = await getStats()
 
   const statCards = [
-    { title: "Total Users", value: formatNumber(stats.totalUsers), icon: Users, color: "text-blue-400", bg: "bg-blue-400/10" },
-    { title: "Active (7d)", value: formatNumber(stats.activeUsers), icon: TrendingUp, color: "text-green-400", bg: "bg-green-400/10" },
-    { title: "Total Plays", value: formatNumber(stats.totalPlays), icon: Play, color: "text-purple-400", bg: "bg-purple-400/10" },
-    { title: "Tracks", value: formatNumber(stats.totalTracks), icon: Music, color: "text-primary", bg: "bg-primary/10" },
-    { title: "Pulse Today", value: formatNumber(stats.todayVotes), icon: Activity, color: "text-cyan-400", bg: "bg-cyan-400/10" },
-    { title: "Active Streaks", value: formatNumber(stats.activeStreaks), icon: Flame, color: "text-orange-400", bg: "bg-orange-400/10" },
+    { title: "Total Users",    value: formatNumber(stats.totalUsers),    icon: Users,      color: "text-blue-400",   bg: "bg-blue-400/10" },
+    { title: "Active (7d)",    value: formatNumber(stats.activeUsers),   icon: TrendingUp, color: "text-green-400",  bg: "bg-green-400/10" },
+    { title: "Total Plays",    value: formatNumber(stats.totalPlays),    icon: Play,       color: "text-purple-400", bg: "bg-purple-400/10" },
+    { title: "Tracks",         value: formatNumber(stats.totalTracks),   icon: Music,      color: "text-primary",    bg: "bg-primary/10" },
+    { title: "Pulse Today",    value: formatNumber(stats.todayVotes),    icon: Activity,   color: "text-cyan-400",   bg: "bg-cyan-400/10" },
+    { title: "Active Streaks", value: formatNumber(stats.activeStreaks), icon: Flame,      color: "text-orange-400", bg: "bg-orange-400/10" },
   ]
 
   return (
@@ -102,30 +178,38 @@ export default async function DashboardPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-800">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">User</th>
+                  <th className="text-left  py-3 px-4 text-sm font-medium text-gray-400">User</th>
+                  <th className="text-left  py-3 px-4 text-sm font-medium text-gray-400">ID</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Plays</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Streak</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">$ONUS</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">Joined</th>
+                  <th className="text-right  py-3 px-4 text-sm font-medium text-gray-400">Joined</th>
                 </tr>
               </thead>
               <tbody>
-                {stats.recentUsers.map((user: any) => (
-                  <tr key={user.telegram_id} className="border-b border-gray-800/50">
+                {stats.recentUsers.map((user) => (
+                  <tr key={user.id} className="border-b border-gray-800/50">
                     <td className="py-3 px-4">
-                      <p className="text-white font-medium text-sm">{user.first_name || user.username || "Unknown"}</p>
-                      <p className="text-xs text-gray-500">@{user.username || "—"}</p>
+                      <p className="text-white font-medium text-sm">
+                        {user.display_name || user.email || "Unknown"}
+                      </p>
+                      <p className="text-xs text-gray-500">{user.email || "—"}</p>
                     </td>
-                    <td className="py-3 px-4 text-center text-white text-sm">{user.tracks_played || 0}</td>
+                    <td className="py-3 px-4 text-xs text-gray-400 font-mono">{shortId(user.id)}</td>
+                    <td className="py-3 px-4 text-center text-white text-sm">{user.plays}</td>
                     <td className="py-3 px-4 text-center text-white text-sm">
                       {user.streak ? `${user.streak.current_day}/7` : "—"}
                     </td>
                     <td className="py-3 px-4 text-center text-primary text-sm">{user.total_onus || 0}</td>
-                    <td className="py-3 px-4 text-right text-gray-400 text-xs">{new Date(user.created_at).toLocaleDateString()}</td>
+                    <td className="py-3 px-4 text-right text-gray-400 text-xs">
+                      {new Date(user.created_at).toLocaleDateString()}
+                    </td>
                   </tr>
                 ))}
                 {stats.recentUsers.length === 0 && (
-                  <tr><td colSpan={5} className="py-8 text-center text-gray-500">No users yet</td></tr>
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-gray-500">No users yet</td>
+                  </tr>
                 )}
               </tbody>
             </table>

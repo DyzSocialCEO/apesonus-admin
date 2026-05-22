@@ -211,11 +211,15 @@ export default function OnusPointsPage() {
               </thead>
               <tbody>
                 {users.map((user: any, i: number) => (
-                  <tr key={user.telegram_id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                  <tr key={user.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                     <td className="py-2.5 px-4 text-sm text-gray-500">{i + 1}</td>
                     <td className="py-2.5 px-4">
-                      <p className="text-sm text-white font-medium">{user.first_name || user.username || "Anon"}</p>
-                      <p className="text-[10px] text-gray-600 font-mono">{user.telegram_id}</p>
+                      <p className="text-sm text-white font-medium">
+                        {user.display_name || user.email?.split("@")[0] || "Anon"}
+                      </p>
+                      <p className="text-[10px] text-gray-600 font-mono">
+                        {user.id ? `${user.id.slice(0, 4)}…${user.id.slice(-4)}` : "—"}
+                      </p>
                     </td>
                     <td className="py-2.5 px-4 text-center">
                       {user.verification_tier ? (
