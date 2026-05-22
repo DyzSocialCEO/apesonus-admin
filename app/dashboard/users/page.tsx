@@ -17,16 +17,21 @@ import {
  *   display_name    → display name from auth metadata (nullable)
  *   avatar_url      → from auth provider (nullable)
  *   total_onus      → ONUS balance
- *   premium_status  → 'free' | 'active' | 'expired' (string enum, NOT bool)
- *   premium_expires_at
- *   verification_tier
+ *   premium_status  → 'none' | 'standard' | 'genesis' (canonical tier;
+ *                     constraint from migration v2_001)
+ *   is_genesis_holder → permanent card flag (true forever once minted)
+ *   genesis_active  → 3x weight toggle (cardholder + most-recent purchase $5+)
  *   created_at
  *
- * Old fields (telegram_id, username, first_name, is_premium, tracks_played)
- * existed in v1 but are no longer written. Dropped from rendering.
+ * Tier label rule (matches the PWA's source of truth):
+ *   premium_status === 'genesis'   → GENESIS  (cardholder with active 3x)
+ *   premium_status === 'standard'  → STANDARD (paid, 2x cap)
+ *   premium_status === 'none'      → FREE
  *
- * The POST action endpoint still accepts a `telegramId` field by historical
- * naming — the value is the user's UUID. We pass user.id straight through.
+ * Legacy verification_tier column is intentionally NOT read here. It has
+ * a stricter CHECK constraint ('free'|'wagmi'|'chad'|'whale') that the
+ * payment flow can't write 'genesis'/'standard' to, so it's always
+ * stale. premium_status is the canonical source.
  */
 
 interface AdminUser {
@@ -36,14 +41,15 @@ interface AdminUser {
   avatar_url: string | null
   total_onus: number | null
   premium_status: string | null
-  premium_expires_at: string | null
-  verification_tier: string | null
+  is_genesis_holder: boolean | null
+  genesis_active: boolean | null
+  has_paid: boolean | null
   created_at: string
-  streak: { current_day: number; is_active: boolean; completed_streaks: number } | null
 }
 
-function isPremiumActive(u: AdminUser): boolean {
-  return u.premium_status === "active"
+function isPaid(u: AdminUser): boolean {
+  // Paid = premium_status is set to anything other than 'none'.
+  return !!u.premium_status && u.premium_status !== "none"
 }
 
 function shortId(id: string | null | undefined): string {
@@ -101,20 +107,35 @@ export default function UsersPage() {
     )
   })
 
-  const premiumCount = users.filter(isPremiumActive).length
-  const activeStreakCount = users.filter((u) => u.streak?.is_active).length
+  const paidCount = users.filter(isPaid).length
+  const genesisCount = users.filter((u) => !!u.is_genesis_holder).length
 
-  const tierBadge = (tier: string | null) => {
-    if (!tier) return null
-    const colors: Record<string, string> = {
-      wagmi:    "bg-yellow-500/20 text-yellow-400",
-      genesis:  "bg-yellow-500/20 text-yellow-400",
-      free:     "bg-gray-500/20 text-gray-400",
-      standard: "bg-gray-500/20 text-gray-400",
+  /**
+   * Tier badge driven by premium_status (the canonical column).
+   * Genesis cardholders get the gold badge regardless of current
+   * genesis_active state — the card is permanent, the 3x is what
+   * toggles. STANDARD is the paid-but-no-card label. FREE is shown
+   * as a muted badge for never-paid users.
+   */
+  const tierBadge = (user: AdminUser) => {
+    const status = user.premium_status
+    if (status === "genesis") {
+      return (
+        <Badge className="bg-yellow-500/20 text-yellow-400 border-0 text-[10px]">
+          GENESIS
+        </Badge>
+      )
+    }
+    if (status === "standard") {
+      return (
+        <Badge className="bg-blue-500/20 text-blue-400 border-0 text-[10px]">
+          STANDARD
+        </Badge>
+      )
     }
     return (
-      <Badge className={`${colors[tier] || "bg-gray-500/20 text-gray-400"} border-0 text-[10px]`}>
-        {tier.toUpperCase()}
+      <Badge className="bg-gray-500/20 text-gray-400 border-0 text-[10px]">
+        FREE
       </Badge>
     )
   }
@@ -125,7 +146,7 @@ export default function UsersPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Users</h1>
           <p className="text-gray-400">
-            {users.length} total · {premiumCount} premium · {activeStreakCount} streaking
+            {users.length} total · {paidCount} paid · {genesisCount} genesis
           </p>
         </div>
         <button
@@ -176,9 +197,7 @@ export default function UsersPage() {
                   <tr className="border-b border-gray-800">
                     <th className="text-left   py-4 px-4 text-sm font-medium text-gray-400">User</th>
                     <th className="text-left   py-4 px-4 text-sm font-medium text-gray-400">User ID</th>
-                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Status</th>
                     <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Tier</th>
-                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Streak</th>
                     <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">$ONUS</th>
                     <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Joined</th>
                     <th className="text-right  py-4 px-4 text-sm font-medium text-gray-400">Actions</th>
@@ -186,8 +205,7 @@ export default function UsersPage() {
                 </thead>
                 <tbody>
                   {filteredUsers.map((user) => {
-                    const premium = isPremiumActive(user)
-                    const hasStreak = user.streak?.is_active
+                    const paid = isPaid(user)
                     return (
                       <tr key={user.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                         <td className="py-3 px-4">
@@ -209,7 +227,9 @@ export default function UsersPage() {
                                 <p className="text-white font-medium text-sm">
                                   {user.display_name || user.email?.split("@")[0] || "Unknown"}
                                 </p>
-                                {premium && <Crown className="w-3.5 h-3.5 text-yellow-400" />}
+                                {!!user.is_genesis_holder && (
+                                  <Crown className="w-3.5 h-3.5 text-yellow-400" />
+                                )}
                               </div>
                               <p className="text-xs text-gray-500">{user.email || "—"}</p>
                             </div>
@@ -219,23 +239,7 @@ export default function UsersPage() {
                           {shortId(user.id)}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          {premium ? (
-                            <Badge className="bg-green-500/20 text-green-400 border-0 text-xs">PREMIUM</Badge>
-                          ) : (
-                            <Badge variant="secondary" className="text-xs">FREE</Badge>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          {tierBadge(user.verification_tier)}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          {hasStreak ? (
-                            <span className="text-orange-400 font-bold text-sm">
-                              {user.streak?.current_day ?? 0}/7
-                            </span>
-                          ) : (
-                            <span className="text-gray-600 text-sm">—</span>
-                          )}
+                          {tierBadge(user)}
                         </td>
                         <td className="py-3 px-4 text-center text-primary text-sm font-medium">
                           {user.total_onus || 0}
@@ -262,7 +266,7 @@ export default function UsersPage() {
                   })}
                   {filteredUsers.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="py-12 text-center text-gray-500">
+                      <td colSpan={6} className="py-12 text-center text-gray-500">
                         {searchQuery ? "No users match your search" : "No users yet"}
                       </td>
                     </tr>

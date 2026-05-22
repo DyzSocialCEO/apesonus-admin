@@ -4,8 +4,8 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
-  Activity, Megaphone, Coins, TrendingUp, Flame, Disc3,
-  ScrollText, UserCircle, CreditCard, BookOpen,
+  Activity, Megaphone, Coins, TrendingUp, Disc3,
+  ScrollText, UserCircle, CreditCard,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -17,10 +17,8 @@ const navigation = [
   { name: "The Record",    href: "/dashboard/record",       icon: Disc3           },
   { name: "Chart",         href: "/dashboard/chart",        icon: TrendingUp      },
   { name: "Culture Pulse", href: "/dashboard/pulse",        icon: Activity        },
-  { name: "Streaks",       href: "/dashboard/streaks",      icon: Flame           },
   { name: "Subscriptions", href: "/dashboard/subscriptions",icon: CreditCard      },
   { name: "CP Economy",    href: "/dashboard/cp-economy",   icon: Coins           },
-  { name: "Field Notes",   href: "/dashboard/field-notes",  icon: BookOpen        },
   { name: "Users",         href: "/dashboard/users",        icon: Users           },
   { name: "Banners",       href: "/dashboard/banners",      icon: Megaphone       },
   { name: "$ONUS",         href: "/dashboard/onus",         icon: Coins           },

@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Users, Music, Play, TrendingUp, Activity, Flame } from "lucide-react"
+import { Users, Music, Play, TrendingUp, Activity, Crown } from "lucide-react"
 import { formatNumber } from "@/lib/utils"
 
 /**
@@ -60,33 +60,21 @@ async function getStats() {
       .select("*", { count: "exact", head: true })
       .eq("vote_date", today)
 
-    const { count: activeStreaks } = await supabase
-      .from("user_streaks")
+    // Genesis cardholders — replaces the old "Active Streaks" card.
+    // PWA has no streak feature on the front (handoff §6).
+    const { count: genesisHolders } = await supabase
+      .from("users")
       .select("*", { count: "exact", head: true })
-      .eq("is_active", true)
+      .eq("is_genesis_holder", true)
 
-    // Recent users — live columns only
+    // Recent users
     const { data: recentUsers } = await supabase
       .from("users")
-      .select("id, display_name, email, avatar_url, total_onus, created_at, premium_status")
+      .select("id, display_name, email, avatar_url, total_onus, created_at, premium_status, is_genesis_holder")
       .order("created_at", { ascending: false })
       .limit(8)
 
     const userIds = recentUsers?.map((u) => u.id) || []
-
-    // Streaks: user_streaks.telegram_id holds the user UUID (legacy column
-    // name kept on purpose — see handoff). Match against userIds.
-    const { data: streaks } = userIds.length
-      ? await supabase
-          .from("user_streaks")
-          .select("telegram_id, current_day, is_active")
-          .eq("is_active", true)
-          .in("telegram_id", userIds)
-      : { data: [] as { telegram_id: string; current_day: number; is_active: boolean }[] }
-
-    const streakMap = new Map(
-      (streaks || []).map((s) => [s.telegram_id, s]),
-    )
 
     // Per-user play counts — single fetch, group in JS. Avoids 8 round trips.
     const { data: playRows } = userIds.length
@@ -109,8 +97,8 @@ async function getStats() {
       total_onus: u.total_onus,
       created_at: u.created_at,
       premium_status: u.premium_status,
+      is_genesis_holder: u.is_genesis_holder,
       plays: playCount.get(u.id) || 0,
-      streak: streakMap.get(u.id) || null,
     }))
 
     return {
@@ -119,14 +107,14 @@ async function getStats() {
       totalPlays: totalPlays || 0,
       totalTracks: totalTracks || 0,
       todayVotes: todayVotes || 0,
-      activeStreaks: activeStreaks || 0,
+      genesisHolders: genesisHolders || 0,
       recentUsers: enrichedUsers,
     }
   } catch (error) {
     console.error("Error:", error)
     return {
       totalUsers: 0, activeUsers: 0, totalPlays: 0, totalTracks: 0,
-      todayVotes: 0, activeStreaks: 0, recentUsers: [],
+      todayVotes: 0, genesisHolders: 0, recentUsers: [],
     }
   }
 }
@@ -145,7 +133,7 @@ export default async function DashboardPage() {
     { title: "Total Plays",    value: formatNumber(stats.totalPlays),    icon: Play,       color: "text-purple-400", bg: "bg-purple-400/10" },
     { title: "Tracks",         value: formatNumber(stats.totalTracks),   icon: Music,      color: "text-primary",    bg: "bg-primary/10" },
     { title: "Pulse Today",    value: formatNumber(stats.todayVotes),    icon: Activity,   color: "text-cyan-400",   bg: "bg-cyan-400/10" },
-    { title: "Active Streaks", value: formatNumber(stats.activeStreaks), icon: Flame,      color: "text-orange-400", bg: "bg-orange-400/10" },
+    { title: "Genesis Holders", value: formatNumber(stats.genesisHolders), icon: Crown,      color: "text-yellow-400", bg: "bg-yellow-400/10" },
   ]
 
   return (
@@ -181,31 +169,46 @@ export default async function DashboardPage() {
                   <th className="text-left  py-3 px-4 text-sm font-medium text-gray-400">User</th>
                   <th className="text-left  py-3 px-4 text-sm font-medium text-gray-400">ID</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Plays</th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Streak</th>
+                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Tier</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">$ONUS</th>
                   <th className="text-right  py-3 px-4 text-sm font-medium text-gray-400">Joined</th>
                 </tr>
               </thead>
               <tbody>
-                {stats.recentUsers.map((user) => (
-                  <tr key={user.id} className="border-b border-gray-800/50">
-                    <td className="py-3 px-4">
-                      <p className="text-white font-medium text-sm">
-                        {user.display_name || user.email || "Unknown"}
-                      </p>
-                      <p className="text-xs text-gray-500">{user.email || "—"}</p>
-                    </td>
-                    <td className="py-3 px-4 text-xs text-gray-400 font-mono">{shortId(user.id)}</td>
-                    <td className="py-3 px-4 text-center text-white text-sm">{user.plays}</td>
-                    <td className="py-3 px-4 text-center text-white text-sm">
-                      {user.streak ? `${user.streak.current_day}/7` : "—"}
-                    </td>
-                    <td className="py-3 px-4 text-center text-primary text-sm">{user.total_onus || 0}</td>
-                    <td className="py-3 px-4 text-right text-gray-400 text-xs">
-                      {new Date(user.created_at).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
+                {stats.recentUsers.map((user) => {
+                  const tier = user.premium_status === "genesis"
+                    ? "GENESIS"
+                    : user.premium_status === "standard"
+                    ? "STANDARD"
+                    : "FREE"
+                  const tierColor = user.premium_status === "genesis"
+                    ? "text-yellow-400"
+                    : user.premium_status === "standard"
+                    ? "text-blue-400"
+                    : "text-gray-500"
+                  return (
+                    <tr key={user.id} className="border-b border-gray-800/50">
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-white font-medium text-sm">
+                            {user.display_name || user.email || "Unknown"}
+                          </p>
+                          {!!user.is_genesis_holder && (
+                            <Crown className="w-3 h-3 text-yellow-400" />
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500">{user.email || "—"}</p>
+                      </td>
+                      <td className="py-3 px-4 text-xs text-gray-400 font-mono">{shortId(user.id)}</td>
+                      <td className="py-3 px-4 text-center text-white text-sm">{user.plays}</td>
+                      <td className={`py-3 px-4 text-center text-xs font-bold ${tierColor}`}>{tier}</td>
+                      <td className="py-3 px-4 text-center text-primary text-sm">{user.total_onus || 0}</td>
+                      <td className="py-3 px-4 text-right text-gray-400 text-xs">
+                        {new Date(user.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  )
+                })}
                 {stats.recentUsers.length === 0 && (
                   <tr>
                     <td colSpan={6} className="py-8 text-center text-gray-500">No users yet</td>

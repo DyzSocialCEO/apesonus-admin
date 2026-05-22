@@ -15,16 +15,19 @@ export async function GET() {
 
     const supabase = await createAdminClient()
 
-    // Live columns only. Old v1 fields (telegram_id, username, first_name,
-    // is_premium, tracks_played) are dead post-migration and would render
-    // as null. See /api/auth/me for the canonical set.
+    // Live columns. Source-of-truth set established post-migrations 045
+    // (user_streaks dropped, streak fields moved onto users row) and
+    // v2_001 (premium_status enum). verification_tier kept in the select
+    // for diagnostic visibility only — UI does not read it (legacy CHECK
+    // constraint blocks 'standard'/'genesis' writes).
     const { data: users, error } = await supabase
       .from("users")
       .select(`
         id, email, display_name, avatar_url, total_onus,
-        verification_tier, premium_status, premium_expires_at,
-        wallet_address, wallet_chain, auth_method,
+        premium_status, verification_tier, premium_expires_at,
+        is_genesis_holder, genesis_active, has_paid,
         genesis_holder_number, genesis_code,
+        wallet_address, wallet_chain, auth_method,
         created_at
       `)
       .order("created_at", { ascending: false })
@@ -32,34 +35,7 @@ export async function GET() {
 
     if (error) throw error
 
-    // user_streaks.telegram_id is the legacy column name. Post-migration
-    // it holds the auth UUID (i.e. matches users.id). The previous code
-    // looked up streakMap by u.telegram_id which is now always null on
-    // the users table — streaks never attached. Match by u.id instead.
-    const userIds = (users || []).map((u) => u.id)
-    const { data: streaks } = userIds.length
-      ? await supabase
-          .from("user_streaks")
-          .select("telegram_id, current_day, completed_streaks, is_active")
-          .eq("is_active", true)
-          .in("telegram_id", userIds)
-      : { data: [] as { telegram_id: string; current_day: number; completed_streaks: number; is_active: boolean }[] }
-
-    const streakMap = new Map<string, { current_day: number; completed_streaks: number; is_active: boolean }>()
-    for (const s of streaks || []) {
-      streakMap.set(s.telegram_id, {
-        current_day: s.current_day,
-        completed_streaks: s.completed_streaks,
-        is_active: s.is_active,
-      })
-    }
-
-    const enriched = (users || []).map((u) => ({
-      ...u,
-      streak: streakMap.get(u.id) || null,
-    }))
-
-    return NextResponse.json({ users: enriched })
+    return NextResponse.json({ users: users || [] })
   } catch (error: any) {
     console.error("GET /api/admin/users error:", error)
     return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 })
