@@ -5,6 +5,32 @@ import { getSession } from "@/lib/auth"
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 
+/**
+ * GET /api/admin/pulse
+ *
+ * Vibe Check Tier 1 admin dashboard data. Reads from the live
+ * market_sentiment_votes table (the one the PWA writes to). Three
+ * sentiment buckets: bullish, bearish, neutral.
+ *
+ * Previously read from the killed daily_mood_votes table with the
+ * five-mood buckets (moon/rekt/cope/degen/zen). That system was
+ * replaced pre-launch and the old table is no longer written to.
+ *
+ * Response shape:
+ *   {
+ *     today: { total, breakdown: { bullish, bearish, neutral } },
+ *     weekTrend: { "YYYY-MM-DD": { bullish, bearish, neutral } },
+ *     totalVoters: number  // total all-time vote rows
+ *   }
+ */
+
+type Sentiment = "bullish" | "bearish" | "neutral"
+const SENTIMENTS: Sentiment[] = ["bullish", "bearish", "neutral"]
+
+function emptyBreakdown(): Record<Sentiment, number> {
+  return { bullish: 0, bearish: 0, neutral: 0 }
+}
+
 export async function GET() {
   try {
     const session = await getSession()
@@ -13,34 +39,46 @@ export async function GET() {
     const supabase = await createAdminClient()
     const today = new Date().toISOString().split("T")[0]
 
+    // Today's votes
     const { data: todayVotes } = await supabase
-      .from("daily_mood_votes")
-      .select("mood, telegram_id")
+      .from("market_sentiment_votes")
+      .select("sentiment, user_id")
       .eq("vote_date", today)
 
-    const todayBreakdown: Record<string, number> = { moon: 0, rekt: 0, cope: 0, degen: 0, zen: 0 }
+    const todayBreakdown = emptyBreakdown()
     if (todayVotes) {
-      for (const v of todayVotes) todayBreakdown[v.mood] = (todayBreakdown[v.mood] || 0) + 1
-    }
-
-    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0]
-    const { data: weekVotes } = await supabase
-      .from("daily_mood_votes")
-      .select("mood, vote_date")
-      .gte("vote_date", sevenDaysAgo)
-      .order("vote_date", { ascending: true })
-
-    const dailyData: Record<string, Record<string, number>> = {}
-    if (weekVotes) {
-      for (const v of weekVotes) {
-        if (!dailyData[v.vote_date]) dailyData[v.vote_date] = { moon: 0, rekt: 0, cope: 0, degen: 0, zen: 0 }
-        dailyData[v.vote_date][v.mood] = (dailyData[v.vote_date][v.mood] || 0) + 1
+      for (const v of todayVotes) {
+        const s = v.sentiment as Sentiment
+        if (SENTIMENTS.includes(s)) {
+          todayBreakdown[s] = todayBreakdown[s] + 1
+        }
       }
     }
 
+    // 7-day rolling trend
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0]
+    const { data: weekVotes } = await supabase
+      .from("market_sentiment_votes")
+      .select("sentiment, vote_date")
+      .gte("vote_date", sevenDaysAgo)
+      .order("vote_date", { ascending: true })
+
+    const dailyData: Record<string, Record<Sentiment, number>> = {}
+    if (weekVotes) {
+      for (const v of weekVotes) {
+        const date = v.vote_date as string
+        const s = v.sentiment as Sentiment
+        if (!dailyData[date]) dailyData[date] = emptyBreakdown()
+        if (SENTIMENTS.includes(s)) {
+          dailyData[date][s] = dailyData[date][s] + 1
+        }
+      }
+    }
+
+    // All-time vote count
     const { count: totalVoters } = await supabase
-      .from("daily_mood_votes")
-      .select("telegram_id", { count: "exact", head: true })
+      .from("market_sentiment_votes")
+      .select("user_id", { count: "exact", head: true })
 
     return NextResponse.json({
       today: {

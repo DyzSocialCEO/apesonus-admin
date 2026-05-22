@@ -19,7 +19,7 @@ async function getStats() {
     const { count: totalTracks } = await supabase.from("tracks").select("*", { count: "exact", head: true }).eq("is_active", true)
 
     const today = new Date().toISOString().split("T")[0]
-    const { count: todayVotes } = await supabase.from("daily_mood_votes").select("*", { count: "exact", head: true }).eq("vote_date", today)
+    const { count: todayVotes } = await supabase.from("market_sentiment_votes").select("*", { count: "exact", head: true }).eq("vote_date", today)
 
     const { count: activeStreaks } = await supabase.from("user_streaks").select("*", { count: "exact", head: true }).eq("is_active", true)
 

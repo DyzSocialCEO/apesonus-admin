@@ -2,18 +2,44 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Activity, Loader2 } from "lucide-react"
+import { Activity, Loader2, TrendingUp, TrendingDown, Minus } from "lucide-react"
 
-const MOOD_CONFIG: Record<string, { emoji: string; color: string; label: string }> = {
-  moon: { emoji: "🚀", color: "#22c55e", label: "MOON" },
-  rekt: { emoji: "💀", color: "#ef4444", label: "REKT" },
-  cope: { emoji: "😐", color: "#f97316", label: "COPE" },
-  degen: { emoji: "🐒", color: "#a855f7", label: "DEGEN" },
-  zen: { emoji: "🧘", color: "#06b6d4", label: "ZEN" },
+/**
+ * /dashboard/pulse — Culture Pulse
+ *
+ * Live admin view of Vibe Check Tier 1 community sentiment. Reads from
+ * /api/admin/pulse which queries market_sentiment_votes (the same table
+ * the PWA writes to). Three buckets: bullish / bearish / neutral.
+ *
+ * Previously rendered a five-mood breakdown (moon/rekt/cope/degen/zen)
+ * pointed at the killed daily_mood_votes table — that was the legacy
+ * mood check-in system. Tier 1 replaced it pre-launch.
+ */
+
+type Sentiment = "bullish" | "bearish" | "neutral"
+
+interface SentimentMeta {
+  Icon: typeof TrendingUp
+  color: string
+  label: string
+}
+
+const SENTIMENT_CONFIG: Record<Sentiment, SentimentMeta> = {
+  bullish: { Icon: TrendingUp,   color: "#22c55e", label: "BULLISH" },
+  bearish: { Icon: TrendingDown, color: "#ef4444", label: "BEARISH" },
+  neutral: { Icon: Minus,        color: "#06b6d4", label: "NEUTRAL" },
+}
+
+const SENTIMENT_ORDER: Sentiment[] = ["bullish", "bearish", "neutral"]
+
+interface PulsePayload {
+  today: { total: number; breakdown: Record<Sentiment, number> }
+  weekTrend: Record<string, Record<Sentiment, number>>
+  totalVoters: number
 }
 
 export default function PulsePage() {
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<PulsePayload | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -33,13 +59,16 @@ export default function PulsePage() {
   }
 
   const todayTotal = data?.today?.total || 0
-  const breakdown = data?.today?.breakdown || {}
+  const breakdown: Record<Sentiment, number> =
+    data?.today?.breakdown || { bullish: 0, bearish: 0, neutral: 0 }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Culture Pulse</h1>
-        <p className="text-gray-400">Real-time mood sentiment from the degen community</p>
+        <p className="text-gray-400">
+          Daily market sentiment from the Vibe Check Tier 1 vote
+        </p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -54,31 +83,44 @@ export default function PulsePage() {
         </Card>
         <Card className="bg-gray-900 border-gray-800">
           <CardContent className="p-4">
-            <p className="text-xs text-gray-500 mb-2">Total All-Time Voters</p>
-            <p className="text-2xl font-bold text-white">{data?.totalVoters || 0}</p>
+            <p className="text-xs text-gray-500 mb-2">Total All-Time Votes</p>
+            <p className="text-2xl font-bold text-white">
+              {data?.totalVoters || 0}
+            </p>
           </CardContent>
         </Card>
       </div>
 
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
-          <CardTitle className="text-lg text-white">Today&apos;s Mood Breakdown</CardTitle>
+          <CardTitle className="text-lg text-white">
+            Today&apos;s Sentiment Breakdown
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {Object.entries(MOOD_CONFIG).map(([mood, config]) => {
-              const count = breakdown[mood] || 0
+            {SENTIMENT_ORDER.map((sentiment) => {
+              const config = SENTIMENT_CONFIG[sentiment]
+              const count = breakdown[sentiment] || 0
               const pct = todayTotal > 0 ? Math.round((count / todayTotal) * 100) : 0
+              const { Icon } = config
               return (
-                <div key={mood}>
+                <div key={sentiment}>
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-lg">{config.emoji}</span>
-                      <span className="text-sm font-medium text-white">{config.label}</span>
+                      <Icon className="w-4 h-4" style={{ color: config.color }} />
+                      <span className="text-sm font-medium text-white">
+                        {config.label}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-gray-400">{count} votes</span>
-                      <span className="text-sm font-bold" style={{ color: config.color }}>{pct}%</span>
+                      <span
+                        className="text-sm font-bold"
+                        style={{ color: config.color }}
+                      >
+                        {pct}%
+                      </span>
                     </div>
                   </div>
                   <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
@@ -96,7 +138,7 @@ export default function PulsePage() {
 
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
-          <CardTitle className="text-lg text-white">7-Day Mood Trend</CardTitle>
+          <CardTitle className="text-lg text-white">7-Day Sentiment Trend</CardTitle>
         </CardHeader>
         <CardContent>
           {data?.weekTrend && Object.keys(data.weekTrend).length > 0 ? (
@@ -104,27 +146,56 @@ export default function PulsePage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-800">
-                    <th className="text-left py-2 px-3 text-xs text-gray-500">Date</th>
-                    {Object.entries(MOOD_CONFIG).map(([mood, config]) => (
-                      <th key={mood} className="text-center py-2 px-3 text-xs">
-                        <span>{config.emoji}</span>
-                      </th>
-                    ))}
-                    <th className="text-right py-2 px-3 text-xs text-gray-500">Total</th>
+                    <th className="text-left py-2 px-3 text-xs text-gray-500">
+                      Date
+                    </th>
+                    {SENTIMENT_ORDER.map((sentiment) => {
+                      const config = SENTIMENT_CONFIG[sentiment]
+                      const { Icon } = config
+                      return (
+                        <th
+                          key={sentiment}
+                          className="text-center py-2 px-3 text-xs"
+                          title={config.label}
+                        >
+                          <div className="flex justify-center">
+                            <Icon className="w-4 h-4" style={{ color: config.color }} />
+                          </div>
+                        </th>
+                      )
+                    })}
+                    <th className="text-right py-2 px-3 text-xs text-gray-500">
+                      Total
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(data.weekTrend as Record<string, Record<string, number>>)
+                  {Object.entries(data.weekTrend)
                     .sort(([a], [b]) => b.localeCompare(a))
-                    .map(([date, moods]) => {
-                      const dayTotal = Object.values(moods).reduce((a, b) => a + b, 0)
+                    .map(([date, sentiments]) => {
+                      const dayTotal = SENTIMENT_ORDER.reduce(
+                        (sum, s) => sum + (sentiments[s] || 0),
+                        0,
+                      )
                       return (
                         <tr key={date} className="border-b border-gray-800/50">
-                          <td className="py-2 px-3 text-sm text-gray-400">{new Date(date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</td>
-                          {Object.keys(MOOD_CONFIG).map((mood) => (
-                            <td key={mood} className="py-2 px-3 text-center text-sm text-white">{moods[mood] || 0}</td>
+                          <td className="py-2 px-3 text-sm text-gray-400">
+                            {new Date(date + "T00:00:00").toLocaleDateString(
+                              "en-US",
+                              { weekday: "short", month: "short", day: "numeric" },
+                            )}
+                          </td>
+                          {SENTIMENT_ORDER.map((s) => (
+                            <td
+                              key={s}
+                              className="py-2 px-3 text-center text-sm text-white"
+                            >
+                              {sentiments[s] || 0}
+                            </td>
                           ))}
-                          <td className="py-2 px-3 text-right text-sm font-bold text-white">{dayTotal}</td>
+                          <td className="py-2 px-3 text-right text-sm font-bold text-white">
+                            {dayTotal}
+                          </td>
                         </tr>
                       )
                     })}
