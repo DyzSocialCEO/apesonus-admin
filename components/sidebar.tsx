@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
-  Activity, Megaphone, Coins, TrendingUp, Disc3,
+  Activity, Megaphone, Coins, TrendingUp, Disc3, Gauge,
   ScrollText, UserCircle, CreditCard,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -17,6 +17,7 @@ const navigation = [
   { name: "The Record",    href: "/dashboard/record",       icon: Disc3           },
   { name: "Chart",         href: "/dashboard/chart",        icon: TrendingUp      },
   { name: "Culture Pulse", href: "/dashboard/pulse",        icon: Activity        },
+  { name: "Sentimetre",    href: "/dashboard/sentimetre",   icon: Gauge           },
   { name: "Subscriptions", href: "/dashboard/subscriptions",icon: CreditCard      },
   { name: "CP Economy",    href: "/dashboard/cp-economy",   icon: Coins           },
   { name: "Users",         href: "/dashboard/users",        icon: Users           },
