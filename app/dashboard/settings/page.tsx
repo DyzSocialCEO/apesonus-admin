@@ -32,7 +32,6 @@ interface HealthStatus {
 interface Settings {
   subscription_price_monthly_usd: string
   subscription_price_yearly_usd: string
-  subscription_treasury_wallet: string
   genesis_window_closes_at: string
   sol_usd_price_source: string
   sol_usd_manual_pin: string
@@ -44,7 +43,6 @@ interface Settings {
 const EMPTY_SETTINGS: Settings = {
   subscription_price_monthly_usd: "",
   subscription_price_yearly_usd: "",
-  subscription_treasury_wallet: "",
   genesis_window_closes_at: "",
   sol_usd_price_source: "pyth",
   sol_usd_manual_pin: "",
@@ -255,21 +253,6 @@ export default function SettingsPage() {
                     />
                   </Field>
                 </div>
-              </Section>
-
-              {/* Treasury */}
-              <Section title="Treasury wallet (Solana)">
-                <Field label="Address that receives subscription payments">
-                  <Input
-                    value={settings.subscription_treasury_wallet}
-                    onChange={(e) => setSettings((s) => ({ ...s, subscription_treasury_wallet: e.target.value }))}
-                    placeholder="Leave blank to disable payments"
-                    className="bg-gray-800 border-gray-700 font-mono text-xs"
-                  />
-                </Field>
-                <p className="text-xs text-gray-500 mt-1">
-                  Empty = /subscribe/initiate returns 503. Use this to put the storefront offline.
-                </p>
               </Section>
 
               {/* Genesis window */}
