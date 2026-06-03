@@ -11,6 +11,9 @@ type Track = { id: number; title: string; artist: string; mood: string }
 type MarketType = "head" | "song" | "mood" | "artist"
 const MOODS = ["moon", "rekt", "cope", "degen", "zen"]
 const PRESETS: Record<string, { ms: number; lockMs: number; label: string }> = {
+  "5M":   { ms: 5 * 60e3,          lockMs: 60e3,      label: "5 min (test)" },
+  "15M":  { ms: 15 * 60e3,         lockMs: 2 * 60e3,  label: "15 min (test)" },
+  "1H":   { ms: 60 * 60e3,         lockMs: 5 * 60e3,  label: "1 hour" },
   "3H":   { ms: 3 * 3600e3,        lockMs: 15 * 60e3, label: "3 hours" },
   "TMRW": { ms: 24 * 3600e3,       lockMs: 3600e3,    label: "tomorrow" },
   "WEEK": { ms: 7 * 24 * 3600e3,   lockMs: 3600e3,    label: "this week" },
@@ -31,7 +34,7 @@ export default function MarketsPage() {
   const [subjectA, setSubjectA] = useState("")
   const [subjectB, setSubjectB] = useState("")
   const [threshold, setThreshold] = useState("0")
-  const [preset, setPreset] = useState("WEEK")
+  const [preset, setPreset] = useState("5M")
   const [pool, setPool] = useState("100000")
 
   const artists = useMemo(
