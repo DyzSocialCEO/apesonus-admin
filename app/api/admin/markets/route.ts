@@ -187,6 +187,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ ...data, detail })
     }
 
+    // ── edit ── (only while open: copy, subjects, threshold, timing, pool)
+    if (action === "edit") {
+      const { data: m } = await supabase.from("markets").select("status").eq("id", marketId).single()
+      if (!m) return NextResponse.json({ error: "market not found" }, { status: 404 })
+      if (m.status !== "open") return NextResponse.json({ error: `only open markets can be edited (is ${m.status})` }, { status: 400 })
+      const patch: Record<string, unknown> = {}
+      if (body.question != null) patch.question = body.question
+      if (body.subject_a != null) patch.subject_a = String(body.subject_a)
+      if ("subject_b" in body) patch.subject_b = body.subject_b ? String(body.subject_b) : null
+      if (body.threshold != null) patch.threshold = Number(body.threshold) || 0
+      if (body.locks_at != null) patch.locks_at = body.locks_at
+      if (body.settles_at != null) patch.settles_at = body.settles_at
+      if (body.emissions_pool != null) patch.emissions_pool = Number(body.emissions_pool) || 0
+      const { data, error } = await supabase.from("markets").update(patch).eq("id", marketId).select().single()
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ edited: true, market: data })
+    }
+
+    // ── delete ── (hard remove; blocked if it has calls, to protect locked $ONUS)
+    if (action === "delete") {
+      const { count } = await supabase.from("market_positions").select("id", { count: "exact", head: true }).eq("market_id", marketId)
+      if ((count || 0) > 0) return NextResponse.json({ error: `has ${count} call(s) — Void first (refunds), then delete` }, { status: 400 })
+      const { error } = await supabase.from("markets").delete().eq("id", marketId)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ deleted: true })
+    }
+
     return NextResponse.json({ error: "unknown action" }, { status: 400 })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })

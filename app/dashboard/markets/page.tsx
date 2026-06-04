@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Swords, Loader2, Lock, CheckCircle, Ban, Plus, Coins } from "lucide-react"
+import { Swords, Loader2, Lock, CheckCircle, Ban, Plus, Coins, Pencil, Trash2 } from "lucide-react"
 
 type Track = { id: number; title: string; artist: string; mood: string }
 type MarketType = "head" | "song" | "mood" | "artist"
@@ -36,6 +36,14 @@ export default function MarketsPage() {
   const [threshold, setThreshold] = useState("0")
   const [preset, setPreset] = useState("5M")
   const [pool, setPool] = useState("100000")
+  // edit state
+  const [editing, setEditing] = useState<string | null>(null)
+  const [eQuestion, setEQuestion] = useState("")
+  const [eSubjectA, setESubjectA] = useState("")
+  const [eSubjectB, setESubjectB] = useState("")
+  const [eThreshold, setEThreshold] = useState("0")
+  const [ePreset, setEPreset] = useState("")
+  const [ePool, setEPool] = useState("")
 
   const artists = useMemo(
     () => Array.from(new Set(tracks.map((t) => t.artist))).sort(),
@@ -99,6 +107,47 @@ export default function MarketsPage() {
       fetchData()
     } catch (e: any) { setMsg(`❌ ${e.message}`) }
     finally { setActing(null) }
+  }
+
+  const startEdit = (m: any) => {
+    setEditing(m.id); setMsg("")
+    setEQuestion(m.question || "")
+    setESubjectA(String(m.subject_a ?? ""))
+    setESubjectB(m.subject_b == null ? "" : String(m.subject_b))
+    setEThreshold(String(m.threshold ?? 0))
+    setEPreset("")
+    setEPool(String(m.emissions_pool ?? 0))
+  }
+
+  const editMarket = async (m: any) => {
+    setActing(m.id + "edit"); setMsg("")
+    const body: any = {
+      action: "edit", market_id: m.id,
+      question: eQuestion, subject_a: eSubjectA, subject_b: eSubjectB || null,
+      threshold: Number(eThreshold) || 0, emissions_pool: Number(ePool) || 0,
+    }
+    if (ePreset) {
+      const pr = PRESETS[ePreset]; const now = Date.now()
+      body.settles_at = new Date(now + pr.ms).toISOString()
+      body.locks_at = new Date(now + pr.ms - pr.lockMs).toISOString()
+    }
+    try {
+      const res = await fetch("/api/admin/markets", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(body) })
+      const r = await res.json()
+      setMsg(res.ok ? "✅ market updated" : `❌ ${r.error}`)
+      if (res.ok) { setEditing(null); fetchData() }
+    } catch (e: any) { setMsg(`❌ ${e.message}`) } finally { setActing(null) }
+  }
+
+  const deleteMarket = async (m: any) => {
+    if (!confirm("Delete this market permanently? Only works if it has no calls.")) return
+    setActing(m.id + "delete"); setMsg("")
+    try {
+      const res = await fetch("/api/admin/markets", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ action: "delete", market_id: m.id }) })
+      const r = await res.json()
+      setMsg(res.ok ? "✅ deleted" : `❌ ${r.error}`)
+      fetchData()
+    } catch (e: any) { setMsg(`❌ ${e.message}`) } finally { setActing(null) }
   }
 
   const statusColor: Record<string, string> = {
@@ -227,8 +276,59 @@ export default function MarketsPage() {
                       {pos.n} calls — <span className="text-emerald-400">back {pos.back} ({Number(pos.backStake).toLocaleString()})</span> · <span className="text-red-400">fade {pos.fade} ({Number(pos.fadeStake).toLocaleString()})</span>
                     </p>
 
+                    {editing === m.id && (
+                      <div className="mt-3 space-y-2 border-t border-zinc-800 pt-3">
+                        <Input value={eQuestion} onChange={(e) => setEQuestion(e.target.value)} placeholder="Question (shown to users)" />
+                        <div className="grid grid-cols-2 gap-2">
+                          <select value={eSubjectA} onChange={(e) => setESubjectA(e.target.value)}
+                            className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white">
+                            <option value="">— {m.type === "mood" ? "mood" : m.type === "artist" ? "artist" : "track A"} —</option>
+                            {m.type === "mood"
+                              ? MOODS.map((x) => <option key={x} value={x}>{x.toUpperCase()}</option>)
+                              : m.type === "artist"
+                              ? artists.map((a) => <option key={a} value={a}>{a}</option>)
+                              : tracks.map((t) => <option key={t.id} value={t.id}>{t.title} — {t.artist}</option>)}
+                          </select>
+                          {(m.type === "head" || m.type === "artist") && (
+                            <select value={eSubjectB} onChange={(e) => setESubjectB(e.target.value)}
+                              className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white">
+                              <option value="">— {m.type === "head" ? "track B" : "artist B (optional)"} —</option>
+                              {m.type === "head"
+                                ? tracks.map((t) => <option key={t.id} value={t.id}>{t.title} — {t.artist}</option>)
+                                : artists.map((a) => <option key={a} value={a}>{a}</option>)}
+                            </select>
+                          )}
+                          <Input type="number" value={eThreshold} onChange={(e) => setEThreshold(e.target.value)} placeholder="threshold / N" />
+                          <Input type="number" value={ePool} onChange={(e) => setEPool(e.target.value)} placeholder="emissions pool" />
+                          <select value={ePreset} onChange={(e) => setEPreset(e.target.value)}
+                            className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white">
+                            <option value="">keep current timing</option>
+                            {Object.entries(PRESETS).map(([k, v]) => <option key={k} value={k}>reset → {v.label}</option>)}
+                          </select>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => editMarket(m)} disabled={acting === m.id + "edit"}>
+                            {acting === m.id + "edit" ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save changes"}
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => setEditing(null)}>Cancel</Button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 mt-3 flex-wrap">
+                      {m.status === "open" && editing !== m.id && (
+                        <Button variant="outline" size="sm" onClick={() => startEdit(m)}>
+                          <Pencil className="w-3 h-3 mr-1" /> Edit
+                        </Button>
+                      )}
+                      <Button variant="outline" size="sm" onClick={() => deleteMarket(m)} disabled={acting === m.id + "delete"}
+                        className="text-red-400 hover:text-red-300">
+                        {acting === m.id + "delete" ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Trash2 className="w-3 h-3 mr-1" /> Delete</>}
+                      </Button>
+                    </div>
+
                     {(m.status === "open" || m.status === "locked") && (
-                      <div className="flex gap-2 mt-3">
+                      <div className="flex gap-2 mt-2">
                         {m.status === "open" && (
                           <Button variant="outline" size="sm" onClick={() => doAction("lock", m.id)} disabled={acting === m.id + "lock"}>
                             {acting === m.id + "lock" ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Lock className="w-3 h-3 mr-1" /> Lock</>}
