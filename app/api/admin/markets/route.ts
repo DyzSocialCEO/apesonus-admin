@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
+import { commitHash } from "@/lib/onus-chain/commit"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -184,7 +185,39 @@ export async function POST(request: Request) {
         p_result: result,
       })
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      return NextResponse.json({ ...data, detail })
+
+      // ── Layer 2: commit the settlement dataset hash on-chain (best-effort) ──
+      // Publish the exact plays + tally that decided this market so anyone can
+      // re-hash and verify we didn't alter it. A chain failure never blocks payout.
+      let commit: { hash: string; signature: string } | null = null
+      try {
+        const { data: plays } = await supabase
+          .from("play_history")
+          .select("user_id, track_id, played_at")
+          .gte("played_at", market.opens_at)
+          .lte("played_at", market.settles_at)
+          .order("played_at", { ascending: true })
+        const dataset = {
+          market_id: market.id,
+          type: market.type,
+          subject_a: market.subject_a,
+          subject_b: market.subject_b,
+          threshold: market.threshold,
+          window: { opens_at: market.opens_at, settles_at: market.settles_at },
+          result,
+          plays: (plays || []).map((p) => ({ user: p.user_id, track: p.track_id, ts: p.played_at })),
+        }
+        commit = await commitHash(String(market.id), dataset)
+        if (commit) {
+          await supabase.from("markets").update({
+            commit_hash: commit.hash, commit_sig: commit.signature, committed_at: new Date().toISOString(),
+          }).eq("id", marketId)
+        }
+      } catch (e: any) {
+        console.error("[settle] commit step failed (non-blocking):", e?.message)
+      }
+
+      return NextResponse.json({ ...data, detail, commit })
     }
 
     // ── edit ── (only while open: copy, subjects, threshold, timing, pool)

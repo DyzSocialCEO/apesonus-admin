@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@solana/web3.js": "^1.98.4",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
     "@upstash/ratelimit": "^2.0.5",
