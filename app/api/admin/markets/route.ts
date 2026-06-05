@@ -205,10 +205,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ edited: true, market: data })
     }
 
-    // ── delete ── (hard remove; blocked if it has calls, to protect locked $ONUS)
+    // ── delete ── (hard remove). Block only if OPEN calls exist (locked $ONUS
+    // still owed). Settled/void positions are already paid out — safe to remove
+    // along with the market.
     if (action === "delete") {
-      const { count } = await supabase.from("market_positions").select("id", { count: "exact", head: true }).eq("market_id", marketId)
-      if ((count || 0) > 0) return NextResponse.json({ error: `has ${count} call(s) — Void first (refunds), then delete` }, { status: 400 })
+      const { count: openCount } = await supabase
+        .from("market_positions").select("id", { count: "exact", head: true })
+        .eq("market_id", marketId).eq("status", "open")
+      if ((openCount || 0) > 0) {
+        return NextResponse.json({ error: `has ${openCount} OPEN call(s) — Settle or Void first, then delete` }, { status: 400 })
+      }
+      // clear any settled/void positions, then the market itself
+      await supabase.from("market_positions").delete().eq("market_id", marketId)
       const { error } = await supabase.from("markets").delete().eq("id", marketId)
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       return NextResponse.json({ deleted: true })
