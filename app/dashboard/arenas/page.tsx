@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Zap, Loader2, Plus, Trash2, Play, Ban, Search } from "lucide-react"
+import { Zap, Loader2, Plus, Trash2, Play, Ban, Search, Gavel } from "lucide-react"
 
 type Track = { id: number; title: string; artist: string; mood: string }
 type Arena = {
@@ -14,7 +14,6 @@ type Arena = {
   min_back: number; max_back: number | null; created_at: string
 }
 
-const GENRES = ["ALL", "REKT", "MOON", "DEGEN", "COPE", "ZEN"]
 const UNITS: Record<string, number> = { minutes: 60, hours: 3600, days: 86400 }
 const STATUS_STYLE: Record<string, string> = {
   draft: "bg-zinc-500/15 text-zinc-300",
@@ -40,7 +39,6 @@ export default function ArenasPage() {
   const [msg, setMsg] = useState("")
 
   const [title, setTitle] = useState("")
-  const [genre, setGenre] = useState("ALL")
   const [cycleVal, setCycleVal] = useState("")
   const [cycleUnit, setCycleUnit] = useState("hours")
   const [minBack, setMinBack] = useState("0")
@@ -85,13 +83,13 @@ export default function ArenasPage() {
       const res = await fetch("/api/admin/arenas", {
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({
-          action: "create", title: title.trim(), genre, cycle_seconds,
+          action: "create", title: title.trim(), genre: "ALL", cycle_seconds,
           min_back: minBack, max_back: maxBack, track_ids: Array.from(selected),
         }),
       })
       const data = await res.json()
       if (data.error) { setMsg(data.error); return }
-      setTitle(""); setCycleVal(""); setMinBack("0"); setMaxBack(""); setSelected(new Set()); setGenre("ALL")
+      setTitle(""); setCycleVal(""); setMinBack("0"); setMaxBack(""); setSelected(new Set())
       setMsg("arena created (draft)")
       load()
     } catch (e: any) { setMsg(e.message) } finally { setActing(null) }
@@ -99,6 +97,8 @@ export default function ArenasPage() {
 
   async function act(arena_id: string, action: string) {
     if (action === "delete" && !confirm("Delete this arena?")) return
+    if (action === "settle" && !confirm("Settle now? This opens the vaults, names the winner, and returns every stake.")) return
+    if (action === "void" && !confirm("Void this arena? Every locked stake is refunded.")) return
     setActing(arena_id + action); setMsg("")
     try {
       const res = await fetch("/api/admin/arenas", {
@@ -107,6 +107,12 @@ export default function ArenasPage() {
       })
       const data = await res.json()
       if (data.error) { setMsg(data.error); return }
+      if (data.result) {
+        const r = data.result
+        setMsg(r.winner_track_id
+          ? `Settled — winning track #${r.winner_track_id} (power ${r.winner_power}), ${r.winners} winner(s), ${r.stakes_returned} stake(s) returned`
+          : `Settled — no winner (no picks), ${r.stakes_returned} stake(s) returned`)
+      }
       load()
     } catch (e: any) { setMsg(e.message) } finally { setActing(null) }
   }
@@ -124,17 +130,9 @@ export default function ArenasPage() {
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2 text-white"><Plus className="h-4 w-4" /> Create Arena</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs text-zinc-400">Title</label>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Cycle 07" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-zinc-400">Genre</label>
-              <select value={genre} onChange={(e) => setGenre(e.target.value)} className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white">
-                {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
-              </select>
-            </div>
+          <div>
+            <label className="mb-1 block text-xs text-zinc-400">Title</label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Cycle 07" />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
@@ -204,7 +202,6 @@ export default function ArenasPage() {
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-white">{a.title}</span>
                         <Badge className={STATUS_STYLE[a.status] || ""}>{a.status}</Badge>
-                        <Badge className="bg-zinc-700/40 text-zinc-300">{a.genre}</Badge>
                       </div>
                       <div className="mt-1 text-xs text-zinc-500">
                         {fmtCycle(a.cycle_seconds)} cycle, {trackCount} tracks, min {a.min_back}{a.max_back ? ", max " + a.max_back : ""}
@@ -217,12 +214,17 @@ export default function ArenasPage() {
                           {acting === a.id + "open" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Open
                         </Button>
                       )}
-                      {(a.status === "open" || a.status === "draft") && (
+                      {(a.status === "open" || a.status === "revealing") && (
+                        <Button onClick={() => act(a.id, "settle")} disabled={acting === a.id + "settle"} className="bg-blue-500/20 text-blue-300 hover:bg-blue-500/30">
+                          {acting === a.id + "settle" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gavel className="h-4 w-4" />} Settle
+                        </Button>
+                      )}
+                      {(a.status === "open" || a.status === "draft" || a.status === "revealing") && (
                         <Button onClick={() => act(a.id, "void")} disabled={acting === a.id + "void"} className="bg-amber-500/15 text-amber-300 hover:bg-amber-500/25">
                           {acting === a.id + "void" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />} Void
                         </Button>
                       )}
-                      {a.status !== "open" && (
+                      {a.status !== "open" && a.status !== "revealing" && (
                         <Button onClick={() => act(a.id, "delete")} disabled={acting === a.id + "delete"} className="bg-red-500/15 text-red-300 hover:bg-red-500/25">
                           {acting === a.id + "delete" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                         </Button>

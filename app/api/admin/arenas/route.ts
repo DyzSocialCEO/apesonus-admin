@@ -6,11 +6,13 @@ export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 
 // ============================================================================
-// /api/admin/arenas — create / list / open / void / edit / delete
+// /api/admin/arenas — create / list / open / settle / void / edit / delete
 //
 // Arenas are the Blind Backing Arena cycles. Writes go through the service-role
-// client (createAdminClient), so RLS is bypassed. BACK / BOOST + reveal land in
-// a later chunk once these can be created.
+// client (createAdminClient), so RLS is bypassed.
+//   settle -> opens the vaults: arena_settle reveals picks, names the winner,
+//             returns every stake 100%, flags winners (jackpot pluggable).
+//   void   -> arena_refund returns all locked stakes, then status -> void.
 // ============================================================================
 
 export async function GET() {
@@ -50,8 +52,8 @@ export async function POST(request: Request) {
     // -- create --
     if (action === "create") {
       const { title, genre, cycle_seconds, min_back, max_back, track_ids } = body
-      if (!title || !genre || !cycle_seconds) {
-        return NextResponse.json({ error: "missing fields (title, genre, cycle_seconds)" }, { status: 400 })
+      if (!title || !cycle_seconds) {
+        return NextResponse.json({ error: "missing fields (title, cycle_seconds)" }, { status: 400 })
       }
       const ids: number[] = Array.isArray(track_ids)
         ? track_ids.map((x: any) => Number(x)).filter((n: number) => !!n)
@@ -67,7 +69,7 @@ export async function POST(request: Request) {
 
       const { data: arena, error } = await supabase.from("arenas").insert({
         title,
-        genre,
+        genre: genre || "ALL",
         cycle_seconds: Number(cycle_seconds),
         min_back: minB,
         max_back: maxB,
@@ -104,8 +106,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ opened: true, arena: data })
     }
 
-    // -- void --
+    // -- settle -- (open the vaults: reveal picks, name winner, return stakes)
+    if (action === "settle") {
+      const jackpot = Number(body.jackpot) || 0
+      const { data, error } = await supabase.rpc("arena_settle", { p_arena_id: arenaId, p_jackpot: jackpot })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ settled: true, result: data })
+    }
+
+    // -- void -- (refund every locked stake first, then mark void)
     if (action === "void") {
+      const { error: rErr } = await supabase.rpc("arena_refund", { p_arena_id: arenaId })
+      if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 })
       const { data, error } = await supabase.from("arenas").update({ status: "void" }).eq("id", arenaId).select().single()
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       return NextResponse.json({ voided: true, arena: data })
@@ -138,7 +150,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ edited: true })
     }
 
-    // -- delete -- (block while open; backs/boosts will gate this later)
+    // -- delete -- (block while open)
     if (action === "delete") {
       const { data: a } = await supabase.from("arenas").select("status").eq("id", arenaId).single()
       if (!a) return NextResponse.json({ error: "arena not found" }, { status: 404 })
