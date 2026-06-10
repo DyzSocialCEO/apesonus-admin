@@ -60,8 +60,9 @@ export async function GET(request: Request) {
     const streams: Record<string, number> = {}
     for (const s of stats || []) streams[s.artist_id] = Number(s.lifetime_streams || 0)
 
-    const ids = new Set<string>([...Object.keys(ROSTER), ...Object.keys(totals), ...Object.keys(streams)])
-    const factions = [...ids]
+    const idArr = Object.keys(ROSTER).concat(Object.keys(totals), Object.keys(streams))
+    const ids = Array.from(new Set(idArr))
+    const factions = ids
       .map((id) => ({
         artist_id: id,
         name: ROSTER[id] || id,
