@@ -58,6 +58,8 @@ export default function AmmoPage() {
 
   // daily track
   const [savingTrack, setSavingTrack] = useState(false)
+  const [trackSaved, setTrackSaved] = useState(false)
+  const [trackErr, setTrackErr] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -109,7 +111,7 @@ export default function AmmoPage() {
   }
 
   const saveTrack = async (val: string) => {
-    setSavingTrack(true)
+    setSavingTrack(true); setTrackSaved(false); setTrackErr(false)
     try {
       const trackId = val === "" ? null : Number(val)
       const res = await fetch("/api/admin/ammo/daily-track", {
@@ -117,7 +119,15 @@ export default function AmmoPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trackId }),
       })
-      if (res.ok) setFeaturedId(trackId)
+      if (res.ok) {
+        setFeaturedId(trackId)
+        setTrackSaved(true)
+        setTimeout(() => setTrackSaved(false), 4000)
+      } else {
+        setTrackErr(true)
+      }
+    } catch {
+      setTrackErr(true)
     } finally {
       setSavingTrack(false)
     }
@@ -131,7 +141,7 @@ export default function AmmoPage() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-white">Ammo</h1>
-          <p className="text-sm text-gray-500">THE PIT — consumable stream credit. $1 = 100 Ammo, 1 Ammo = 1 qualified stream.</p>
+          <p className="text-sm text-gray-500">THE FLOOR — consumable stream credit. $1 = 100 Ammo, 1 Ammo = 1 qualified stream.</p>
         </div>
       </div>
 
@@ -155,7 +165,7 @@ export default function AmmoPage() {
                 <h2 className="font-semibold text-white">Daily free track</h2>
               </div>
               <p className="text-xs text-gray-500 mb-4">
-                Every account gets one free qualified play per UTC day, only on this track. Free plays earn zero Node Power.
+                Every track plays for everyone as normal music. This is the single track where a play with zero Ammo still counts as a qualified play, one per account per UTC day, and it earns zero Node Power. It's the daily free taste. To climb the board, people buy Ammo.
               </p>
               <div className="flex items-center gap-3">
                 <select
@@ -170,6 +180,23 @@ export default function AmmoPage() {
                   ))}
                 </select>
                 {savingTrack && <Loader2 className="w-4 h-4 animate-spin text-gray-500" />}
+              </div>
+
+              <div className="mt-3 text-xs">
+                {trackErr ? (
+                  <span className="flex items-center gap-1.5 text-red-400">
+                    <AlertCircle className="w-3.5 h-3.5" /> Couldn't save. Try selecting it again.
+                  </span>
+                ) : featuredId ? (
+                  <span className="flex items-center gap-1.5 text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Live now: free plays are on for “{tracks.find(t => t.id === featuredId)?.title ?? "the selected track"}”.{trackSaved ? " Saved." : ""}
+                  </span>
+                ) : (
+                  <span className="text-gray-500">
+                    No free track set, so no free plays are running. Pick one to switch it on.
+                  </span>
+                )}
               </div>
             </div>
 
