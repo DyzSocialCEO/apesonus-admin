@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { Fuel, Gift, Flame, ShoppingCart, Users2, Star, Loader2, CheckCircle2, AlertCircle } from "lucide-react"
+import { Fuel, Gift, Flame, ShoppingCart, Users2, Star, Loader2, CheckCircle2, AlertCircle, Plus, Trash2, Percent, Save } from "lucide-react"
 
 type Stats = {
   outstanding: number
@@ -24,6 +24,7 @@ type Holder = {
 type GrantRow = { id: number; user_id: string; amount: number; reason: string | null; actor: string | null; created_at: string }
 type PurchaseRow = { id: number; user_id: string; ammo_amount: number; usd_cents: number; rail: string; status: string; created_at: string }
 type TrackOpt = { id: number; title: string; artist: string }
+type Pack = { id: string; price_usd: number; ammo: number; active: boolean; label?: string }
 
 const fmt = (n: number) => (n ?? 0).toLocaleString()
 
@@ -61,12 +62,19 @@ export default function AmmoPage() {
   const [trackSaved, setTrackSaved] = useState(false)
   const [trackErr, setTrackErr] = useState(false)
 
+  // packs + money split
+  const [packs, setPacks] = useState<Pack[]>([])
+  const [treasuryPct, setTreasuryPct] = useState<number>(70)
+  const [savingCfg, setSavingCfg] = useState(false)
+  const [cfgMsg, setCfgMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [a, d] = await Promise.all([
+      const [a, d, c] = await Promise.all([
         fetch("/api/admin/ammo").then(r => r.json()),
         fetch("/api/admin/ammo/daily-track").then(r => r.json()),
+        fetch("/api/admin/ammo/config").then(r => r.json()),
       ])
       setStats(a.stats || null)
       setHolders(a.topHolders || [])
@@ -74,6 +82,8 @@ export default function AmmoPage() {
       setPurchases(a.recentPurchases || [])
       setTracks(d.tracks || [])
       setFeaturedId(d.featuredId ?? null)
+      setPacks(Array.isArray(c.packs) ? c.packs : [])
+      setTreasuryPct(Number.isFinite(c.treasuryPct) ? c.treasuryPct : 70)
     } finally {
       setLoading(false)
     }
@@ -133,6 +143,36 @@ export default function AmmoPage() {
     }
   }
 
+  const addPack = () =>
+    setPacks(p => [...p, { id: `pack_${Math.random().toString(36).slice(2, 8)}`, price_usd: 1, ammo: 200, active: true }])
+  const updatePack = (id: string, patch: Partial<Pack>) =>
+    setPacks(p => p.map(x => (x.id === id ? { ...x, ...patch } : x)))
+  const removePack = (id: string) => setPacks(p => p.filter(x => x.id !== id))
+
+  const saveConfig = async () => {
+    setSavingCfg(true); setCfgMsg(null)
+    try {
+      const clean = packs
+        .filter(p => Number(p.price_usd) > 0 && Number(p.ammo) > 0)
+        .map(p => ({ ...p, price_usd: Number(p.price_usd), ammo: Math.round(Number(p.ammo)) }))
+      const res = await fetch("/api/admin/ammo/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packs: clean, treasuryPct: Number(treasuryPct) }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setCfgMsg({ ok: false, text: data.error || "Couldn't save." }); return }
+      setPacks(data.packs || clean)
+      setTreasuryPct(data.treasuryPct ?? treasuryPct)
+      setCfgMsg({ ok: true, text: "Saved." })
+      setTimeout(() => setCfgMsg(null), 3000)
+    } catch {
+      setCfgMsg({ ok: false, text: "Network error." })
+    } finally {
+      setSavingCfg(false)
+    }
+  }
+
   return (
     <div className="space-y-8 max-w-6xl">
       <div className="flex items-center gap-3">
@@ -155,6 +195,95 @@ export default function AmmoPage() {
             <StatCard icon={ShoppingCart} label="Sold" value={fmt(stats?.ammoSold || 0)} sub={`$${fmt(stats?.usdGross || 0)} gross`} />
             <StatCard icon={Gift} label="Granted" value={fmt(stats?.ammoGranted || 0)} />
             <StatCard icon={Flame} label="Spent" value={fmt(stats?.ammoSpent || 0)} sub={`${fmt(stats?.freeServed || 0)} free plays served`} />
+          </div>
+
+          {/* Packs + money split */}
+          <div className="grid lg:grid-cols-[1.4fr_1fr] gap-6">
+            {/* Pack manager */}
+            <div className="rounded-xl bg-gray-900 border border-gray-800 p-6">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <ShoppingCart className="w-5 h-5 text-primary" />
+                  <h2 className="font-semibold text-white">Ammo packs</h2>
+                </div>
+                <button onClick={addPack}
+                  className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80">
+                  <Plus className="w-4 h-4" /> Add pack
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mb-4">
+                What players can buy. Set the price and the Ammo each pack gives. Nothing is hardcoded, these drive the buy screen. Inactive packs stay saved but hide from players.
+              </p>
+
+              <div className="space-y-2">
+                <div className="grid grid-cols-[1fr_1fr_1.2fr_auto_auto] gap-2 px-1 text-[10px] uppercase tracking-wider text-gray-600">
+                  <span>Price $</span><span>Ammo</span><span>Label (optional)</span><span>Live</span><span></span>
+                </div>
+                {packs.length === 0 && (
+                  <div className="text-xs text-gray-500 py-3">No packs yet. Add one to start selling.</div>
+                )}
+                {packs.map(p => (
+                  <div key={p.id} className="grid grid-cols-[1fr_1fr_1.2fr_auto_auto] gap-2 items-center">
+                    <input type="number" step="0.01" min="0" value={p.price_usd}
+                      onChange={e => updatePack(p.id, { price_usd: Number(e.target.value) })}
+                      className="bg-gray-950 border border-gray-700 rounded-lg px-2.5 py-2 text-sm text-white focus:outline-none focus:border-primary" />
+                    <input type="number" step="1" min="0" value={p.ammo}
+                      onChange={e => updatePack(p.id, { ammo: Number(e.target.value) })}
+                      className="bg-gray-950 border border-gray-700 rounded-lg px-2.5 py-2 text-sm text-white focus:outline-none focus:border-primary" />
+                    <input type="text" value={p.label || ""} placeholder="Best value"
+                      onChange={e => updatePack(p.id, { label: e.target.value })}
+                      className="bg-gray-950 border border-gray-700 rounded-lg px-2.5 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-primary" />
+                    <button onClick={() => updatePack(p.id, { active: !p.active })}
+                      className={`px-2.5 py-2 rounded-lg text-xs font-medium border ${p.active ? "border-emerald-600/50 text-emerald-400 bg-emerald-500/5" : "border-gray-700 text-gray-500"}`}>
+                      {p.active ? "On" : "Off"}
+                    </button>
+                    <button onClick={() => removePack(p.id)} className="p-2 text-gray-500 hover:text-red-400">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Money split */}
+            <div className="rounded-xl bg-gray-900 border border-gray-800 p-6 flex flex-col">
+              <div className="flex items-center gap-2 mb-1">
+                <Percent className="w-5 h-5 text-primary" />
+                <h2 className="font-semibold text-white">Money split</h2>
+              </div>
+              <p className="text-xs text-gray-500 mb-4">
+                Of every dollar taken, this share goes to the weekly payout pool. The house keeps the rest. Banked at purchase, never shown to players.
+              </p>
+
+              <div className="flex items-end gap-3 mb-4">
+                <div className="flex-1">
+                  <label className="text-[10px] uppercase tracking-wider text-gray-600">Treasury (pool)</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input type="number" step="1" min="0" max="100" value={treasuryPct}
+                      onChange={e => setTreasuryPct(Number(e.target.value))}
+                      className="w-20 bg-gray-950 border border-gray-700 rounded-lg px-2.5 py-2 text-lg font-bold text-white focus:outline-none focus:border-primary" />
+                    <span className="text-gray-500">%</span>
+                  </div>
+                </div>
+                <div className="flex-1 text-right">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-600">House keeps</div>
+                  <div className="text-2xl font-bold text-white mt-1">{(100 - (Number(treasuryPct) || 0)).toFixed(0)}%</div>
+                </div>
+              </div>
+
+              <div className="mt-auto">
+                <button onClick={saveConfig} disabled={savingCfg}
+                  className="w-full flex items-center justify-center gap-2 bg-primary text-black font-semibold rounded-lg py-2.5 text-sm hover:bg-primary/90 disabled:opacity-50">
+                  {savingCfg ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Save packs & split
+                </button>
+                {cfgMsg && (
+                  <div className={`mt-2 text-xs flex items-center gap-1.5 ${cfgMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
+                    {cfgMsg.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />} {cfgMsg.text}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="grid lg:grid-cols-2 gap-6">
