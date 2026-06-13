@@ -6,8 +6,11 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import {
   Database, Shield, CheckCircle2, AlertTriangle, Loader2,
-  Save, Sparkles, Clock, Activity, RefreshCw, AlertCircle,
+  Save, Sparkles, Clock, Activity, RefreshCw, AlertCircle, Wallet, Check,
 } from "lucide-react"
+
+// Base58 (no 0 O I l), 32-44 chars — same check the API enforces.
+const SOLANA_ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 
 /**
  * /dashboard/settings — Admin settings page.
@@ -179,6 +182,9 @@ export default function SettingsPage() {
           <button onClick={() => setMsg(null)} className="ml-auto text-xs underline">dismiss</button>
         </div>
       )}
+
+      {/* Receiving wallet — the one live, working control */}
+      <ReceivingWalletCard />
 
       {/* Health snapshot */}
       <Card className="bg-gray-900 border-gray-800">
@@ -361,6 +367,134 @@ export default function SettingsPage() {
       {/* Sweep button */}
       <ExpirySweepCard />
     </div>
+  )
+}
+
+function ReceivingWalletCard() {
+  const [current, setCurrent] = useState("")   // last saved value
+  const [value, setValue] = useState("")
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(null)
+    try {
+      const res = await fetch("/api/admin/settings")
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      const w = String(data.settings?.helius_treasury_wallet ?? "")
+      setCurrent(w); setValue(w)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Load failed")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const trimmed = value.trim()
+  const valid = SOLANA_ADDRESS_RE.test(trimmed)
+  const dirty = trimmed !== current
+  const showInvalid = trimmed.length > 0 && !valid
+
+  const save = async () => {
+    if (!valid) {
+      setErr("That doesn't look like a Solana address (32-44 base58 characters).")
+      return
+    }
+    setSaving(true); setErr(null); setSaved(false)
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates: { helius_treasury_wallet: trimmed } }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error || `Failed (${res.status})`)
+      setCurrent(trimmed); setValue(trimmed)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Save failed")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card className="bg-gray-900 border-gray-800">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-white">
+          <Wallet className="w-4 h-4" /> Receiving wallet
+        </CardTitle>
+        <CardDescription>
+          Solana address that receives USDC for Ammo purchases. Changes take effect immediately on save.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="flex items-center gap-2 text-gray-400 text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-1">Current address</label>
+              {current ? (
+                <code className="block text-sm text-gray-200 font-mono break-all bg-gray-950 border border-gray-800 rounded-lg px-3 py-2">
+                  {current}
+                </code>
+              ) : (
+                <span className="flex items-center gap-1.5 text-sm text-amber-400">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Not set — Ammo purchases have nowhere to land.
+                </span>
+              )}
+            </div>
+
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-1">New address</label>
+              <Input
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                placeholder="Paste a Solana wallet address"
+                spellCheck={false}
+                className={`bg-gray-800 font-mono text-sm ${showInvalid ? "border-red-600/60" : "border-gray-700"}`}
+              />
+              {showInvalid && (
+                <p className="flex items-center gap-1.5 text-[11px] text-red-400 mt-1">
+                  <AlertCircle className="w-3 h-3 shrink-0" /> Not a valid Solana address (32-44 base58 characters).
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                onClick={save}
+                disabled={saving || !dirty || !valid}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-colors disabled:opacity-40 ${saved ? "bg-emerald-500 text-black" : "bg-yellow-500 hover:bg-yellow-400 text-black"}`}
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                {saved ? "Saved" : "Save wallet"}
+              </button>
+              {saved && (
+                <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Receiving wallet updated.
+                </span>
+              )}
+              {err && (
+                <span className="flex items-center gap-1.5 text-xs text-red-400">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {err}
+                </span>
+              )}
+              {dirty && !saved && !err && <span className="text-xs text-amber-400">Unsaved change</span>}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
