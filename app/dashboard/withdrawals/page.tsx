@@ -78,6 +78,8 @@ export default function WithdrawalsPage() {
             <div className="font-mono text-sm text-white truncate">{wallet}</div>
             <div className="text-[11px] text-gray-500 mt-0.5">Keep this funded with USDC and a little SOL for fees.</div>
           </div>
+        ) : loading ? (
+          <div className="text-sm text-gray-500">Loading…</div>
         ) : (
           <div className="flex items-center gap-2 text-amber-400 text-sm">
             <AlertTriangle className="w-4 h-4" /> PAYOUT_WALLET_SECRET is not set. Add it in the admin environment before sending.
