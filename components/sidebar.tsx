@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
   Megaphone, Coins, TrendingUp, Disc3,
-  ScrollText, UserCircle, Fuel, Swords, LineChart,
+  ScrollText, UserCircle, Fuel, Swords, LineChart, DollarSign, Banknote,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -20,6 +20,8 @@ const navigation = [
   { name: "Banners",         href: "/dashboard/banners",         icon: Megaphone       },
   { name: "$ONUS",           href: "/dashboard/onus",            icon: Coins           },
   { name: "Ammo",            href: "/dashboard/ammo",            icon: Fuel            },
+  { name: "Revenue",         href: "/dashboard/revenue",         icon: DollarSign     },
+  { name: "Withdrawals",     href: "/dashboard/withdrawals",     icon: Banknote       },
   { name: "The Floor",       href: "/dashboard/pit",             icon: Swords          },
   { name: "Floor Analytics", href: "/dashboard/floor-analytics", icon: LineChart       },
   { name: "Analytics",       href: "/dashboard/analytics",       icon: BarChart3       },
