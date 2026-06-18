@@ -22,7 +22,7 @@ const navigation = [
   { name: "Ammo",            href: "/dashboard/ammo",            icon: Fuel            },
   { name: "Revenue",         href: "/dashboard/revenue",         icon: DollarSign     },
   { name: "Withdrawals",     href: "/dashboard/withdrawals",     icon: Banknote       },
-  { name: "Payout",          href: "/dashboard/payout",          icon: Trophy         },
+  { name: "Drops",            href: "/dashboard/payout",          icon: Trophy         },
   { name: "The Floor",       href: "/dashboard/pit",             icon: Swords          },
   { name: "Floor Analytics", href: "/dashboard/floor-analytics", icon: LineChart       },
   { name: "Analytics",       href: "/dashboard/analytics",       icon: BarChart3       },
