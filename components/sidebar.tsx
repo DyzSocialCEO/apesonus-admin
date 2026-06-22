@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
   Megaphone, Coins, TrendingUp, Disc3,
-  ScrollText, UserCircle, Fuel, Swords, LineChart, DollarSign, Banknote, Trophy,
+  ScrollText, UserCircle, Fuel, Swords, LineChart, DollarSign, Banknote, Trophy, Target,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -24,6 +24,7 @@ const navigation = [
   { name: "Withdrawals",     href: "/dashboard/withdrawals",     icon: Banknote       },
   { name: "Drops",            href: "/dashboard/payout",          icon: Trophy         },
   { name: "The Floor",       href: "/dashboard/pit",             icon: Swords          },
+  { name: "The Read",        href: "/dashboard/the-read",        icon: Target          },
   { name: "Floor Analytics", href: "/dashboard/floor-analytics", icon: LineChart       },
   { name: "Analytics",       href: "/dashboard/analytics",       icon: BarChart3       },
   { name: "Logs",            href: "/dashboard/logs",            icon: ScrollText      },
