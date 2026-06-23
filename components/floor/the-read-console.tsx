@@ -74,7 +74,7 @@ const lockLabel = (sec: number): string => (sec < 120 ? sec + "s" : Math.round(s
 export function TheReadConsole() {
   useConsoleStyles()
   const [tab, setTab] = useState<Tab>("build")
-  const [cfg, setCfg] = useState<SeasonConfig>(defaultConfig)
+  const [cfg, setCfg] = useState<SeasonConfig>({ ...defaultConfig, entrants: 0 })
   const [state, setState] = useState<SeasonState>("draft")
   const [settledStages, setSettledStages] = useState<Stage[]>([])
   const [seasonId, setSeasonId] = useState<string | null>(null)
@@ -92,7 +92,7 @@ export function TheReadConsole() {
         if (!alive || !d?.season) return
         setSeasonId(d.season.id)
         setState(d.season.state)
-        setCfg((c) => ({ ...c, ...d.season.config }))
+        setCfg((c) => ({ ...c, ...d.season.config, entrants: d.season.entrants ?? 0 }))
       } catch {
         // leave the defaults in place
       }
@@ -395,10 +395,9 @@ function BuildTab({
         </section>
 
         <section className="rc-card">
-          <h3 className="rc-card-h">Field size <span className="rc-priv">drives the ledger</span></h3>
+          <h3 className="rc-card-h">Buy and burn <span className="rc-priv">private</span></h3>
           <div className="rc-dials">
-            <Field label="Entrants" hint="live in production · set here for the dry run"><NumIn value={cfg.entrants} onChange={(n) => set("entrants", n)} step={10} /></Field>
-            <Field label="Buy and burn" hint="share of take bought as BONK"><NumIn value={cfg.burnPct} onChange={(n) => set("burnPct", n)} suffix="%" /></Field>
+            <Field label="Burn share" hint="share of the take bought as BONK and burned"><NumIn value={cfg.burnPct} onChange={(n) => set("burnPct", n)} suffix="%" /></Field>
           </div>
         </section>
 
@@ -598,17 +597,25 @@ function RunTab({
         <div className="rc-col">
           <section className="rc-card">
             <h3 className="rc-card-h">{state === "settled" || state === "paid" ? "Final standings" : "Live field"}</h3>
-            <div className="rc-runboard">
-              {board.slice(0, 7).map((r, i) => (
-                <div key={r.handle} className={"rc-rb" + (i < 5 ? " paid" : "")}>
-                  <span className="rc-rb-rk">{i + 1}</span>
-                  <span className="rc-rb-dot" style={{ background: r.color }} />
-                  <span className="rc-rb-nm">{r.handle}</span>
-                  {i < 5 && <span className="rc-rb-prize gold">{usd2(prizeForExact(i + 1))}</span>}
-                  <span className="rc-rb-pts">{pts(r.points)}</span>
-                </div>
-              ))}
-            </div>
+            {state === "draft" || state === "signups" || state === "locked" ? (
+              <div className="rc-runboard">
+                <p className="rc-card-note" style={{ margin: 0 }}>
+                  {pts(cfg.entrants)} entered so far. The board fills as the stages run, and the five highest totals take the prize.
+                </p>
+              </div>
+            ) : (
+              <div className="rc-runboard">
+                {board.slice(0, 7).map((r, i) => (
+                  <div key={r.handle} className={"rc-rb" + (i < 5 ? " paid" : "")}>
+                    <span className="rc-rb-rk">{i + 1}</span>
+                    <span className="rc-rb-dot" style={{ background: r.color }} />
+                    <span className="rc-rb-nm">{r.handle}</span>
+                    {i < 5 && <span className="rc-rb-prize gold">{usd2(prizeForExact(i + 1))}</span>}
+                    <span className="rc-rb-pts">{pts(r.points)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <p className="rc-card-note">Players see this board and the prize. They never see the take. That is in the Ledger.</p>
           </section>
 
@@ -686,7 +693,7 @@ function LedgerTab({ cfg }: { cfg: SeasonConfig }) {
         </div>
         <p className="rc-card-note">
           When a sponsor funds the prize, the house share drops to zero and the whole entry take, less the burn, is held. The
-          burn is a real cost, a public BONK buy that gets burned. Move the entrants and burn dials in Build to stress this.
+          burn is a real cost, a public BONK buy that gets burned. Every figure here is the real field, entries in against prize and burn out.
         </p>
       </div>
 
