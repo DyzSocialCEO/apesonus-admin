@@ -74,7 +74,7 @@ const lockLabel = (sec: number): string => (sec < 120 ? sec + "s" : Math.round(s
 export function TheReadConsole() {
   useConsoleStyles()
   const [tab, setTab] = useState<Tab>("build")
-  const [cfg, setCfg] = useState<SeasonConfig>({ ...defaultConfig, entrants: 0 })
+  const [cfg, setCfg] = useState<SeasonConfig>({ ...defaultConfig(), entrants: 0 })
   const [state, setState] = useState<SeasonState>("draft")
   const [settledStages, setSettledStages] = useState<Stage[]>([])
   const [seasonId, setSeasonId] = useState<string | null>(null)
