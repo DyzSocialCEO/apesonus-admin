@@ -77,6 +77,30 @@ export function TheReadConsole() {
   const [cfg, setCfg] = useState<SeasonConfig>(defaultConfig)
   const [state, setState] = useState<SeasonState>("draft")
   const [settledStages, setSettledStages] = useState<Stage[]>([])
+  const [seasonId, setSeasonId] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+
+  // Hydrate from the DB so the console resumes the live Season on reload.
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const r = await fetch("/api/admin/the-read", { cache: "no-store" })
+        if (!r.ok) return
+        const d = await r.json()
+        if (!alive || !d?.season) return
+        setSeasonId(d.season.id)
+        setState(d.season.state)
+        setCfg((c) => ({ ...c, ...d.season.config }))
+      } catch {
+        // leave the defaults in place
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [])
 
   const set = <K extends keyof SeasonConfig>(k: K, v: SeasonConfig[K]) => setCfg((c) => ({ ...c, [k]: v }))
   const setStage = (key: Stage, patch: Partial<StageDial>) =>
@@ -85,16 +109,60 @@ export function TheReadConsole() {
   const splitSum = cfg.split.reduce((a, b) => a + b, 0)
   const idx = stateIndex(state)
 
-  function advance() {
+  async function post(action: string, extra: Record<string, unknown>) {
+    const r = await fetch("/api/admin/the-read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({ action, season_id: seasonId, ...extra }),
+    })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok || d?.ok === false) throw new Error(d?.error || "request failed")
+    return d
+  }
+
+  async function saveDraft() {
+    if (busy) return
+    setBusy(true)
+    setNote(null)
+    try {
+      const d = await post("save", { config: cfg })
+      setSeasonId(d.id)
+      setNote("Draft saved")
+    } catch (e: any) {
+      setNote(e?.message || "Save failed")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function advance() {
+    if (busy) return
     const next = NEXT_STATE[state]
     if (!next) return
-    // settling a stage marks it before moving on
-    if (state === "filter" || state === "grind" || state === "gauntlet") {
-      const cur: Stage = state
-      setSettledStages((s) => (s.includes(cur) ? s : [...s, cur]))
+    setBusy(true)
+    setNote(null)
+    try {
+      let newState: SeasonState
+      if (state === "draft") {
+        const d = await post("open_signups", { config: cfg })
+        setSeasonId(d.id)
+        newState = d.state
+      } else {
+        const d = await post("advance", { to: next })
+        newState = d.state
+      }
+      if (state === "filter" || state === "grind" || state === "gauntlet") {
+        const cur: Stage = state
+        setSettledStages((s) => (s.includes(cur) ? s : [...s, cur]))
+      }
+      setState(newState)
+      if (newState === "signups" || newState === "filter") setTab("run")
+    } catch (e: any) {
+      setNote(e?.message || "Action failed")
+    } finally {
+      setBusy(false)
     }
-    setState(next)
-    if (next === "signups" || next === "filter") setTab("run")
   }
 
   return (
@@ -123,10 +191,10 @@ export function TheReadConsole() {
         </nav>
 
         {tab === "build" && (
-          <BuildTab cfg={cfg} set={set} setStage={setStage} splitSum={splitSum} onOpen={advance} state={state} />
+          <BuildTab cfg={cfg} set={set} setStage={setStage} splitSum={splitSum} onOpen={advance} onSave={saveDraft} busy={busy} note={note} state={state} />
         )}
         {tab === "run" && (
-          <RunTab cfg={cfg} state={state} idx={idx} settledStages={settledStages} onAdvance={advance} />
+          <RunTab cfg={cfg} state={state} idx={idx} settledStages={settledStages} onAdvance={advance} busy={busy} />
         )}
         {tab === "ledger" && <LedgerTab cfg={cfg} />}
       </div>
@@ -170,6 +238,9 @@ function BuildTab({
   setStage,
   splitSum,
   onOpen,
+  onSave,
+  busy,
+  note,
   state,
 }: {
   cfg: SeasonConfig
@@ -177,6 +248,9 @@ function BuildTab({
   setStage: (key: Stage, patch: Partial<StageDial>) => void
   splitSum: number
   onOpen: () => void
+  onSave: () => void
+  busy: boolean
+  note: string | null
   state: SeasonState
 }) {
   const prize = prizeCommitted(cfg)
@@ -338,11 +412,25 @@ function BuildTab({
             <div className="rc-pv-row"><span>Sponsor</span><b>{cfg.sponsored ? cfg.sponsor || "set a name" : "house"}</b></div>
           </div>
           {state === "draft" ? (
-            <button className="rc-go" disabled={splitSum !== 100 || cfg.slate.length < 2} onClick={onOpen}>
-              {splitSum !== 100 ? "Fix the split to open" : cfg.slate.length < 2 ? "Pick at least two artists" : "Open signups ▸"}
-            </button>
+            <>
+              <button className="rc-go" disabled={busy || splitSum !== 100 || cfg.slate.length < 2} onClick={onOpen}>
+                {busy ? "Working…" : splitSum !== 100 ? "Fix the split to open" : cfg.slate.length < 2 ? "Pick at least two artists" : "Open signups ▸"}
+              </button>
+              <button
+                className="rc-go"
+                disabled={busy}
+                onClick={onSave}
+                style={{ marginTop: 8, background: "transparent", border: "1px solid rgba(255,255,255,0.22)", color: "rgba(255,255,255,0.82)" }}
+              >
+                {busy ? "Saving…" : "Save draft"}
+              </button>
+              {note && <p className="rc-card-note">{note}</p>}
+            </>
           ) : (
-            <p className="rc-card-note">Season is live in Run. Dials lock once signups open in production.</p>
+            <>
+              <p className="rc-card-note">Season is live in Run. Dials lock once signups open.</p>
+              {note && <p className="rc-card-note">{note}</p>}
+            </>
           )}
         </section>
       </div>
@@ -379,12 +467,14 @@ function RunTab({
   idx,
   settledStages,
   onAdvance,
+  busy,
 }: {
   cfg: SeasonConfig
   state: SeasonState
   idx: number
   settledStages: Stage[]
   onAdvance: () => void
+  busy: boolean
 }) {
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const stage = isStageState(state) ? state : null
@@ -498,7 +588,7 @@ function RunTab({
             )}
 
             {primaryLabel && (
-              <button className={"rc-go" + (stage === "gauntlet" && !stageRevealed ? " live" : "")} onClick={primary}>
+              <button className={"rc-go" + (stage === "gauntlet" && !stageRevealed ? " live" : "")} disabled={busy} onClick={primary}>
                 {primaryLabel}
               </button>
             )}
