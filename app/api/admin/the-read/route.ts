@@ -32,6 +32,8 @@ function nextState(s: SeasonState): SeasonState | null {
   return i >= 0 && i < STATE_ORDER.length - 1 ? STATE_ORDER[i + 1] : null
 }
 
+const STAGE_SET = ["filter", "grind", "gauntlet"]
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // ── Coercion helpers, so a bad field can never 500 the database ────────────
@@ -190,8 +192,23 @@ export async function GET() {
       .select("id", { count: "exact", head: true })
       .eq("season_id", row.id)
 
+    const { data: standings } = await supabase.rpc("read_standings", { p_season_id: row.id })
+
+    let stageCalls: any[] = []
+    if (STAGE_SET.includes(row.state)) {
+      const { data: c } = await supabase
+        .from("read_calls")
+        .select("n, type, artist_id, kind, open_value, settle_value, hit_target, settle_label")
+        .eq("season_id", row.id)
+        .eq("stage", row.state)
+        .order("n", { ascending: true })
+      stageCalls = c || []
+    }
+
     return NextResponse.json({
       season: { id: row.id, state: row.state, entrants: Number(count ?? 0), config: rowToConfig(row) },
+      standings: Array.isArray(standings) ? standings : [],
+      stage_calls: stageCalls,
     })
   } catch (e) {
     console.error("[admin/the-read] GET:", e)
@@ -226,6 +243,11 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "stale state", state: cur.state, next }, { status: 409 })
       }
 
+      // Settle the stage we are leaving, scoring on real metrics.
+      if (STAGE_SET.includes(cur.state)) {
+        await supabase.rpc("read_settle_stage", { p_season_id: seasonId, p_stage: cur.state })
+      }
+
       const { error } = await supabase
         .from("read_seasons")
         .update({ state: next, updated_at: new Date().toISOString() })
@@ -233,10 +255,29 @@ export async function POST(request: Request) {
         .eq("state", cur.state)
       if (error) return NextResponse.json({ error: "advance failed" }, { status: 500 })
 
+      // Open the stage we are entering so its calls go live with real opens.
+      if (STAGE_SET.includes(next)) {
+        await supabase.rpc("read_open_stage", { p_season_id: seasonId, p_stage: next })
+      }
+
       await logAdminAction(supabase, request, session.username, "the_read_advance", {
         season_id: seasonId, from: cur.state, to: next,
       }).catch(() => {})
       return NextResponse.json({ ok: true, id: seasonId, state: next })
+    }
+
+    // ── open_stage / settle_stage: manual override if the auto path fails ─
+    if (action === "open_stage" || action === "settle_stage") {
+      if (!seasonId) return NextResponse.json({ error: "season_id required" }, { status: 400 })
+      const stage = String(body?.stage || "")
+      if (!STAGE_SET.includes(stage)) return NextResponse.json({ error: "bad stage" }, { status: 400 })
+      const fn = action === "open_stage" ? "read_open_stage" : "read_settle_stage"
+      const { data, error } = await supabase.rpc(fn, { p_season_id: seasonId, p_stage: stage })
+      if (error) return NextResponse.json({ error: action + " failed" }, { status: 500 })
+      await logAdminAction(supabase, request, session.username, "the_read_" + action, {
+        season_id: seasonId, stage,
+      }).catch(() => {})
+      return NextResponse.json({ ok: true, id: seasonId, result: data })
     }
 
     // ── save and open_signups both need a clean config ──────────────────

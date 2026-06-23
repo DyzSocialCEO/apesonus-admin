@@ -80,8 +80,11 @@ export function TheReadConsole() {
   const [seasonId, setSeasonId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
+  const [liveStandings, setLiveStandings] = useState<any[]>([])
+  const [liveCalls, setLiveCalls] = useState<any[]>([])
 
-  // Hydrate from the DB so the console resumes the live Season on reload.
+  // Full hydrate once, so the console resumes the live Season (and its dials)
+  // on reload.
   useEffect(() => {
     let alive = true
     ;(async () => {
@@ -89,10 +92,14 @@ export function TheReadConsole() {
         const r = await fetch("/api/admin/the-read", { cache: "no-store" })
         if (!r.ok) return
         const d = await r.json()
-        if (!alive || !d?.season) return
-        setSeasonId(d.season.id)
-        setState(d.season.state)
-        setCfg((c) => ({ ...c, ...d.season.config, entrants: d.season.entrants ?? 0 }))
+        if (!alive) return
+        if (d?.season) {
+          setSeasonId(d.season.id)
+          setState(d.season.state)
+          setCfg((c) => ({ ...c, ...d.season.config, entrants: d.season.entrants ?? 0 }))
+        }
+        setLiveStandings(Array.isArray(d?.standings) ? d.standings : [])
+        setLiveCalls(Array.isArray(d?.stage_calls) ? d.stage_calls : [])
       } catch {
         // leave the defaults in place
       }
@@ -100,6 +107,27 @@ export function TheReadConsole() {
     return () => {
       alive = false
     }
+  }, [])
+
+  // Light poll: refresh the live board, the stage's calls, the state, and the
+  // entrant count. Never the dials, so an in-progress Build edit is safe.
+  useEffect(() => {
+    const t = setInterval(async () => {
+      try {
+        const r = await fetch("/api/admin/the-read", { cache: "no-store" })
+        if (!r.ok) return
+        const d = await r.json()
+        if (d?.season) {
+          setState(d.season.state)
+          setCfg((c) => ({ ...c, entrants: d.season.entrants ?? 0 }))
+        }
+        setLiveStandings(Array.isArray(d?.standings) ? d.standings : [])
+        setLiveCalls(Array.isArray(d?.stage_calls) ? d.stage_calls : [])
+      } catch {
+        // keep last known
+      }
+    }, 5000)
+    return () => clearInterval(t)
   }, [])
 
   const set = <K extends keyof SeasonConfig>(k: K, v: SeasonConfig[K]) => setCfg((c) => ({ ...c, [k]: v }))
@@ -194,7 +222,7 @@ export function TheReadConsole() {
           <BuildTab cfg={cfg} set={set} setStage={setStage} splitSum={splitSum} onOpen={advance} onSave={saveDraft} busy={busy} note={note} state={state} />
         )}
         {tab === "run" && (
-          <RunTab cfg={cfg} state={state} idx={idx} settledStages={settledStages} onAdvance={advance} busy={busy} />
+          <RunTab cfg={cfg} state={state} idx={idx} settledStages={settledStages} onAdvance={advance} busy={busy} liveBoard={liveStandings} liveCalls={liveCalls} />
         )}
         {tab === "ledger" && <LedgerTab cfg={cfg} />}
       </div>
@@ -460,6 +488,19 @@ function settleRows(stage: Stage, slate: string[]): SettleRow[] {
   })
 }
 
+const READ_TICKERS: Record<string, { ticker: string; color: string }> = {
+  "lola-likwidity": { ticker: "LOLA", color: "#ff2e7e" },
+  mcbagholder: { ticker: "BAGS", color: "#ffc847" },
+  satosheek: { ticker: "SATO", color: "#7af5c0" },
+  "chartnobyl-bro": { ticker: "CHRT", color: "#c6ff2e" },
+  coinalisa: { ticker: "COIN", color: "#5ac8fa" },
+  "dj-dustwallet": { ticker: "DUST", color: "#a855f7" },
+  "shilliam-dafoe": { ticker: "SHIL", color: "#ff8a3d" },
+}
+function readChip(id: string): { ticker: string; color: string } {
+  return READ_TICKERS[id] || { ticker: (id || "").slice(0, 4).toUpperCase() || "—", color: "#7af5c0" }
+}
+
 function RunTab({
   cfg,
   state,
@@ -467,6 +508,8 @@ function RunTab({
   settledStages,
   onAdvance,
   busy,
+  liveBoard,
+  liveCalls,
 }: {
   cfg: SeasonConfig
   state: SeasonState
@@ -474,26 +517,28 @@ function RunTab({
   settledStages: Stage[]
   onAdvance: () => void
   busy: boolean
+  liveBoard: any[]
+  liveCalls: any[]
 }) {
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const stage = isStageState(state) ? state : null
   const stageRevealed = stage ? !!revealed[stage] : false
-  const board: Row[] = state === "settled" || state === "paid" ? finalStandings() : standings(stage || "filter", 0)
+  const board: Row[] = liveBoard.map((s: any) => ({
+    rank: s.rank,
+    handle: s.display_name,
+    color: "#c6ff2e",
+    points: Number(s.points) || 0,
+    you: false,
+  })) as Row[]
   const ledger = computeLedger(cfg)
 
   function primary() {
-    if (stage && !stageRevealed) {
-      setRevealed((r) => ({ ...r, [stage]: true }))
-      return
-    }
     onAdvance()
   }
   const primaryLabel = !NEXT_ACTION[state]
     ? null
     : stage
-      ? stageRevealed
-        ? STAGE_NEXT_LABEL[stage]
-        : "Settle the " + cfg[stage].calls + " calls ▸"
+      ? "Settle " + (stage === "filter" ? "The Filter" : stage === "grind" ? "The Grind" : "The Gauntlet") + " ▸"
       : NEXT_ACTION[state] + " ▸"
 
   return (
@@ -541,19 +586,27 @@ function RunTab({
                 </div>
                 <div className="rc-settle">
                   <div className="rc-settle-head">
-                    <span>artist</span><span>open</span><span>{stageRevealed ? "close" : ""}</span><span>{stageRevealed ? "result" : "awaiting settle"}</span><span>{stageRevealed ? "field" : ""}</span>
+                    <span>artist</span><span>type</span><span>open</span><span>status</span><span></span>
                   </div>
-                  {settleRows(stage, cfg.slate).slice(0, cfg[stage].calls).map((r, i) => (
-                    <div key={i} className={"rc-settle-row" + (stageRevealed ? " done" : "")}>
-                      <span className="rc-settle-tk" style={{ color: r.color }}>{r.ticker}</span>
-                      <span className="rc-settle-open">{num(r.open)}</span>
-                      <span className="rc-settle-close">{stageRevealed ? num(r.close) : "·"}</span>
-                      <span className="rc-settle-res">{stageRevealed ? r.result : "—"}</span>
-                      <span className="rc-settle-fld">{stageRevealed ? r.fieldPct + "%" : ""}</span>
+                  {liveCalls.slice(0, cfg[stage].calls).map((r: any, i: number) => {
+                    const ch = readChip(r.artist_id)
+                    return (
+                      <div key={i} className={"rc-settle-row" + (r.settle_value != null ? " done" : "")}>
+                        <span className="rc-settle-tk" style={{ color: ch.color }}>{ch.ticker}</span>
+                        <span className="rc-settle-open">{r.type}</span>
+                        <span className="rc-settle-close">{r.open_value != null ? num(r.open_value) : "·"}</span>
+                        <span className="rc-settle-res">{r.settle_value != null ? "settled" : r.open_value != null ? "open" : "opening"}</span>
+                        <span className="rc-settle-fld"></span>
+                      </div>
+                    )
+                  })}
+                  {liveCalls.length === 0 && (
+                    <div className="rc-settle-row">
+                      <span className="rc-settle-tk">—</span><span /><span /><span className="rc-settle-res">opening…</span><span />
                     </div>
-                  ))}
+                  )}
                 </div>
-                {stageRevealed && <p className="rc-card-note">Calls settled on the ledger. Field column is the share who called it right. Advance when ready.</p>}
+                <p className="rc-card-note">Calls are open. The board on the right fills as scores land. Settle and start the next stage when the window closes.</p>
               </>
             )}
 
@@ -561,15 +614,16 @@ function RunTab({
               <>
                 <div className="rc-card-h">The five who read it right</div>
                 <div className="rc-winners">
-                  {finalStandings().slice(0, 5).map((r, i) => (
-                    <div key={r.handle} className={"rc-winrow" + (i === 0 ? " first" : "")}>
+                  {board.slice(0, 5).map((r, i) => (
+                    <div key={r.handle + "-" + i} className={"rc-winrow" + (i === 0 ? " first" : "")}>
                       <span className="rc-win-rk">{i + 1}</span>
                       <span className="rc-win-dot" style={{ background: r.color }} />
                       <span className="rc-win-nm">{r.handle}</span>
                       <span className="rc-win-pts">{pts(r.points)} pts</span>
-                      <span className="rc-win-prize gold">{usd2(prizeForExact(i + 1))}</span>
+                      <span className="rc-win-prize gold">{usd2(prizeCommitted(cfg) * (([40, 25, 15, 12, 8][i] ?? 0) / 100))}</span>
                     </div>
                   ))}
+                  {board.length === 0 && <p className="rc-card-note" style={{ margin: 0 }}>No entrants scored yet.</p>}
                 </div>
                 <p className="rc-card-note">Declaring pays these five in USDC from the prize wallet and posts the public BONK burn.</p>
               </>
@@ -606,14 +660,17 @@ function RunTab({
             ) : (
               <div className="rc-runboard">
                 {board.slice(0, 7).map((r, i) => (
-                  <div key={r.handle} className={"rc-rb" + (i < 5 ? " paid" : "")}>
+                  <div key={r.handle + "-" + i} className={"rc-rb" + (i < 5 ? " paid" : "")}>
                     <span className="rc-rb-rk">{i + 1}</span>
                     <span className="rc-rb-dot" style={{ background: r.color }} />
                     <span className="rc-rb-nm">{r.handle}</span>
-                    {i < 5 && <span className="rc-rb-prize gold">{usd2(prizeForExact(i + 1))}</span>}
+                    {i < 5 && <span className="rc-rb-prize gold">{usd2(prizeCommitted(cfg) * (([40, 25, 15, 12, 8][i] ?? 0) / 100))}</span>}
                     <span className="rc-rb-pts">{pts(r.points)}</span>
                   </div>
                 ))}
+                {board.length === 0 && (
+                  <p className="rc-card-note" style={{ margin: 0 }}>Calls are live. The board fills the moment a stage settles.</p>
+                )}
               </div>
             )}
             <p className="rc-card-note">Players see this board and the prize. They never see the take. That is in the Ledger.</p>
