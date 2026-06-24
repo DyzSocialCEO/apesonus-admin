@@ -239,6 +239,7 @@ export function TheReadConsole() {
 
   return (
     <div className="rc">
+      <style id="read-console-styles" dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="rc-wrap">
         <header className="rc-head">
           <div className="rc-head-l">
@@ -435,19 +436,10 @@ function BuildTab({
                     />
                   </Field>
                 </div>
-                <div className="rc-types">
-                  {CALL_TYPES.map((ct) => {
-                    const on = d.types.includes(ct.key)
-                    return (
-                      <button
-                        key={ct.key}
-                        className={"rc-type" + (on ? " on" : "")}
-                        onClick={() => setStage(s.key, { types: on ? d.types.filter((x) => x !== ct.key) : [...d.types, ct.key] })}
-                      >
-                        {ct.label}
-                      </button>
-                    )
-                  })}
+                <div className="rc-stage-kind" style={{ marginTop: 10, fontFamily: "monospace", fontSize: 11, color: "rgba(255,255,255,0.45)" }}>
+                  {s.key === "filter" && "Direction calls · pump, hold, or dump · on Node Power"}
+                  {s.key === "grind" && "Number calls · name the exact streams"}
+                  {s.key === "gauntlet" && "Mixed finale · direction + hit calls · on the clock"}
                 </div>
               </div>
             )
