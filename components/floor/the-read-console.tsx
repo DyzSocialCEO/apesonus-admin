@@ -193,6 +193,50 @@ export function TheReadConsole() {
     }
   }
 
+  async function discard() {
+    if (busy) return
+    if (!seasonId) {
+      setState("draft")
+      setCfg({ ...defaultConfig(), entrants: 0 })
+      setSettledStages([])
+      setTab("build")
+      setNote("Fresh draft ready")
+      return
+    }
+    if (!window.confirm("Discard this Season? It is archived and removed from players, and you start a fresh draft. This can't be undone.")) return
+    setBusy(true)
+    setNote(null)
+    try {
+      await post("discard", {})
+      setSeasonId(null)
+      setState("draft")
+      setCfg({ ...defaultConfig(), entrants: 0 })
+      setSettledStages([])
+      setLiveStandings([])
+      setLiveCalls([])
+      setTab("build")
+      setNote("Season discarded. Fresh draft ready.")
+    } catch (e: any) {
+      setNote(e?.message || "Discard failed")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function reopenWindow() {
+    if (busy || !seasonId) return
+    setBusy(true)
+    setNote(null)
+    try {
+      await post("reopen_window", {})
+      setNote("Lock window reopened. Players can lock this stage again.")
+    } catch (e: any) {
+      setNote(e?.message || "Reopen failed")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="rc">
       <div className="rc-wrap">
@@ -206,6 +250,14 @@ export function TheReadConsole() {
             <span className={"rc-state s-" + state}>
               <i /> {STATE_FLOW[idx].label}
             </span>
+            <button
+              onClick={discard}
+              disabled={busy}
+              title="Archive this Season and start a fresh draft"
+              style={{ marginLeft: 10, padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.08)", color: "#ef9a9a", fontFamily: "monospace", fontSize: 11, cursor: busy ? "default" : "pointer", opacity: busy ? 0.5 : 1 }}
+            >
+              {!seasonId ? "Reset draft" : "Discard Season"}
+            </button>
           </div>
         </header>
 
@@ -222,7 +274,7 @@ export function TheReadConsole() {
           <BuildTab cfg={cfg} set={set} setStage={setStage} splitSum={splitSum} onOpen={advance} onSave={saveDraft} busy={busy} note={note} state={state} />
         )}
         {tab === "run" && (
-          <RunTab cfg={cfg} state={state} idx={idx} settledStages={settledStages} onAdvance={advance} busy={busy} liveBoard={liveStandings} liveCalls={liveCalls} />
+          <RunTab cfg={cfg} state={state} idx={idx} settledStages={settledStages} onAdvance={advance} onReopen={reopenWindow} busy={busy} liveBoard={liveStandings} liveCalls={liveCalls} />
         )}
         {tab === "ledger" && <LedgerTab cfg={cfg} />}
       </div>
@@ -507,6 +559,7 @@ function RunTab({
   idx,
   settledStages,
   onAdvance,
+  onReopen,
   busy,
   liveBoard,
   liveCalls,
@@ -516,6 +569,7 @@ function RunTab({
   idx: number
   settledStages: Stage[]
   onAdvance: () => void
+  onReopen: () => void
   busy: boolean
   liveBoard: any[]
   liveCalls: any[]
@@ -607,6 +661,14 @@ function RunTab({
                   )}
                 </div>
                 <p className="rc-card-note">Calls are open. The board on the right fills as scores land. Settle and start the next stage when the window closes.</p>
+                <button
+                  onClick={onReopen}
+                  disabled={busy}
+                  title="Restart the lock clock for this stage so players can lock again"
+                  style={{ marginTop: 8, padding: "7px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.8)", fontFamily: "monospace", fontSize: 12, cursor: busy ? "default" : "pointer", opacity: busy ? 0.5 : 1 }}
+                >
+                  ↻ Reopen the window
+                </button>
               </>
             )}
 

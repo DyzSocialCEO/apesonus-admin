@@ -181,6 +181,7 @@ export async function GET() {
     const { data: row } = await supabase
       .from("read_seasons")
       .select("*")
+      .neq("state", "archived")
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -225,6 +226,43 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}))
     const action = String(body?.action || "")
     const seasonId = UUID_RE.test(String(body?.season_id || "")) ? String(body.season_id) : null
+
+    // ── discard: archive this Season so the console clears for a fresh draft ─
+    if (action === "discard") {
+      if (!seasonId) return NextResponse.json({ error: "season_id required" }, { status: 400 })
+      const { error } = await supabase
+        .from("read_seasons")
+        .update({ state: "archived", updated_at: new Date().toISOString() })
+        .eq("id", seasonId)
+      if (error) return NextResponse.json({ error: "discard failed" }, { status: 500 })
+      await logAdminAction(supabase, request, session.username, "the_read_discard", {
+        season_id: seasonId,
+      }).catch(() => {})
+      return NextResponse.json({ ok: true, id: seasonId })
+    }
+
+    // ── reopen_window: restart the lock clock on the current live stage ──────
+    if (action === "reopen_window") {
+      if (!seasonId) return NextResponse.json({ error: "season_id required" }, { status: 400 })
+      const { data: cur } = await supabase
+        .from("read_seasons")
+        .select("state")
+        .eq("id", seasonId)
+        .maybeSingle()
+      if (!cur || !STAGE_SET.includes(cur.state)) {
+        return NextResponse.json({ error: "not in a live stage" }, { status: 400 })
+      }
+      const { error } = await supabase
+        .from("read_calls")
+        .update({ opened_at: new Date().toISOString() })
+        .eq("season_id", seasonId)
+        .eq("stage", cur.state)
+      if (error) return NextResponse.json({ error: "reopen failed" }, { status: 500 })
+      await logAdminAction(supabase, request, session.username, "the_read_reopen_window", {
+        season_id: seasonId, stage: cur.state,
+      }).catch(() => {})
+      return NextResponse.json({ ok: true, id: seasonId, stage: cur.state })
+    }
 
     // ── advance: step the run state ──────────────────────────────────────
     if (action === "advance") {
