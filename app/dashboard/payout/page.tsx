@@ -14,7 +14,6 @@ export default function PayoutPage() {
   const [loading, setLoading] = useState(true)
   const [pool, setPool] = useState("")
   const [target, setTarget] = useState("")
-  const [seed, setSeed] = useState("")
   const [preview, setPreview] = useState<any>(null)
   const [busy, setBusy] = useState("")
   const [confirmRelease, setConfirmRelease] = useState(false)
@@ -29,7 +28,6 @@ export default function PayoutPage() {
       if (j.drop) {
         setPool(String(j.drop.season_pool ?? ""))
         setTarget(String(j.drop.target ?? ""))
-        setSeed(String(j.drop.pending_seed ?? ""))
       }
     } catch {} finally { setLoading(false) }
   }, [])
@@ -53,19 +51,20 @@ export default function PayoutPage() {
     if (j) { setMsg(`${label} saved.`); await load() }
   }
   const doPreview = async () => {
-    const j = await post("preview", { seed: Number(d?.drop?.pending_seed) || 0 })
+    const j = await post("preview", {})
     if (j) setPreview(j.preview)
   }
   const doRelease = async () => {
     setConfirmRelease(false)
-    const j = await post("release", { seed: Number(d?.drop?.pending_seed) || 0 })
+    const j = await post("release", {})
     if (j) { setReleased(j.result); setPreview(null); setMsg(""); await load() }
   }
 
   if (loading) return <div className="min-h-[60vh] flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin" style={{ color: ACID }} /></div>
 
   const drop = d?.drop
-  const total = (Number(drop?.accrued) || 0) + (Number(drop?.pending_seed) || 0)
+  const prize = Number(drop?.season_pool) || 0
+  const revenue = Number(drop?.accrued) || 0
   const pct = Math.min(100, Math.max(0, Math.round(Number(drop?.momentum_pct) || 0)))
 
   return (
@@ -90,27 +89,27 @@ export default function PayoutPage() {
         <div className="font-mono text-[11px] tracking-[0.15em] uppercase text-white/40 mb-3">What a drop pays right now</div>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <div className="font-mono text-[10px] text-white/40 uppercase">Accrued (70%)</div>
-            <div className="text-2xl font-bold" style={{ color: WIN }}>{usd(drop?.accrued || 0)}</div>
-            <div className="font-mono text-[10px] text-white/30">real, since last drop</div>
+            <div className="font-mono text-[10px] text-white/40 uppercase">Prize (paid)</div>
+            <div className="text-2xl font-bold" style={{ color: GOLD }}>{usd(prize)}</div>
+            <div className="font-mono text-[10px] text-white/30">you fund this</div>
           </div>
           <div>
-            <div className="font-mono text-[10px] text-white/40 uppercase">+ Seed</div>
-            <div className="text-2xl font-bold text-white">{usd(drop?.pending_seed || 0)}</div>
-            <div className="font-mono text-[10px] text-white/30">you top up</div>
+            <div className="font-mono text-[10px] text-white/40 uppercase">Revenue</div>
+            <div className="text-2xl font-bold" style={{ color: WIN }}>{usd(revenue)}</div>
+            <div className="font-mono text-[10px] text-white/30">yours · since last drop</div>
           </div>
           <div>
-            <div className="font-mono text-[10px] text-white/40 uppercase">= Pool</div>
-            <div className="text-2xl font-bold" style={{ color: GOLD }}>{usd(total)}</div>
-            <div className="font-mono text-[10px] text-white/30">distributed</div>
+            <div className="font-mono text-[10px] text-white/40 uppercase">Target</div>
+            <div className="text-2xl font-bold text-white">{usd(Number(drop?.target) || 0)}</div>
+            <div className="font-mono text-[10px] text-white/30">fills the bar</div>
           </div>
         </div>
 
         {/* momentum */}
         <div className="mt-4">
           <div className="flex justify-between font-mono text-[11px] text-white/40 mb-1">
-            <span>Momentum to next drop</span>
-            <span className="text-white/70">{usd(drop?.accrued || 0)} / {usd(drop?.target || 0)} · {pct}%</span>
+            <span>Revenue to next drop</span>
+            <span className="text-white/70">{usd(revenue)} / {usd(Number(drop?.target) || 0)} · {pct}%</span>
           </div>
           <div className="h-2.5 rounded-md overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
             <div className="h-full rounded-md transition-[width]" style={{ width: `${pct}%`, background: "linear-gradient(90deg,#c6ff2e,#ffc847)" }} />
@@ -129,9 +128,8 @@ export default function PayoutPage() {
         <div className="font-mono text-[11px] tracking-[0.15em] uppercase text-white/40 flex items-center gap-2"><Gauge className="w-3.5 h-3.5" />Dials</div>
 
         {[
-          { label: "Displayed pool", hint: "the hero number players see on the Floor", val: pool, set: setPool, action: "set_pool", icon: "$" },
-          { label: "Drop target", hint: "bar fills when accrued reaches this", val: target, set: setTarget, action: "set_target", icon: "$" },
-          { label: "Pending seed", hint: "added to the next drop · sets players' projected share", val: seed, set: setSeed, action: "set_seed", icon: "$" },
+          { label: "Drop prize", hint: "what the drop pays · the hero players see · funded by you", val: pool, set: setPool, action: "set_pool", icon: "$" },
+          { label: "Drop target", hint: "revenue that fills the bar and cues the drop", val: target, set: setTarget, action: "set_target", icon: "$" },
         ].map((row) => (
           <div key={row.action} className="flex items-center gap-3">
             <div className="flex-1">
@@ -198,16 +196,16 @@ export default function PayoutPage() {
         )}
 
         {!confirmRelease ? (
-          <button onClick={() => { setConfirmRelease(true); setReleased(null) }} disabled={total <= 0 || (drop?.holders ?? 0) === 0}
+          <button onClick={() => { setConfirmRelease(true); setReleased(null) }} disabled={prize <= 0 || (drop?.holders ?? 0) === 0}
             className="w-full rounded-xl py-3.5 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: GOLD, color: "#1a1300" }}>
-            <Zap className="w-4 h-4" />Release drop {drop?.number ?? 1} · {usd(total)}
+            <Zap className="w-4 h-4" />Release drop {drop?.number ?? 1} · {usd(prize)}
           </button>
         ) : (
           <div className="rounded-xl p-4 border space-y-3" style={{ background: "rgba(239,68,68,0.06)", borderColor: "rgba(239,68,68,0.3)" }}>
             <div className="flex items-start gap-2 text-sm" style={{ color: RED }}>
               <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-              <span>This pays {usd(total)} to {drop?.holders} holders and credits their cash-out balance. Positions stay. This can't be undone.</span>
+              <span>This pays {usd(prize)} to {drop?.holders} holders and credits their cash-out balance. Positions stay. This can't be undone.</span>
             </div>
             <div className="flex gap-2">
               <button onClick={() => setConfirmRelease(false)} className="flex-1 rounded-lg py-2.5 text-sm font-medium text-white/70" style={{ background: "rgba(255,255,255,0.06)" }}>Cancel</button>
