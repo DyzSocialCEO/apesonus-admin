@@ -381,18 +381,10 @@ function BuildTab({
         </section>
 
         <section className="rc-card">
-          <h3 className="rc-card-h">
-            Top five split
-            <span className={"rc-sum" + (splitSum === 100 ? " ok" : " bad")}>{splitSum}%</span>
-          </h3>
-          <div className="rc-split">
-            {cfg.split.map((v, i) => (
-              <Field key={i} label={i + 1 + (i === 0 ? "st" : i === 1 ? "nd" : i === 2 ? "rd" : "th")}>
-                <NumIn value={v} onChange={(n) => set("split", cfg.split.map((x, j) => (j === i ? n : x)))} suffix="%" />
-              </Field>
-            ))}
-          </div>
-          {splitSum !== 100 && <p className="rc-warn">Split has to total 100. It is at {splitSum}.</p>}
+          <h3 className="rc-card-h">Prize split</h3>
+          <p className="rc-card-note" style={{ margin: 0 }}>
+            The pool splits by points. Each player takes the same share of the prize as their share of all points scored. Score nothing, earn nothing. No ranks to set.
+          </p>
         </section>
 
         <section className="rc-card">
@@ -484,8 +476,8 @@ function BuildTab({
           </div>
           {state === "draft" ? (
             <>
-              <button className="rc-go" disabled={busy || splitSum !== 100 || cfg.slate.length < 2} onClick={onOpen}>
-                {busy ? "Working…" : splitSum !== 100 ? "Fix the split to open" : cfg.slate.length < 2 ? "Pick at least two artists" : "Open signups ▸"}
+              <button className="rc-go" disabled={busy || cfg.slate.length < 2} onClick={onOpen}>
+                {busy ? "Working…" : cfg.slate.length < 2 ? "Pick at least two artists" : "Open signups ▸"}
               </button>
               <button
                 className="rc-go"
@@ -576,6 +568,8 @@ function RunTab({
     points: Number(s.points) || 0,
     you: false,
   })) as Row[]
+  const totalPts = board.reduce((a, r) => a + (Number(r.points) || 0), 0)
+  const cutFor = (points: number) => (totalPts > 0 ? prizeCommitted(cfg) * ((Number(points) || 0) / totalPts) : 0)
   const ledger = computeLedger(cfg)
 
   function primary() {
@@ -666,26 +660,26 @@ function RunTab({
 
             {state === "settled" && (
               <>
-                <div className="rc-card-h">The five who read it right</div>
+                <div className="rc-card-h">Paid by how well they read it</div>
                 <div className="rc-winners">
-                  {board.slice(0, 5).map((r, i) => (
+                  {board.filter((r) => cutFor(r.points) > 0).slice(0, 30).map((r, i) => (
                     <div key={r.handle + "-" + i} className={"rc-winrow" + (i === 0 ? " first" : "")}>
                       <span className="rc-win-rk">{i + 1}</span>
                       <span className="rc-win-dot" style={{ background: r.color }} />
                       <span className="rc-win-nm">{r.handle}</span>
                       <span className="rc-win-pts">{pts(r.points)} pts</span>
-                      <span className="rc-win-prize gold">{usd2(prizeCommitted(cfg) * (([40, 25, 15, 12, 8][i] ?? 0) / 100))}</span>
+                      <span className="rc-win-prize gold">{usd2(cutFor(r.points))}</span>
                     </div>
                   ))}
-                  {board.length === 0 && <p className="rc-card-note" style={{ margin: 0 }}>No entrants scored yet.</p>}
+                  {board.filter((r) => cutFor(r.points) > 0).length === 0 && <p className="rc-card-note" style={{ margin: 0 }}>No entrants scored yet.</p>}
                 </div>
-                <p className="rc-card-note">Declaring pays these five in USDC from the prize wallet and posts the public BONK burn.</p>
+                <p className="rc-card-note">Declaring pays everyone who scored in USDC from the prize wallet, by their share of total points, and posts the public BONK burn.</p>
               </>
             )}
 
             {state === "paid" && (
               <>
-                <Panel title="Season closed" body={"The five were paid " + usd0(prizeCommitted(cfg)) + " in USDC. The receipts are written. Spin up the next one in Build."} />
+                <Panel title="Season closed" body={"Everyone who scored was paid their share of " + usd0(prizeCommitted(cfg)) + " in USDC. The receipts are written. Spin up the next one in Build."} />
                 <div className="rc-paidrow">
                   <div><span className="l">paid out</span><span className="v gold">{usd0(prizeCommitted(cfg))}</span></div>
                   <div><span className="l">BONK burned</span><span className="v">{compactBonk(ledger.bonkBurned)}</span></div>
@@ -708,20 +702,23 @@ function RunTab({
             {state === "draft" || state === "signups" || state === "locked" ? (
               <div className="rc-runboard">
                 <p className="rc-card-note" style={{ margin: 0 }}>
-                  {pts(cfg.entrants)} entered so far. The board fills as the stages run, and the five highest totals take the prize.
+                  {pts(cfg.entrants)} entered so far. The board fills as the stages run, and the pool splits by points — the better you read it, the more you take.
                 </p>
               </div>
             ) : (
               <div className="rc-runboard">
-                {board.slice(0, 7).map((r, i) => (
-                  <div key={r.handle + "-" + i} className={"rc-rb" + (i < 5 ? " paid" : "")}>
+                {board.slice(0, 7).map((r, i) => {
+                  const cut = cutFor(r.points)
+                  return (
+                  <div key={r.handle + "-" + i} className={"rc-rb" + (cut > 0 ? " paid" : "")}>
                     <span className="rc-rb-rk">{i + 1}</span>
                     <span className="rc-rb-dot" style={{ background: r.color }} />
                     <span className="rc-rb-nm">{r.handle}</span>
-                    {i < 5 && <span className="rc-rb-prize gold">{usd2(prizeCommitted(cfg) * (([40, 25, 15, 12, 8][i] ?? 0) / 100))}</span>}
+                    {cut > 0 && <span className="rc-rb-prize gold">{usd2(cut)}</span>}
                     <span className="rc-rb-pts">{pts(r.points)}</span>
                   </div>
-                ))}
+                  )
+                })}
                 {board.length === 0 && (
                   <p className="rc-card-note" style={{ margin: 0 }}>Calls are live. The board fills the moment a stage settles.</p>
                 )}
