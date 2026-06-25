@@ -298,6 +298,12 @@ export async function POST(request: Request) {
         await supabase.rpc("read_open_stage", { p_season_id: seasonId, p_stage: next })
       }
 
+      // Declare: credit every scorer their points-share of the prize into the
+      // cash-out ledger, so they can withdraw it through the normal rail.
+      if (next === "paid") {
+        await supabase.rpc("read_pay_winners", { p_season_id: seasonId })
+      }
+
       await logAdminAction(supabase, request, session.username, "the_read_advance", {
         season_id: seasonId, from: cur.state, to: next,
       }).catch(() => {})
