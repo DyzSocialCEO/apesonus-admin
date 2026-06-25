@@ -421,46 +421,15 @@ export default function AmmoPage() {
           </div>
 
           <div className="grid lg:grid-cols-2 gap-6">
-            {/* Daily free track picker */}
+            {/* Free plays — model explainer (no per-track setting anymore) */}
             <div className="rounded-xl bg-gray-900 border border-gray-800 p-6">
               <div className="flex items-center gap-2 mb-1">
                 <Star className="w-5 h-5 text-primary" />
-                <h2 className="font-semibold text-white">Daily free track</h2>
+                <h2 className="font-semibold text-white">Free plays</h2>
               </div>
-              <p className="text-xs text-gray-500 mb-4">
-                Every track plays for everyone as normal music. This is the single track where a play with zero Ammo still counts as a qualified play, one per account per UTC day, and it earns zero Node Power. It's the daily free taste. To climb the board, people buy Ammo.
+              <p className="text-xs text-gray-500">
+                Every account gets 5 free plays a day, on any track — no featured track to pick. For accounts that have bought Ammo, those 5 free plays build Node Power. For accounts that haven't, the 5 are just music and build nothing. Once the 5 are used and there's no Ammo, the next play is blocked until they buy Ammo or the daily reset comes around. Nothing to set here.
               </p>
-              <div className="flex items-center gap-3">
-                <select
-                  value={featuredId ?? ""}
-                  onChange={(e) => saveTrack(e.target.value)}
-                  disabled={savingTrack}
-                  className="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
-                >
-                  <option value="">None (no free play)</option>
-                  {tracks.map(t => (
-                    <option key={t.id} value={t.id}>{t.title} — {t.artist}</option>
-                  ))}
-                </select>
-                {savingTrack && <Loader2 className="w-4 h-4 animate-spin text-gray-500" />}
-              </div>
-
-              <div className="mt-3 text-xs">
-                {trackErr ? (
-                  <span className="flex items-center gap-1.5 text-red-400">
-                    <AlertCircle className="w-3.5 h-3.5" /> Couldn't save. Try selecting it again.
-                  </span>
-                ) : featuredId ? (
-                  <span className="flex items-center gap-1.5 text-emerald-400">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    Live now: free plays are on for “{tracks.find(t => t.id === featuredId)?.title ?? "the selected track"}”.{trackSaved ? " Saved." : ""}
-                  </span>
-                ) : (
-                  <span className="text-gray-500">
-                    No free track set, so no free plays are running. Pick one to switch it on.
-                  </span>
-                )}
-              </div>
             </div>
 
             {/* Grant form */}
