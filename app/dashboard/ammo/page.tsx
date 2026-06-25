@@ -98,6 +98,26 @@ export default function AmmoPage() {
     }
   }, [])
 
+  const [clearingPending, setClearingPending] = useState(false)
+  const clearStalePending = useCallback(async () => {
+    if (!confirm("Clear all pending orders past their pay window? They're removed across all users. A late payment of an exact amount still credits.")) return
+    setClearingPending(true)
+    try {
+      const res = await fetch("/api/admin/ammo/clear-pending", { method: "POST" })
+      const d = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setMsg({ ok: true, text: `Cleared ${d.cleared ?? 0} stale pending order${d.cleared === 1 ? "" : "s"}.` })
+        load()
+      } else {
+        setMsg({ ok: false, text: d.error || "Could not clear pending." })
+      }
+    } catch {
+      setMsg({ ok: false, text: "Network error." })
+    } finally {
+      setClearingPending(false)
+    }
+  }, [load])
+
   useEffect(() => { load() }, [load])
 
   const submitGrant = async () => {
@@ -549,9 +569,18 @@ export default function AmmoPage() {
 
           {/* Recent purchases (populated once the on-chain rail ships in 1B) */}
           <div className="rounded-xl bg-gray-900 border border-gray-800 overflow-hidden">
-            <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-800">
-              <ShoppingCart className="w-5 h-5 text-primary" />
-              <h2 className="font-semibold text-white">Recent purchases</h2>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5 text-primary" />
+                <h2 className="font-semibold text-white">Recent purchases</h2>
+              </div>
+              <button
+                onClick={clearStalePending}
+                disabled={clearingPending}
+                className="font-mono text-[10px] tracking-[0.12em] uppercase text-gray-500 hover:text-white transition-colors disabled:opacity-50"
+              >
+                {clearingPending ? "Clearing…" : "Clear stale pending"}
+              </button>
             </div>
             {purchases.length === 0 ? (
               <div className="px-6 py-8 text-sm text-gray-600">No purchases yet — the on-chain buy rail ships in Phase 1B.</div>

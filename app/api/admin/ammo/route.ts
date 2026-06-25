@@ -97,6 +97,7 @@ export async function GET() {
     const { data: recentPurchases } = await supabase
       .from("pit_ammo_purchases")
       .select("*")
+      .eq("hidden", false)
       .order("created_at", { ascending: false })
       .limit(50)
 
