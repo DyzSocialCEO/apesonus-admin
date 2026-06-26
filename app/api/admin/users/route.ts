@@ -35,7 +35,20 @@ export async function GET() {
 
     if (error) throw error
 
-    return NextResponse.json({ users: users || [] })
+    const ids = (users || []).map((u) => u.id)
+    const ammoBal: Record<string, number> = {}
+    const embMap: Record<string, number> = {}
+    if (ids.length) {
+      const [bals, embs] = await Promise.all([
+        supabase.from("pit_ammo_balances").select("user_id, balance").in("user_id", ids),
+        supabase.from("pit_embers").select("user_id, embers").in("user_id", ids),
+      ])
+      for (const b of bals.data || []) ammoBal[b.user_id] = Number(b.balance || 0)
+      for (const e of embs.data || []) embMap[e.user_id] = Number(e.embers || 0)
+    }
+    const enriched = (users || []).map((u) => ({ ...u, ammo: ammoBal[u.id] || 0, embers: embMap[u.id] || 0 }))
+
+    return NextResponse.json({ users: enriched })
   } catch (error: any) {
     console.error("GET /api/admin/users error:", error)
     return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 })
