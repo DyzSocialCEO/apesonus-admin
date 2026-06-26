@@ -1,0 +1,103 @@
+import { NextResponse } from "next/server"
+import { createAdminClient } from "@/lib/supabase"
+import { commitHash, hashDataset } from "@/lib/onus-chain/commit"
+import { playsRoot, stateDigest, type PlayLeaf } from "@/lib/onus-chain/snapshot"
+
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
+/**
+ * GET /api/cron/anchor
+ *
+ * Builds one tamper-evidence commit for the window since the last commit:
+ *   plays in window → Merkle root, Node Power + Read state → digest,
+ *   chained to the previous commit's hash, the whole thing hashed and posted
+ *   on-chain via SPL Memo. Stores the row in pit_chain_commits either way —
+ *   if no signing key is set, signature stays null and the chain still builds.
+ *
+ * Auth: CRON_SECRET via x-admin-secret header or ?secret= query param.
+ * Schedule hourly. Idempotent enough: each run anchors only NEW plays.
+ */
+export async function GET(request: Request) {
+  const secret = process.env.CRON_SECRET
+  const url = new URL(request.url)
+  const provided = request.headers.get("x-admin-secret") || url.searchParams.get("secret")
+  if (!secret || provided !== secret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  try {
+    const supabase = await createAdminClient()
+
+    // ── Previous commit (the chain tip) ──
+    const { data: last } = await supabase
+      .from("pit_chain_commits")
+      .select("seq, period_end, commit_hash")
+      .order("seq", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const periodEnd = new Date().toISOString()
+    let periodStart: string
+    if (last?.period_end) {
+      periodStart = last.period_end
+    } else {
+      // Genesis: start from the earliest play so the first commit covers history.
+      const { data: first } = await supabase
+        .from("play_history").select("played_at").order("played_at", { ascending: true }).limit(1).maybeSingle()
+      periodStart = first?.played_at || new Date(Date.now() - 3600_000).toISOString()
+    }
+
+    // ── Plays in the window → Merkle root ──
+    const { data: plays } = await supabase
+      .from("play_history")
+      .select("id, user_id, track_id, played_at")
+      .gte("played_at", periodStart)
+      .lt("played_at", periodEnd)
+      .order("played_at", { ascending: true })
+      .limit(50000)
+    const leaves: PlayLeaf[] = (plays || []).map((p) => ({
+      id: p.id, user_id: p.user_id, track_id: p.track_id, played_at: p.played_at,
+    }))
+    const plays_root = playsRoot(leaves)
+
+    // ── Node Power + Read state → digest ──
+    const { data: nodes } = await supabase
+      .from("pit_nodes").select("user_id, artist_id, np").gt("np", 0)
+    const npRows = (nodes || []).map((n) => ({ u: n.user_id, a: n.artist_id, np: Number(n.np) }))
+      .sort((x, y) => (x.u + x.a).localeCompare(y.u + y.a))
+    const { data: reads } = await supabase
+      .from("read_results").select("season_id, user_id, stage, points")
+    const readRows = (reads || []).map((r) => ({ s: r.season_id, u: r.user_id, st: r.stage, p: Number(r.points) }))
+      .sort((x, y) => (String(x.s) + x.u + x.st).localeCompare(String(y.s) + y.u + y.st))
+    const state_hash = stateDigest({ nodes: npRows, reads: readRows })
+
+    // ── Build, chain, hash, anchor ──
+    const seq = Number(last?.seq || 0) + 1
+    const prev_hash = last?.commit_hash || null
+    const commitObj = { seq, period_start: periodStart, period_end: periodEnd, play_count: leaves.length, plays_root, state_hash, prev_hash }
+
+    const commit_hash = hashDataset(commitObj).hash
+    const anchor = await commitHash("chain", commitObj) // posts APESONUS:commit:chain:<commit_hash>
+    const signature = anchor?.signature || null
+    const cluster = (process.env.ONUS_RPC_URL || "https://api.devnet.solana.com").includes("devnet") ? "devnet" : "mainnet-beta"
+
+    const { error: insErr } = await supabase.from("pit_chain_commits").insert({
+      seq, period_start: periodStart, period_end: periodEnd, play_count: leaves.length,
+      plays_root, state_hash, prev_hash, commit_hash, signature, rpc_cluster: signature ? cluster : null,
+    })
+    if (insErr) {
+      console.error("[anchor] insert failed:", insErr.message)
+      return NextResponse.json({ error: "insert failed", detail: insErr.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      ok: true, seq, play_count: leaves.length, plays_root, commit_hash,
+      anchored: !!signature, signature, cluster: signature ? cluster : null,
+      period: { start: periodStart, end: periodEnd },
+    })
+  } catch (e) {
+    console.error("[anchor] error:", (e as Error).message)
+    return NextResponse.json({ error: "Internal error" }, { status: 500 })
+  }
+}
