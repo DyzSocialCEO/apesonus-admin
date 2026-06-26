@@ -18,7 +18,6 @@ const navigation = [
   { name: "Chart",           href: "/dashboard/chart",           icon: TrendingUp      },
   { name: "Users",           href: "/dashboard/users",           icon: Users           },
   { name: "Banners",         href: "/dashboard/banners",         icon: Megaphone       },
-  { name: "$ONUS",           href: "/dashboard/onus",            icon: Coins           },
   { name: "Ammo",            href: "/dashboard/ammo",            icon: Fuel            },
   { name: "Revenue",         href: "/dashboard/revenue",         icon: DollarSign     },
   { name: "Withdrawals",     href: "/dashboard/withdrawals",     icon: Banknote       },

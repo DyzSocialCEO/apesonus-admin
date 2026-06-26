@@ -54,6 +54,7 @@ export default function FloorAnalyticsPage() {
   if (!d) return <div className="text-gray-500">No data.</div>
 
   const eco = d.economy, war = d.war, week = d.week, series = d.series || [], people = d.people
+  const engagement = d.engagement || []
   const maxNp = Math.max(1, ...war.factions.map((f: any) => f.total_np))
   const epoch = week.epoch
 
@@ -120,32 +121,33 @@ export default function FloorAnalyticsPage() {
         </div>
       </div>
 
-      {/* ── THE WAR ── */}
+      {/* ── COMMUNITY ENGAGEMENT ── */}
       <div>
-        <div className="text-xs uppercase tracking-wider text-gray-500 mb-3 flex items-center gap-2"><Swords className="w-3.5 h-3.5" /> The war</div>
+        <div className="text-xs uppercase tracking-wider text-gray-500 mb-3 flex items-center gap-2"><Swords className="w-3.5 h-3.5" /> Community engagement</div>
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 rounded-xl bg-gray-900 border border-gray-800 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-sm font-semibold text-white">Node Power by faction</div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-semibold text-white">Top players by engagement</div>
               <div className="text-xs text-gray-500">{fmt(war.totalNp)} NP · {fmt(war.qualifiedPlays)} plays</div>
             </div>
-            <div className="space-y-3">
-              {war.factions.map((f: any) => {
-                const c = FACTION_COLOR[f.artist_id] || "#c6ff2e"
-                const pct = (f.total_np / maxNp) * 100
-                return (
-                  <div key={f.artist_id}>
+            <div className="text-xs text-gray-500 mb-4">Ranked by total Node Power across all artists × loyalty — the same weight the pool pays by. Not per-artist.</div>
+            {engagement.length === 0 ? (
+              <div className="text-sm text-gray-600">No engagement yet.</div>
+            ) : (
+              <div className="space-y-3">
+                {engagement.map((p: any) => (
+                  <div key={p.name + p.rank}>
                     <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="text-white/85" style={{ color: c }}>{f.name}</span>
-                      <span className="text-gray-500">{fmt(f.total_np)} NP · {fmt(f.players)} holding</span>
+                      <span className="flex items-center gap-2"><span className="text-gray-600 font-mono w-5">{String(p.rank).padStart(2, "0")}</span><span className="text-white/85">{p.name}</span></span>
+                      <span className="text-gray-500 font-mono">{(p.share * 100 > 0 && p.share * 100 < 0.1) ? "<0.1" : (p.share * 100).toFixed(1)}% · {fmt(p.weight)} wt</span>
                     </div>
-                    <div className="h-2 rounded-full bg-gray-800 overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: c }} />
+                    <div className="h-2 rounded-full bg-gray-800 overflow-hidden ml-7">
+                      <div className="h-full rounded-full" style={{ width: `${Math.max(2, p.share * 100)}%`, background: "#c6ff2e" }} />
                     </div>
                   </div>
-                )
-              })}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* ── THE WEEK ── */}

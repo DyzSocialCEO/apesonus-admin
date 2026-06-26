@@ -128,9 +128,28 @@ export async function GET() {
       topHolders = topBal.map((b) => ({ name: nameOf(b.user_id), balance: Number(b.balance) }))
     }
 
+    // ── Community engagement: top players by weighted NP (the payout metric) ──
+    let engagementTop: any[] = []
+    try {
+      const { data: topRows } = await supabase.rpc("pit_engagement_top", { p_limit: 12 })
+      const ids = (topRows || []).map((r: any) => r.user_id)
+      const nameById: Record<string, string> = {}
+      if (ids.length) {
+        const { data: us } = await supabase.from("users").select("id, display_name, email").in("id", ids)
+        for (const u of us || []) nameById[u.id] = (u.display_name || u.email || String(u.id).slice(0, 8)) as string
+      }
+      engagementTop = (topRows || []).map((r: any) => ({
+        name: nameById[r.user_id] || String(r.user_id).slice(0, 8),
+        share: Number(r.share || 0),
+        rank: Number(r.rnk || 0),
+        weight: Number(r.weight || 0),
+      }))
+    } catch {}
+
     return NextResponse.json({
       economy: { outstanding, holders, ammoSold, usdGrossCents, ammoGranted, ammoSpent, freeServed, counts },
       war: { totalNp, qualifiedPlays: (ammoSpent + freeServed), factions },
+      engagement: engagementTop,
       week: { currentEpoch, epoch },
       series,
       people: { topHolders },
