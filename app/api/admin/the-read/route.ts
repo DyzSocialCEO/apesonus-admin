@@ -298,10 +298,20 @@ export async function POST(request: Request) {
         await supabase.rpc("read_open_stage", { p_season_id: seasonId, p_stage: next })
       }
 
-      // Declare: credit every scorer their points-share of the prize into the
-      // cash-out ledger, so they can withdraw it through the normal rail.
+      // Declare: split the funded USDC pool across the top N by pure formula
+      // (read_pay_winners writes payout_usd + is_winner, no admin override),
+      // then anchor the settlement on-chain so the split is publicly verifiable.
       if (next === "paid") {
-        await supabase.rpc("read_pay_winners", { p_season_id: seasonId })
+        const { data: payRes } = await supabase.rpc("read_pay_winners", { p_season_id: seasonId })
+        try {
+          const { anchorSettlement } = await import("@/lib/onus-chain/settle-anchor")
+          const anchored = await anchorSettlement(supabase, seasonId)
+          await logAdminAction(supabase, request, session.username, "the_read_settled", {
+            season_id: seasonId, pay: payRes, anchor: { hash: anchored.hash, signature: anchored.signature },
+          }).catch(() => {})
+        } catch (e) {
+          console.error("[the-read] settlement anchor failed:", (e as Error).message)
+        }
       }
 
       await logAdminAction(supabase, request, session.username, "the_read_advance", {
