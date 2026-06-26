@@ -55,22 +55,23 @@ async function getStats() {
       .select("*", { count: "exact", head: true })
       .eq("is_active", true)
 
-    const { count: todayVotes } = await supabase
-      .from("market_sentiment_votes")
-      .select("*", { count: "exact", head: true })
-      .eq("vote_date", today)
-
-    // Genesis cardholders — replaces the old "Active Streaks" card.
-    // PWA has no streak feature on the front (handoff §6).
-    const { count: genesisHolders } = await supabase
-      .from("users")
-      .select("*", { count: "exact", head: true })
-      .eq("is_genesis_holder", true)
+    // Ammo sold (confirmed purchases) + paying users — the real money signals.
+    const { data: purchases } = await supabase
+      .from("pit_ammo_purchases")
+      .select("user_id, ammo_amount, status")
+      .eq("status", "confirmed")
+    let ammoSold = 0
+    const payers = new Set<string>()
+    for (const p of purchases || []) {
+      ammoSold += Number(p.ammo_amount || 0)
+      if (p.user_id) payers.add(p.user_id)
+    }
+    const payingUsers = payers.size
 
     // Recent users
     const { data: recentUsers } = await supabase
       .from("users")
-      .select("id, display_name, email, avatar_url, total_onus, created_at, premium_status, is_genesis_holder")
+      .select("id, display_name, email, avatar_url, created_at")
       .order("created_at", { ascending: false })
       .limit(8)
 
@@ -89,16 +90,27 @@ async function getStats() {
       playCount.set(r.user_id, (playCount.get(r.user_id) || 0) + 1)
     }
 
+    // Per-user Ammo balance + Embers (loyalty) — the current model, not $ONUS/tiers.
+    const { data: balRows } = userIds.length
+      ? await supabase.from("pit_ammo_balances").select("user_id, balance").in("user_id", userIds)
+      : { data: [] as any[] }
+    const ammoBal = new Map<string, number>()
+    for (const r of balRows || []) ammoBal.set(r.user_id, Number(r.balance || 0))
+    const { data: embRows } = userIds.length
+      ? await supabase.from("pit_embers").select("user_id, embers").in("user_id", userIds)
+      : { data: [] as any[] }
+    const embMap = new Map<string, number>()
+    for (const r of embRows || []) embMap.set(r.user_id, Number(r.embers || 0))
+
     const enrichedUsers = (recentUsers || []).map((u) => ({
       id: u.id,
       display_name: u.display_name,
       email: u.email,
       avatar_url: u.avatar_url,
-      total_onus: u.total_onus,
       created_at: u.created_at,
-      premium_status: u.premium_status,
-      is_genesis_holder: u.is_genesis_holder,
       plays: playCount.get(u.id) || 0,
+      ammo: ammoBal.get(u.id) || 0,
+      embers: embMap.get(u.id) || 0,
     }))
 
     return {
@@ -106,15 +118,15 @@ async function getStats() {
       activeUsers,
       totalPlays: totalPlays || 0,
       totalTracks: totalTracks || 0,
-      todayVotes: todayVotes || 0,
-      genesisHolders: genesisHolders || 0,
+      ammoSold,
+      payingUsers,
       recentUsers: enrichedUsers,
     }
   } catch (error) {
     console.error("Error:", error)
     return {
       totalUsers: 0, activeUsers: 0, totalPlays: 0, totalTracks: 0,
-      todayVotes: 0, genesisHolders: 0, recentUsers: [],
+      ammoSold: 0, payingUsers: 0, recentUsers: [],
     }
   }
 }
@@ -132,8 +144,8 @@ export default async function DashboardPage() {
     { title: "Active (7d)",    value: formatNumber(stats.activeUsers),   icon: TrendingUp, color: "text-green-400",  bg: "bg-green-400/10" },
     { title: "Total Plays",    value: formatNumber(stats.totalPlays),    icon: Play,       color: "text-purple-400", bg: "bg-purple-400/10" },
     { title: "Tracks",         value: formatNumber(stats.totalTracks),   icon: Music,      color: "text-primary",    bg: "bg-primary/10" },
-    { title: "Pulse Today",    value: formatNumber(stats.todayVotes),    icon: Activity,   color: "text-cyan-400",   bg: "bg-cyan-400/10" },
-    { title: "Genesis Holders", value: formatNumber(stats.genesisHolders), icon: Crown,      color: "text-yellow-400", bg: "bg-yellow-400/10" },
+    { title: "Ammo sold",      value: formatNumber(stats.ammoSold),      icon: Activity,   color: "text-cyan-400",   bg: "bg-cyan-400/10" },
+    { title: "Paying users",   value: formatNumber(stats.payingUsers),   icon: Crown,      color: "text-yellow-400", bg: "bg-yellow-400/10" },
   ]
 
   return (
@@ -169,23 +181,16 @@ export default async function DashboardPage() {
                   <th className="text-left  py-3 px-4 text-sm font-medium text-gray-400">User</th>
                   <th className="text-left  py-3 px-4 text-sm font-medium text-gray-400">ID</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Plays</th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Tier</th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">$ONUS</th>
+                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Loyalty</th>
+                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Ammo</th>
                   <th className="text-right  py-3 px-4 text-sm font-medium text-gray-400">Joined</th>
                 </tr>
               </thead>
               <tbody>
                 {stats.recentUsers.map((user) => {
-                  const tier = user.premium_status === "genesis"
-                    ? "GENESIS"
-                    : user.premium_status === "standard"
-                    ? "STANDARD"
-                    : "FREE"
-                  const tierColor = user.premium_status === "genesis"
-                    ? "text-yellow-400"
-                    : user.premium_status === "standard"
-                    ? "text-blue-400"
-                    : "text-gray-500"
+                  const e = user.embers || 0
+                  const tier = e >= 1000 ? "DIAMOND" : e >= 200 ? "DEGEN" : e >= 50 ? "BELIEVER" : e >= 10 ? "BACKER" : "SCOUT"
+                  const tierColor = e >= 1000 ? "text-cyan-300" : e >= 200 ? "text-pink-400" : e >= 50 ? "text-yellow-400" : e >= 10 ? "text-lime-400" : "text-gray-500"
                   return (
                     <tr key={user.id} className="border-b border-gray-800/50">
                       <td className="py-3 px-4">
@@ -193,16 +198,13 @@ export default async function DashboardPage() {
                           <p className="text-white font-medium text-sm">
                             {user.display_name || user.email || "Unknown"}
                           </p>
-                          {!!user.is_genesis_holder && (
-                            <Crown className="w-3 h-3 text-yellow-400" />
-                          )}
                         </div>
                         <p className="text-xs text-gray-500">{user.email || "—"}</p>
                       </td>
                       <td className="py-3 px-4 text-xs text-gray-400 font-mono">{shortId(user.id)}</td>
                       <td className="py-3 px-4 text-center text-white text-sm">{user.plays}</td>
-                      <td className={`py-3 px-4 text-center text-xs font-bold ${tierColor}`}>{tier}</td>
-                      <td className="py-3 px-4 text-center text-primary text-sm">{user.total_onus || 0}</td>
+                      <td className={`py-3 px-4 text-center text-xs font-bold ${tierColor}`}>{tier}<span className="text-gray-600 font-normal"> · {e}</span></td>
+                      <td className="py-3 px-4 text-center text-primary text-sm">{(user.ammo || 0).toLocaleString("en-US")}</td>
                       <td className="py-3 px-4 text-right text-gray-400 text-xs">
                         {new Date(user.created_at).toLocaleDateString()}
                       </td>
