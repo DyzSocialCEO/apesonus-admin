@@ -256,6 +256,12 @@ export default function AmmoPage() {
     }
   }
 
+  // Rate shown in the header — derived from the live $1 pack (or the cheapest
+  // active pack), never hardcoded, so the label always matches what players buy.
+  const ratePack = packs.find((p) => p.active && p.price_usd === 1 && p.ammo)
+    || packs.filter((p) => p.active && p.price_usd && p.ammo).sort((a, b) => (a.price_usd! - b.price_usd!))[0]
+  const ammoPerUsd = ratePack && ratePack.price_usd ? Math.round((ratePack.ammo || 0) / ratePack.price_usd) : 100
+
   return (
     <div className="space-y-8 max-w-6xl">
       <div className="flex items-center gap-3">
@@ -264,7 +270,7 @@ export default function AmmoPage() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-white">Ammo</h1>
-          <p className="text-sm text-gray-500">THE FLOOR — consumable stream credit. $1 = 100 Ammo, 1 Ammo = 1 qualified stream.</p>
+          <p className="text-sm text-gray-500">THE FLOOR — consumable stream credit. $1 = {ammoPerUsd.toLocaleString("en-US")} Ammo, 1 Ammo = 1 qualified stream.</p>
         </div>
       </div>
 
