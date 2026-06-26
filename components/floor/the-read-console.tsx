@@ -10,11 +10,11 @@
  *
  * Three tabs. Build sets every dial and shows the player-facing result live. Run
  * walks the Season from draft to paid with the right control at each step. The
- * Ledger is the private money view, entries in versus prize and burn out, the
+ * Ledger is the private money view, entries in versus prize paid out, the
  * revenue held. The Ledger is admin only and never reaches a player.
  *
- * Revenue is secret. Nothing here computes a take onto a player surface. $ONUS
- * never appears. BONK is only the public buy and burn target.
+ * Revenue is secret. Nothing here computes a take onto a player surface. All
+ * money is USDC.
  *
  * React 19 / Next 16 safe: no <style> or font <link> in the tree, the style
  * block is injected into <head> on mount, fonts are the app's global Anton,
@@ -37,7 +37,6 @@ import {
   usd0,
   usd2,
   pts,
-  compactBonk,
   type Bracket,
   type Stage,
   type Row,
@@ -354,14 +353,14 @@ function BuildTab({
           <Field label="Sponsor" hint="shows on the player tape and the foot">
             <span className="rc-inline">
               <Seg value={cfg.sponsored ? "y" : "n"} onChange={(v) => set("sponsored", v === "y")} opts={[{ v: "y", l: "On" }, { v: "n", l: "Off" }]} />
-              {cfg.sponsored && <input className="rc-text" placeholder="BONK" value={cfg.sponsor} onChange={(e) => set("sponsor", e.target.value)} />}
+              {cfg.sponsored && <input className="rc-text" placeholder="Sponsor name" value={cfg.sponsor} onChange={(e) => set("sponsor", e.target.value)} />}
             </span>
           </Field>
         </section>
 
         <section className="rc-card">
           <h3 className="rc-card-h">Entry and prize</h3>
-          <Field label="Entry" hint={"players pay this in Ammo · " + usd2(cfg.entryAmmo / 100)}>
+          <Field label="Entry" hint={"players pay this in Ammo · " + usd2(cfg.entryAmmo / 200)}>
             <NumIn value={cfg.entryAmmo} onChange={(n) => set("entryAmmo", n)} suffix="Ammo" step={10} />
           </Field>
           <Field label="Prize shape">
@@ -375,6 +374,9 @@ function BuildTab({
           ) : (
             <Field label="Fixed prize"><NumIn value={cfg.prizeFixed} onChange={(n) => set("prizeFixed", n)} suffix="$" step={50} /></Field>
           )}
+          <Field label="Winners" hint="how many top ranks split the prize (proportional to points)">
+            <NumIn value={cfg.payoutN ?? 10} onChange={(n) => set("payoutN", n)} suffix="top" step={1} />
+          </Field>
           <Field label="Funded by" hint="who covers the prize wallet">
             <Seg value={cfg.funder} onChange={(v) => set("funder", v)} opts={[{ v: "house", l: "House" }, { v: "sponsor", l: "Sponsor" }, { v: "split", l: "Split" }]} />
           </Field>
@@ -455,13 +457,6 @@ function BuildTab({
             <Field label="Filter opens"><input className="rc-text" value={cfg.scheduleFilter} onChange={(e) => set("scheduleFilter", e.target.value)} /></Field>
             <Field label="Grind opens"><input className="rc-text" value={cfg.scheduleGrind} onChange={(e) => set("scheduleGrind", e.target.value)} /></Field>
             <Field label="Gauntlet opens"><input className="rc-text" value={cfg.scheduleGauntlet} onChange={(e) => set("scheduleGauntlet", e.target.value)} /></Field>
-          </div>
-        </section>
-
-        <section className="rc-card">
-          <h3 className="rc-card-h">Buy and burn <span className="rc-priv">private</span></h3>
-          <div className="rc-dials">
-            <Field label="Burn share" hint="share of the take bought as BONK and burned"><NumIn value={cfg.burnPct} onChange={(n) => set("burnPct", n)} suffix="%" /></Field>
           </div>
         </section>
 
@@ -673,7 +668,7 @@ function RunTab({
                   ))}
                   {board.filter((r) => cutFor(r.points) > 0).length === 0 && <p className="rc-card-note" style={{ margin: 0 }}>No entrants scored yet.</p>}
                 </div>
-                <p className="rc-card-note">Declaring pays everyone who scored in USDC from the prize wallet, by their share of total points, and posts the public BONK burn.</p>
+                <p className="rc-card-note">Declaring splits the prize in USDC among the top {cfg.payoutN ?? 10} by their share of points, writes each payout, and anchors the settlement on-chain so the split is publicly verifiable.</p>
               </>
             )}
 
@@ -682,7 +677,6 @@ function RunTab({
                 <Panel title="Season closed" body={"Everyone who scored was paid their share of " + usd0(prizeCommitted(cfg)) + " in USDC. The receipts are written. Spin up the next one in Build."} />
                 <div className="rc-paidrow">
                   <div><span className="l">paid out</span><span className="v gold">{usd0(prizeCommitted(cfg))}</span></div>
-                  <div><span className="l">BONK burned</span><span className="v">{compactBonk(ledger.bonkBurned)}</span></div>
                   <div><span className="l">held</span><span className="v">{usd2(ledger.held)}</span></div>
                 </div>
               </>
@@ -765,7 +759,7 @@ function LedgerTab({ cfg }: { cfg: SeasonConfig }) {
     <div className="rc-ledger">
       <div className="rc-ledger-banner">
         <span className="rc-ledger-lock">PRIVATE</span>
-        Admin only. None of these numbers ever reach a player. They show entries in against prize and burn out, so you always know the real funds held.
+        Admin only. None of these numbers ever reach a player. They show entries in against prize paid out, so you always know the real funds held.
       </div>
 
       <div className="rc-stats">
@@ -779,15 +773,10 @@ function LedgerTab({ cfg }: { cfg: SeasonConfig }) {
           <span className="rc-stat-v gold">{usd0(L.prize)}</span>
           <span className="rc-stat-sub">{cfg.prizeMode} · {funderLabel} pays {usd0(L.funderPays)}</span>
         </div>
-        <div className="rc-stat">
-          <span className="rc-stat-l">Buy and burn</span>
-          <span className="rc-stat-v">{usd2(L.burnUsd)}</span>
-          <span className="rc-stat-sub">{cfg.burnPct}% of take · {compactBonk(L.bonkBurned)} BONK burned</span>
-        </div>
         <div className={"rc-stat hero" + (L.held < 0 ? " neg" : "")}>
           <span className="rc-stat-l">Revenue held</span>
           <span className="rc-stat-v">{usd2(L.held)}</span>
-          <span className="rc-stat-sub">{L.margin}% of entries · after prize and burn</span>
+          <span className="rc-stat-sub">{L.margin}% of entries · after prize</span>
         </div>
       </div>
 
@@ -796,17 +785,16 @@ function LedgerTab({ cfg }: { cfg: SeasonConfig }) {
         <div className="rc-waterfall">
           <div className="rc-wf in"><span>Entries in</span><b>{usd2(L.grossUsd)}</b></div>
           <div className="rc-wf out"><span>Prize, {funderLabel} share</span><b>− {usd2(L.funderPays)}</b></div>
-          <div className="rc-wf out"><span>Buy and burn spend</span><b>− {usd2(L.burnUsd)}</b></div>
           <div className="rc-wf net"><span>Held</span><b>{usd2(L.held)}</b></div>
         </div>
         <p className="rc-card-note">
-          When a sponsor funds the prize, the house share drops to zero and the whole entry take, less the burn, is held. The
-          burn is a real cost, a public BONK buy that gets burned. Every figure here is the real field, entries in against prize and burn out.
+          When a sponsor funds the prize, the house share drops to zero and the whole entry take is held. Every figure
+          here is the real field, entries in against prize paid out.
         </p>
       </div>
 
       <div className="rc-ledger-foot">
-        Players see the prize, the board, and the BONK that was burned. The take, the cut, and this view stay yours.
+        Players see the prize and the board. The take, the cut, and this view stay yours.
       </div>
     </div>
   )

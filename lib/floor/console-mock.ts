@@ -10,8 +10,8 @@
  * That is the mirror rule, kept in one place.
  *
  * Revenue is secret. The ledger numbers in this file never reach a player
- * surface. They exist so the operator always knows entries in versus prize and
- * burn out, and the revenue actually held.
+ * surface. They exist so the operator always knows entries in versus prize
+ * paid out, and the revenue actually held.
  */
 
 import { SEASON, STAGES, SPLIT, BAND_PCT, SPEED_MAX, SPEED_FLOOR, ARTISTS, type CallType } from "@/lib/floor/arena-mock"
@@ -68,6 +68,7 @@ export interface SeasonConfig {
   prizeFloor: number
   prizeCap: number
   prizeFixed: number
+  payoutN: number // how many top ranks split the prize (proportional to points)
   funder: "house" | "sponsor" | "split"
   split: number[]
   slate: string[] // artist ids
@@ -79,7 +80,6 @@ export interface SeasonConfig {
   closeZero: number // closeness zero beyond this percent
   ptsMax: number
   ptsFloor: number
-  burnPct: number // share of take bought as BONK and burned, private
   entrants: number
   scheduleFilter: string
   scheduleGrind: string
@@ -97,6 +97,7 @@ export function defaultConfig(): SeasonConfig {
     prizeFloor: SEASON.prizeFloorUsd,
     prizeCap: SEASON.prizeCapUsd,
     prizeFixed: 500,
+    payoutN: 10,
     funder: "house",
     split: [...SPLIT],
     slate: ARTISTS.map((a) => a.id),
@@ -108,7 +109,6 @@ export function defaultConfig(): SeasonConfig {
     closeZero: 5,
     ptsMax: SPEED_MAX,
     ptsFloor: SPEED_FLOOR,
-    burnPct: 20,
     entrants: SEASON.entrants,
     scheduleFilter: "11:00",
     scheduleGrind: "14:00",
@@ -134,23 +134,19 @@ export interface Ledger {
   grossUsd: number
   prize: number
   funderPays: number // what the house actually pays from its own wallet
-  burnUsd: number
-  bonkBurned: number
-  held: number // net revenue kept after prize and burn
+  held: number // net revenue kept after prize
   margin: number // held as a share of gross, percent
 }
 
 /* The private money view. Driven by the config so it is always honest. */
 export function computeLedger(c: SeasonConfig): Ledger {
   const grossAmmo = c.entrants * c.entryAmmo
-  const grossUsd = grossAmmo / 100
+  const grossUsd = grossAmmo / 200 // $1 = 200 Ammo
   const prize = prizeCommitted(c)
   const funderPays = c.funder === "sponsor" ? 0 : c.funder === "split" ? Math.round(prize / 2) : prize
-  const burnUsd = Math.round(grossUsd * (c.burnPct / 100) * 100) / 100
-  const bonkBurned = Math.round((burnUsd / 0.000022) ) // mock BONK at a fake price
-  const held = Math.round((grossUsd - funderPays - burnUsd) * 100) / 100
+  const held = Math.round((grossUsd - funderPays) * 100) / 100
   const margin = grossUsd > 0 ? Math.round((held / grossUsd) * 100) : 0
-  return { entrants: c.entrants, grossAmmo, grossUsd, prize, funderPays, burnUsd, bonkBurned, held, margin }
+  return { entrants: c.entrants, grossAmmo, grossUsd, prize, funderPays, held, margin }
 }
 
 /* Mock settle outcome for a stage, so the operator can run a dry pass. */
