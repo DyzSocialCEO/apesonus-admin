@@ -77,14 +77,19 @@ export async function GET(request: Request) {
     const prev_hash = last?.commit_hash || null
     const commitObj = { seq, period_start: periodStart, period_end: periodEnd, play_count: leaves.length, plays_root, state_hash, prev_hash }
 
-    const commit_hash = hashDataset(commitObj).hash
+    // Capture the EXACT canonical string that gets hashed. We persist this as
+    // commit_canonical so the public /proof verifier can recompute the hash from
+    // the literal preimage — Postgres normalizes timestamps on storage, so the
+    // period_start/period_end strings can't otherwise be reconstructed exactly.
+    const { canonical: commit_canonical, hash: commit_hash } = hashDataset(commitObj)
     const anchor = await commitHash("chain", commitObj) // posts APESONUS:commit:chain:<commit_hash>
     const signature = anchor?.signature || null
     const cluster = (process.env.ONUS_RPC_URL || "https://api.devnet.solana.com").includes("devnet") ? "devnet" : "mainnet-beta"
 
     const { error: insErr } = await supabase.from("pit_chain_commits").insert({
       seq, period_start: periodStart, period_end: periodEnd, play_count: leaves.length,
-      plays_root, state_hash, prev_hash, commit_hash, signature, rpc_cluster: signature ? cluster : null,
+      plays_root, state_hash, prev_hash, commit_hash, commit_canonical,
+      signature, rpc_cluster: signature ? cluster : null,
     })
     if (insErr) {
       console.error("[anchor] insert failed:", insErr.message)
