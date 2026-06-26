@@ -121,13 +121,38 @@ export async function GET(request: Request) {
           }
           return { artist_id: n.artist_id, name: ROSTER[n.artist_id] || n.artist_id, np: Number(n.np), state, detail }
         }).sort((a: any, b: any) => b.np - a.np)
-        userBlock = { query: userQ, found: true, user_id: uid, ammo: Number(bal?.balance ?? 0), embers: Number(em?.embers ?? 0), nodes: userNodes }
+        let eng: any = null
+        try {
+          const { data: e2 } = await supabase.rpc("pit_engagement", { p_user: uid })
+          if (e2) eng = { rank: Number(e2.rank || 0), share: Number(e2.share || 0), active: Number(e2.active || 0) }
+        } catch {}
+        userBlock = { query: userQ, found: true, user_id: uid, ammo: Number(bal?.balance ?? 0), embers: Number(em?.embers ?? 0), nodes: userNodes, engagement: eng }
       }
     }
+
+    // Community engagement leaderboard — top players by weighted NP (the payout metric).
+    let engagementTop: any[] = []
+    try {
+      const { data: topRows } = await supabase.rpc("pit_engagement_top", { p_limit: 25 })
+      const ids = (topRows || []).map((r: any) => r.user_id)
+      const nameById: Record<string, string> = {}
+      if (ids.length) {
+        const { data: us } = await supabase.from("users").select("id, display_name, email").in("id", ids)
+        for (const u of us || []) nameById[u.id] = (u.display_name || u.email || u.id.slice(0, 8)) as string
+      }
+      engagementTop = (topRows || []).map((r: any) => ({
+        user_id: r.user_id,
+        name: nameById[r.user_id] || String(r.user_id).slice(0, 8),
+        weight: Number(r.weight || 0),
+        share: Number(r.share || 0),
+        rank: Number(r.rnk || 0),
+      }))
+    } catch {}
 
     return NextResponse.json({
       factions, totals: { total_np: totalNp, qualified_plays: qpCount || 0 },
       current_epoch: currentEpoch, dials, epochs: epochs || [], user: userBlock,
+      engagement_top: engagementTop,
     })
   } catch (e) {
     console.error("[admin/pit] GET:", e)

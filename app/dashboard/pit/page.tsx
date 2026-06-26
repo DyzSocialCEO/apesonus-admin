@@ -131,10 +131,32 @@ export default function PitAdminPage() {
         </CardContent>
       </Card>
 
-      {/* Faction standings */}
+      {/* Community engagement — top players by engagement weight */}
       <Card>
-        <CardHeader><CardTitle className="text-white">Faction standings</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-white">Community engagement</CardTitle></CardHeader>
+        <CardContent className="space-y-2.5">
+          <p className="text-xs text-gray-500 mb-1">Players ranked by total engagement — Node Power across all artists × loyalty — the same weight the pool pays by. Not per-artist.</p>
+          {((data?.engagement_top ?? []).length === 0) ? (
+            <p className="text-sm text-gray-600">No engagement yet.</p>
+          ) : (data.engagement_top.map((p: any) => (
+            <div key={p.user_id}>
+              <div className="flex items-center gap-3 text-sm">
+                <span className="text-gray-600 font-mono w-6">{String(p.rank).padStart(2, "0")}</span>
+                <span className="text-white font-medium flex-1 truncate">{p.name}</span>
+                <span className="font-mono text-lime-400">{(p.share * 100 > 0 && p.share * 100 < 0.1) ? "<0.1" : (p.share * 100).toFixed(1)}%</span>
+                <span className="font-mono text-gray-500 text-xs w-20 text-right">{fmt(p.weight)} wt</span>
+              </div>
+              <div className="mt-1.5 ml-9 h-1.5 rounded-full bg-gray-800 overflow-hidden"><div className="h-full rounded-full bg-lime-400" style={{ width: `${Math.max(2, p.share * 100)}%` }} /></div>
+            </div>
+          )))}
+        </CardContent>
+      </Card>
+
+      {/* Artist activity (informational — not the payout metric) */}
+      <Card>
+        <CardHeader><CardTitle className="text-white">Artist activity</CardTitle></CardHeader>
         <CardContent className="space-y-4">
+          <p className="text-xs text-gray-500 -mt-1">How the roster is doing this week. Engagement rewards don't depend on which artist — this is just the music board.</p>
           {factions.map((f: any, i: number) => {
             const c = COLOR[f.artist_id] || "#c6ff2e"
             return (
@@ -168,6 +190,14 @@ export default function PitAdminPage() {
                 <span className="text-gray-500">Embers</span><span className="font-mono text-lime-400">{fmt(user.embers)}</span>
                 <span className="text-gray-700 font-mono text-xs truncate">{user.user_id}</span>
               </div>
+              {user.engagement && user.engagement.rank > 0 && (
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-gray-500">Engagement</span>
+                  <span className="font-mono text-lime-400">#{user.engagement.rank}</span>
+                  <span className="text-gray-600 text-xs">of {user.engagement.active} active</span>
+                  <span className="font-mono text-emerald-400">{(user.engagement.share * 100).toFixed(1)}% share</span>
+                </div>
+              )}
               {user.nodes.length === 0 ? <p className="text-sm text-gray-500">This player holds no nodes.</p> : (
                 <div className="space-y-2">
                   {user.nodes.map((n: any) => (
