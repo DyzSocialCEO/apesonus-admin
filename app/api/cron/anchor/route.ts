@@ -96,10 +96,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "insert failed", detail: insErr.message }, { status: 500 })
     }
 
+    // Also anchor the Ammo supply ledger on the same beat — best-effort, never
+    // blocks the play-chain commit. Makes circulating-vs-(purchased+granted)
+    // publicly reconcilable so phantom Ammo is visible.
+    let ammo: { hash?: string; signature?: string | null } = {}
+    try {
+      const { anchorAmmoLedger } = await import("@/lib/onus-chain/ammo-ledger")
+      const res = await anchorAmmoLedger(supabase)
+      ammo = { hash: res.hash, signature: res.signature }
+    } catch (e) {
+      console.error("[anchor] ammo ledger failed:", (e as Error).message)
+    }
+
     return NextResponse.json({
       ok: true, seq, play_count: leaves.length, plays_root, commit_hash,
       anchored: !!signature, signature, cluster: signature ? cluster : null,
       period: { start: periodStart, end: periodEnd },
+      ammo_ledger: ammo,
     })
   } catch (e) {
     console.error("[anchor] error:", (e as Error).message)
