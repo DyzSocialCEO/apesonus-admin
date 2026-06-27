@@ -1,7 +1,7 @@
 /**
  * lib/onus-chain/snapshot.ts — the "batch" half of the proof layer.
  *
- * Turns a period's plays into a Merkle root, and the Node Power + Read state
+ * Turns a period's plays into a Merkle root, and the Node Power state
  * into a digest hash. The anchor cron chains these together and posts the
  * result on-chain via commit.ts. Pure hashing — no network, no secrets — so it
  * runs anywhere and is trivially reproducible by a verifier.
@@ -44,7 +44,7 @@ export function playsRoot(plays: PlayLeaf[]): string {
   return merkleRoot(plays.map(leafForPlay))
 }
 
-/** Hash an arbitrary state slice (Node Power rows, Read results) deterministically. */
+/** Hash an arbitrary state slice (Node Power rows) deterministically. */
 export function stateDigest(rows: unknown): string {
   return sha256Hex(canonical(rows))
 }

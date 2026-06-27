@@ -10,7 +10,7 @@ export const runtime = "nodejs"
  * GET /api/cron/anchor
  *
  * Builds one tamper-evidence commit for the window since the last commit:
- *   plays in window → Merkle root, Node Power + Read state → digest,
+ *   plays in window → Merkle root, Node Power state → digest,
  *   chained to the previous commit's hash, the whole thing hashed and posted
  *   on-chain via SPL Memo. Stores the row in pit_chain_commits either way —
  *   if no signing key is set, signature stays null and the chain still builds.
@@ -61,16 +61,12 @@ export async function GET(request: Request) {
     }))
     const plays_root = playsRoot(leaves)
 
-    // ── Node Power + Read state → digest ──
+    // ── Node Power state → digest ──
     const { data: nodes } = await supabase
       .from("pit_nodes").select("user_id, artist_id, np").gt("np", 0)
     const npRows = (nodes || []).map((n) => ({ u: n.user_id, a: n.artist_id, np: Number(n.np) }))
       .sort((x, y) => (x.u + x.a).localeCompare(y.u + y.a))
-    const { data: reads } = await supabase
-      .from("read_results").select("season_id, user_id, stage, points")
-    const readRows = (reads || []).map((r) => ({ s: r.season_id, u: r.user_id, st: r.stage, p: Number(r.points) }))
-      .sort((x, y) => (String(x.s) + x.u + x.st).localeCompare(String(y.s) + y.u + y.st))
-    const state_hash = stateDigest({ nodes: npRows, reads: readRows })
+    const state_hash = stateDigest({ nodes: npRows })
 
     // ── Build, chain, hash, anchor ──
     const seq = Number(last?.seq || 0) + 1
