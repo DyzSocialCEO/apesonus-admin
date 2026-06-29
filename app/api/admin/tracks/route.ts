@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
-import { detectDurationServer } from "@/lib/duration-detect"
+import { detectDurationServer, refererFromRequest } from "@/lib/duration-detect"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     // Auto-detect duration if not provided
     let duration = body.duration || 0
     if (duration === 0 && body.audio) {
-      duration = (await detectDurationServer(body.audio)).duration
+      duration = (await detectDurationServer(body.audio, refererFromRequest(request))).duration
     }
 
     const { data, error } = await supabase
@@ -106,7 +106,7 @@ export async function PUT(request: Request) {
     if (b.is_record_only !== undefined)     updates.is_record_only = Boolean(b.is_record_only)
 
     if (updates.audio && (!updates.duration || updates.duration === 0)) {
-      updates.duration = (await detectDurationServer(updates.audio)).duration
+      updates.duration = (await detectDurationServer(updates.audio, refererFromRequest(request))).duration
     }
 
     const supabase = await createAdminClient()

@@ -3,59 +3,59 @@ import { signBunnyCdnUrl } from "@/lib/bunny-cdn"
 /**
  * Server-side m4a/mp4 duration detection.
  *
- * Runs entirely on the server: it fetches bytes from Bunny (signed) and parses
- * the moov/mvhd atoms. No browser <audio> element (that failed with
- * SRC_NOT_SUPPORTED on signed CDN URLs).
+ * Parses moov/mvhd atoms from bytes fetched off Bunny (signed). No browser
+ * <audio> element, and — critically — no HEAD request (Bunny's token zone
+ * 403s server-side HEAD; GET, the same verb the PWA uses for playback, works).
  *
- * IMPORTANT: this uses ONLY GET range requests — never HEAD. Bunny's
- * token-authenticated pull zone serves GET (the same as the PWA's browser
- * playback) but 403s a server-side HEAD, which is what broke "Fix Durations".
- * The total file size is read from the Content-Range header of the first GET,
- * so we never need a HEAD to learn the length.
+ * Referrer: Bunny hotlink protection checks the Referer header. Browser
+ * playback passes because the browser sends the app's origin (which is on the
+ * allowlist). A server fetch has to send an allowed Referer itself — so the
+ * routes pass the ADMIN's own origin (the URL added to the Bunny allowlist),
+ * and if that's still blocked we retry with NO Referer (covers zones that
+ * allow empty-referrer / direct access). Override with DURATION_FETCH_REFERER.
  *
- * Returns duration in whole seconds, or 0 if it genuinely could not be parsed
- * (with `reason` explaining why, for the admin UI).
+ * Returns duration in whole seconds, or 0 (with `reason`) if it truly couldn't.
  */
 export interface DurationResult {
   duration: number
   reason: string
 }
 
-// Headers that match a legitimate media request so the probe is treated like
-// playback. Referer host is the public app origin; override with
-// DURATION_FETCH_REFERER if the zone expects a specific allowed referrer.
-const FETCH_HEADERS: Record<string, string> = {
-  "User-Agent":
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
-    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-  "Referer":
-    process.env.DURATION_FETCH_REFERER ||
-    process.env.MAIN_APP_URL ||
-    "https://music.apesonus.com/",
-  "Accept": "audio/mp4,audio/*;q=0.9,*/*;q=0.5",
+const UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+
+// Build a request header set. Includes Referer only when one is supplied.
+function headersFor(referer?: string): Record<string, string> {
+  const h: Record<string, string> = { "User-Agent": UA, "Accept": "audio/mp4,audio/*;q=0.9,*/*;q=0.5" }
+  if (referer) h["Referer"] = referer
+  return h
+}
+
+// Derive the caller's own origin from the incoming request — this is the admin
+// URL the browser is on (and that you'd add to Bunny's allowed referrers).
+export function refererFromRequest(request: Request): string | undefined {
+  const origin = request.headers.get("origin")
+  if (origin) return origin
+  const host = request.headers.get("host")
+  if (host) return `${request.headers.get("x-forwarded-proto") || "https"}://${host}`
+  return undefined
 }
 
 interface RangeResult { ok: boolean; status: number; total: number; bytes: Uint8Array }
 
-// One GET range request. Also reports the total file size from Content-Range
-// ("bytes 0-65535/3221225" -> 3221225), falling back to Content-Length.
-async function getRange(url: string, s: number, e: number): Promise<RangeResult> {
-  const r = await fetch(url, { headers: { ...FETCH_HEADERS, Range: `bytes=${s}-${e}` } })
+async function getRange(url: string, s: number, e: number, headers: Record<string, string>): Promise<RangeResult> {
+  const r = await fetch(url, { headers: { ...headers, Range: `bytes=${s}-${e}` } })
   let total = 0
   const cr = r.headers.get("content-range")
-  if (cr) {
-    const slash = cr.lastIndexOf("/")
-    if (slash !== -1) { const t = parseInt(cr.slice(slash + 1), 10); if (Number.isFinite(t)) total = t }
-  }
+  if (cr) { const slash = cr.lastIndexOf("/"); if (slash !== -1) { const t = parseInt(cr.slice(slash + 1), 10); if (Number.isFinite(t)) total = t } }
   if (!total) { const cl = parseInt(r.headers.get("content-length") || "0", 10); if (Number.isFinite(cl)) total = cl }
-  // Read the body when the request succeeded (206 Partial, or 200 if the edge
-  // ignored Range and returned the whole file — either way we can parse it).
   const okBody = r.ok || r.status === 206 || r.status === 200
   const bytes = okBody ? new Uint8Array(await r.arrayBuffer()) : new Uint8Array(0)
   return { ok: okBody, status: r.status, total, bytes }
 }
 
-export async function detectDurationServer(audioUrl: string): Promise<DurationResult> {
+export async function detectDurationServer(audioUrl: string, referer?: string): Promise<DurationResult> {
   let signed: string
   try {
     signed = signBunnyCdnUrl(audioUrl)
@@ -63,40 +63,47 @@ export async function detectDurationServer(audioUrl: string): Promise<DurationRe
     return { duration: 0, reason: `sign failed: ${e instanceof Error ? e.message : String(e)}` }
   }
 
+  // Referer candidates, tried in order until one returns 2xx: the admin origin
+  // (allowlisted) → DURATION_FETCH_REFERER → MAIN_APP_URL → finally NO referer.
+  const candidates: Array<string | undefined> = []
+  const addRef = (v?: string | null) => { if (v && !candidates.includes(v)) candidates.push(v) }
+  addRef(referer)
+  addRef(process.env.DURATION_FETCH_REFERER)
+  addRef(process.env.MAIN_APP_URL)
+  candidates.push(undefined)
+
   try {
-    // 1. First 64KB via GET range — faststart files keep moov at the front,
-    //    and this same response hands us the total file size.
-    const first = await getRange(signed, 0, 65535)
-    if (!first.ok) {
-      return { duration: 0, reason: `CDN GET ${first.status} (token rejected or referrer blocked by Bunny)` }
+    let headers: Record<string, string> | null = null
+    let first: RangeResult | null = null
+    for (const ref of candidates) {
+      const h = headersFor(ref)
+      const probe = await getRange(signed, 0, 65535, h)
+      first = probe
+      if (probe.ok) { headers = h; break }
     }
+    if (!headers || !first || !first.ok) {
+      return { duration: 0, reason: `CDN GET ${first?.status ?? "?"} (token rejected or referrer blocked by Bunny)` }
+    }
+
+    // 1. moov in the first 64KB (faststart).
     let dur = parseMoov(first.bytes)
     if (dur !== null && dur > 0) return { duration: Math.round(dur), reason: "" }
 
     const len = first.total
-
-    // 2. Last 128KB — non-faststart files keep moov at the end.
+    // 2. moov at the end (non-faststart).
     if (len > 65536) {
-      const tail = await getRange(signed, Math.max(0, len - 131072), len - 1)
-      if (tail.ok) {
-        dur = parseMoov(tail.bytes)
-        if (dur !== null && dur > 0) return { duration: Math.round(dur), reason: "" }
-      }
+      const tail = await getRange(signed, Math.max(0, len - 131072), len - 1, headers)
+      if (tail.ok) { dur = parseMoov(tail.bytes); if (dur !== null && dur > 0) return { duration: Math.round(dur), reason: "" } }
     }
-
-    // 3. Whole file if reasonably small.
+    // 3. whole file if small.
     if (len > 0 && len < 25 * 1024 * 1024) {
-      const whole = await getRange(signed, 0, len - 1)
-      if (whole.ok) {
-        dur = parseMoov(whole.bytes)
-        if (dur !== null && dur > 0) return { duration: Math.round(dur), reason: "" }
-      }
+      const whole = await getRange(signed, 0, len - 1, headers)
+      if (whole.ok) { dur = parseMoov(whole.bytes); if (dur !== null && dur > 0) return { duration: Math.round(dur), reason: "" } }
     }
 
     return {
       duration: 0,
-      reason: len === 0
-        ? "file is 0 bytes / unreachable on CDN"
+      reason: len === 0 ? "file is 0 bytes / unreachable on CDN"
         : "no moov/mvhd atom found (not a standard m4a, or corrupt upload)",
     }
   } catch (e) {
@@ -135,12 +142,8 @@ function findAtom(d: Uint8Array, n: string, s: number): number {
     const sz = r32(d, o)
     if (d[o + 4] === c[0] && d[o + 5] === c[1] && d[o + 6] === c[2] && d[o + 7] === c[3]) return o
     if (sz === 0) break
-    if (sz === 1) {
-      if (o + 16 > d.length) break
-      o += r32(d, o + 8) * 0x100000000 + r32(d, o + 12)
-    } else {
-      o += sz
-    }
+    if (sz === 1) { if (o + 16 > d.length) break; o += r32(d, o + 8) * 0x100000000 + r32(d, o + 12) }
+    else o += sz
   }
   return -1
 }
