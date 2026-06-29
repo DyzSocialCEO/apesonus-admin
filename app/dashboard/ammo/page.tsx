@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { Fuel, Gift, Flame, ShoppingCart, Users2, Star, Loader2, CheckCircle2, AlertCircle, Plus, Trash2, Percent, Save, Check, TrendingUp } from "lucide-react"
+import { Fuel, Gift, Flame, ShoppingCart, Users2, Star, Loader2, CheckCircle2, AlertCircle, Plus, Trash2, Save, Check, TrendingUp } from "lucide-react"
 
 type Stats = {
   outstanding: number
@@ -288,7 +288,7 @@ export default function AmmoPage() {
 
           {/* Packs, money split, discount ladder — one Save */}
           <div className="space-y-6">
-            <div className="grid lg:grid-cols-[1.4fr_1fr] gap-6">
+            <div>
               {/* Pack manager */}
               <div className="rounded-xl bg-gray-900 border border-gray-800 p-6">
                 <div className="flex items-center justify-between mb-1">
@@ -346,32 +346,6 @@ export default function AmmoPage() {
                 </div>
               </div>
 
-              {/* Money split */}
-              <div className="rounded-xl bg-gray-900 border border-gray-800 p-6">
-                <div className="flex items-center gap-2 mb-1">
-                  <Percent className="w-5 h-5 text-primary" />
-                  <h2 className="font-semibold text-white">Money split</h2>
-                </div>
-                <p className="text-xs text-gray-500 mb-4">
-                  Of every dollar taken, this share goes to the weekly payout pool. The house keeps the rest. Banked at purchase, never shown to players.
-                </p>
-
-                <div className="flex items-end gap-3">
-                  <div className="flex-1">
-                    <label className="text-[10px] uppercase tracking-wider text-gray-600">Treasury (pool)</label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <input type="number" step="1" min="0" max="100" value={treasuryPct}
-                        onChange={e => setTreasuryPct(Number(e.target.value))}
-                        className="w-20 bg-gray-950 border border-gray-700 rounded-lg px-2.5 py-2 text-lg font-bold text-white focus:outline-none focus:border-primary" />
-                      <span className="text-gray-500">%</span>
-                    </div>
-                  </div>
-                  <div className="flex-1 text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-gray-600">House keeps</div>
-                    <div className="text-2xl font-bold text-white mt-1">{(100 - (Number(treasuryPct) || 0)).toFixed(0)}%</div>
-                  </div>
-                </div>
-              </div>
             </div>
 
             {/* Discount ladder */}
@@ -424,7 +398,7 @@ export default function AmmoPage() {
               </div>
             </div>
 
-            {/* Save bar — packs, split and ladder all save together */}
+            {/* Save bar — packs and ladder save together */}
             <div className="rounded-xl bg-gray-900 border border-gray-800 p-4 flex items-center justify-between gap-4">
               <div className="min-h-[20px] text-xs">
                 {cfgMsg && !cfgMsg.ok && (
@@ -441,7 +415,7 @@ export default function AmmoPage() {
               <button onClick={saveConfig} disabled={savingCfg}
                 className={`flex items-center justify-center gap-2 font-semibold rounded-lg px-5 py-2.5 text-sm disabled:opacity-50 transition-colors ${savedFlash ? "bg-emerald-500 text-black" : "bg-primary text-black hover:bg-primary/90"}`}>
                 {savingCfg ? <Loader2 className="w-4 h-4 animate-spin" /> : savedFlash ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-                {savedFlash ? "Saved" : "Save packs, split & ladder"}
+                {savedFlash ? "Saved" : "Save packs & ladder"}
               </button>
             </div>
           </div>
