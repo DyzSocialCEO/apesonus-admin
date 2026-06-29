@@ -1,86 +1,10 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
-import { signBunnyCdnUrl } from "@/lib/bunny-cdn"
+import { detectDurationServer } from "@/lib/duration-detect"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
-
-// ── Auto-detect m4a duration server-side ──
-async function detectDuration(audioUrl: string): Promise<number> {
-  try {
-    const signed = signBunnyCdnUrl(audioUrl)
-
-    // Try first 64KB (faststart files have moov at beginning)
-    let buf = await fetchRange(signed, 0, 65535)
-    let dur = parseMoov(buf)
-    if (dur !== null) return Math.round(dur)
-
-    // Try last 128KB (non-faststart files)
-    const head = await fetch(signed, { method: "HEAD" })
-    const len = parseInt(head.headers.get("content-length") || "0")
-    if (len > 65536) {
-      buf = await fetchRange(signed, Math.max(0, len - 131072), len - 1)
-      dur = parseMoov(buf)
-      if (dur !== null) return Math.round(dur)
-    }
-
-    // Fallback: full file if < 20MB
-    if (len > 0 && len < 20 * 1024 * 1024) {
-      const r = await fetch(signed)
-      buf = new Uint8Array(await r.arrayBuffer())
-      dur = parseMoov(buf)
-      if (dur !== null) return Math.round(dur)
-    }
-  } catch (e) {
-    console.warn("[Duration] detect failed:", e)
-  }
-  return 0
-}
-
-async function fetchRange(url: string, s: number, e: number) {
-  const r = await fetch(url, { headers: { Range: `bytes=${s}-${e}` } })
-  return new Uint8Array(await r.arrayBuffer())
-}
-
-function parseMoov(d: Uint8Array): number | null {
-  const moov = findAtom(d, "moov", 0)
-  if (moov === -1) return null
-  const mvhd = findAtom(d, "mvhd", moov + 8)
-  if (mvhd === -1) return null
-  const h = mvhd + 8
-  if (h + 4 > d.length) return null
-  const v = d[h]
-  if (v === 0) {
-    const o = h + 4; if (o + 16 > d.length) return null
-    const ts = r32(d, o + 8), du = r32(d, o + 12)
-    return ts ? du / ts : null
-  }
-  if (v === 1) {
-    const o = h + 4; if (o + 28 > d.length) return null
-    const ts = r32(d, o + 16)
-    const du = r32(d, o + 20) * 0x100000000 + r32(d, o + 24)
-    return ts ? du / ts : null
-  }
-  return null
-}
-
-function findAtom(d: Uint8Array, n: string, s: number): number {
-  let o = s
-  const c = [n.charCodeAt(0), n.charCodeAt(1), n.charCodeAt(2), n.charCodeAt(3)]
-  while (o + 8 <= d.length) {
-    const sz = r32(d, o)
-    if (d[o+4]===c[0] && d[o+5]===c[1] && d[o+6]===c[2] && d[o+7]===c[3]) return o
-    if (sz === 0) break
-    if (sz === 1) { if (o+16>d.length) break; o += r32(d,o+8)*0x100000000+r32(d,o+12) }
-    else o += sz
-  }
-  return -1
-}
-
-function r32(d: Uint8Array, o: number) {
-  return ((d[o]<<24)>>>0)+(d[o+1]<<16)+(d[o+2]<<8)+d[o+3]
-}
 
 // ── Routes ──
 
@@ -116,7 +40,7 @@ export async function POST(request: Request) {
     // Auto-detect duration if not provided
     let duration = body.duration || 0
     if (duration === 0 && body.audio) {
-      duration = await detectDuration(body.audio)
+      duration = (await detectDurationServer(body.audio)).duration
     }
 
     const { data, error } = await supabase
@@ -182,7 +106,7 @@ export async function PUT(request: Request) {
     if (b.is_record_only !== undefined)     updates.is_record_only = Boolean(b.is_record_only)
 
     if (updates.audio && (!updates.duration || updates.duration === 0)) {
-      updates.duration = await detectDuration(updates.audio)
+      updates.duration = (await detectDurationServer(updates.audio)).duration
     }
 
     const supabase = await createAdminClient()

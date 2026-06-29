@@ -3,25 +3,27 @@ import { signBunnyCdnUrl } from "@/lib/bunny-cdn"
 /**
  * Server-side m4a/mp4 duration detection.
  *
- * Runs entirely on the server: it fetches bytes from Bunny (signed)
- * and parses the moov/mvhd atoms. This is reliable for every upload
- * because it does NOT use a browser <audio> element — the browser
- * approach kept failing with SRC_NOT_SUPPORTED on signed CDN URLs.
+ * Runs entirely on the server: it fetches bytes from Bunny (signed) and parses
+ * the moov/mvhd atoms. No browser <audio> element (that failed with
+ * SRC_NOT_SUPPORTED on signed CDN URLs).
  *
- * Returns duration in whole seconds, or 0 if it genuinely could not
- * be parsed (with `reason` explaining why, for the admin UI).
+ * IMPORTANT: this uses ONLY GET range requests — never HEAD. Bunny's
+ * token-authenticated pull zone serves GET (the same as the PWA's browser
+ * playback) but 403s a server-side HEAD, which is what broke "Fix Durations".
+ * The total file size is read from the Content-Range header of the first GET,
+ * so we never need a HEAD to learn the length.
+ *
+ * Returns duration in whole seconds, or 0 if it genuinely could not be parsed
+ * (with `reason` explaining why, for the admin UI).
  */
 export interface DurationResult {
   duration: number
   reason: string
 }
 
-// Bunny's pull zone accepts the PWA's browser playback requests but
-// 403s a bare server-side fetch (no Referer / no browser UA). We send
-// headers that match a legitimate media request so the duration probe
-// is treated the same as playback. The Referer host is the public app
-// origin; override with DURATION_FETCH_REFERER if your zone expects a
-// specific allowed referrer.
+// Headers that match a legitimate media request so the probe is treated like
+// playback. Referer host is the public app origin; override with
+// DURATION_FETCH_REFERER if the zone expects a specific allowed referrer.
 const FETCH_HEADERS: Record<string, string> = {
   "User-Agent":
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
@@ -29,8 +31,28 @@ const FETCH_HEADERS: Record<string, string> = {
   "Referer":
     process.env.DURATION_FETCH_REFERER ||
     process.env.MAIN_APP_URL ||
-    "https://apesonus-pwa-preview.up.railway.app/",
+    "https://music.apesonus.com/",
   "Accept": "audio/mp4,audio/*;q=0.9,*/*;q=0.5",
+}
+
+interface RangeResult { ok: boolean; status: number; total: number; bytes: Uint8Array }
+
+// One GET range request. Also reports the total file size from Content-Range
+// ("bytes 0-65535/3221225" -> 3221225), falling back to Content-Length.
+async function getRange(url: string, s: number, e: number): Promise<RangeResult> {
+  const r = await fetch(url, { headers: { ...FETCH_HEADERS, Range: `bytes=${s}-${e}` } })
+  let total = 0
+  const cr = r.headers.get("content-range")
+  if (cr) {
+    const slash = cr.lastIndexOf("/")
+    if (slash !== -1) { const t = parseInt(cr.slice(slash + 1), 10); if (Number.isFinite(t)) total = t }
+  }
+  if (!total) { const cl = parseInt(r.headers.get("content-length") || "0", 10); if (Number.isFinite(cl)) total = cl }
+  // Read the body when the request succeeded (206 Partial, or 200 if the edge
+  // ignored Range and returned the whole file — either way we can parse it).
+  const okBody = r.ok || r.status === 206 || r.status === 200
+  const bytes = okBody ? new Uint8Array(await r.arrayBuffer()) : new Uint8Array(0)
+  return { ok: okBody, status: r.status, total, bytes }
 }
 
 export async function detectDurationServer(audioUrl: string): Promise<DurationResult> {
@@ -42,30 +64,33 @@ export async function detectDurationServer(audioUrl: string): Promise<DurationRe
   }
 
   try {
-    // 1. First 64KB — faststart files keep moov at the front.
-    let buf = await fetchRange(signed, 0, 65535)
-    let dur = parseMoov(buf)
+    // 1. First 64KB via GET range — faststart files keep moov at the front,
+    //    and this same response hands us the total file size.
+    const first = await getRange(signed, 0, 65535)
+    if (!first.ok) {
+      return { duration: 0, reason: `CDN GET ${first.status} (token rejected or referrer blocked by Bunny)` }
+    }
+    let dur = parseMoov(first.bytes)
     if (dur !== null && dur > 0) return { duration: Math.round(dur), reason: "" }
 
+    const len = first.total
+
     // 2. Last 128KB — non-faststart files keep moov at the end.
-    const head = await fetch(signed, { method: "HEAD", headers: FETCH_HEADERS })
-    if (!head.ok) {
-      return { duration: 0, reason: `CDN HEAD ${head.status} (token rejected or referrer blocked by Bunny)` }
-    }
-    const len = parseInt(head.headers.get("content-length") || "0")
     if (len > 65536) {
-      buf = await fetchRange(signed, Math.max(0, len - 131072), len - 1)
-      dur = parseMoov(buf)
-      if (dur !== null && dur > 0) return { duration: Math.round(dur), reason: "" }
+      const tail = await getRange(signed, Math.max(0, len - 131072), len - 1)
+      if (tail.ok) {
+        dur = parseMoov(tail.bytes)
+        if (dur !== null && dur > 0) return { duration: Math.round(dur), reason: "" }
+      }
     }
 
     // 3. Whole file if reasonably small.
     if (len > 0 && len < 25 * 1024 * 1024) {
-      const r = await fetch(signed, { headers: FETCH_HEADERS })
-      if (!r.ok) return { duration: 0, reason: `CDN GET ${r.status}` }
-      buf = new Uint8Array(await r.arrayBuffer())
-      dur = parseMoov(buf)
-      if (dur !== null && dur > 0) return { duration: Math.round(dur), reason: "" }
+      const whole = await getRange(signed, 0, len - 1)
+      if (whole.ok) {
+        dur = parseMoov(whole.bytes)
+        if (dur !== null && dur > 0) return { duration: Math.round(dur), reason: "" }
+      }
     }
 
     return {
@@ -77,11 +102,6 @@ export async function detectDurationServer(audioUrl: string): Promise<DurationRe
   } catch (e) {
     return { duration: 0, reason: `fetch/parse error: ${e instanceof Error ? e.message : String(e)}` }
   }
-}
-
-async function fetchRange(url: string, s: number, e: number): Promise<Uint8Array> {
-  const r = await fetch(url, { headers: { ...FETCH_HEADERS, Range: `bytes=${s}-${e}` } })
-  return new Uint8Array(await r.arrayBuffer())
 }
 
 function parseMoov(d: Uint8Array): number | null {
