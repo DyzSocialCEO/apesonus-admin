@@ -138,7 +138,7 @@ export default function AmmoPage() {
       if (!res.ok) {
         setMsg({ ok: false, text: data.error || "Grant failed" })
       } else {
-        setMsg({ ok: true, text: `Granted ${fmt(data.amountGranted)} Ammo. New balance ${fmt(data.newBalance)}.` })
+        setMsg({ ok: true, text: `Granted ${fmt(data.amountGranted)} Spins. New balance ${fmt(data.newBalance)}.` })
         setIdentifier(""); setAmount(""); setReason("")
         load()
       }
@@ -198,7 +198,7 @@ export default function AmmoPage() {
           pErr[p.id] = "Price must be a whole dollar, 1 or more."; return false
         }
         if (p.ammo !== null && (!isInt(p.ammo) || (p.ammo as number) < 1)) {
-          pErr[p.id] = "Ammo must be a whole number 1 or more, or blank to use the ladder."; return false
+          pErr[p.id] = "Spins must be a whole number 1 or more, or blank to use the ladder."; return false
         }
         return true
       })
@@ -269,8 +269,8 @@ export default function AmmoPage() {
           <Fuel className="w-6 h-6 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-white">Ammo</h1>
-          <p className="text-sm text-gray-500">THE FLOOR — consumable stream credit. $1 = {ammoPerUsd.toLocaleString("en-US")} Ammo, 1 Ammo = 1 qualified stream.</p>
+          <h1 className="text-2xl font-bold text-white">Spins</h1>
+          <p className="text-sm text-gray-500">What players buy to keep the music going. $1 = {ammoPerUsd.toLocaleString("en-US")} Spins, 1 Spin = 1 play.</p>
         </div>
       </div>
 
@@ -294,7 +294,7 @@ export default function AmmoPage() {
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <ShoppingCart className="w-5 h-5 text-primary" />
-                    <h2 className="font-semibold text-white">Ammo packs</h2>
+                    <h2 className="font-semibold text-white">Spins packs</h2>
                   </div>
                   <button onClick={addPack}
                     className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80">
@@ -302,12 +302,12 @@ export default function AmmoPage() {
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 mb-4">
-                  What players can buy. Price is whole dollars only. Set a pack&apos;s own Ammo to fix exactly what it gives, or leave Ammo blank to let the discount ladder set it. Inactive packs stay saved but hide from players.
+                  What players can buy. Price is whole dollars only. Set a pack&apos;s own Spins to fix exactly what it gives, or leave Spins blank to let the discount ladder set it. Inactive packs stay saved but hide from players.
                 </p>
 
                 <div className="space-y-2">
                   <div className="grid grid-cols-[1fr_1fr_1.2fr_auto_auto] gap-2 px-1 text-[10px] uppercase tracking-wider text-gray-600">
-                    <span>Price $</span><span>Ammo</span><span>Label (optional)</span><span>Live</span><span></span>
+                    <span>Price $</span><span>Spins</span><span>Label (optional)</span><span>Live</span><span></span>
                   </div>
                   {packs.length === 0 && (
                     <div className="text-xs text-gray-500 py-3">No packs yet. Add one to start selling.</div>
@@ -387,7 +387,7 @@ export default function AmmoPage() {
                 </button>
               </div>
               <p className="text-xs text-gray-500 mb-4">
-                Bonus Ammo by how much a player spends in one go (spend $5 or more, get 10%, and so on). Whole numbers only. A pack with its own Ammo ignores the ladder — leave a pack&apos;s Ammo blank to let the ladder set it.
+                Bonus Spins by how much a player spends in one go (spend $5 or more, get 10%, and so on). Whole numbers only. A pack with its own Spins ignores the ladder — leave a pack&apos;s Spins blank to let the ladder set it.
               </p>
 
               <div className="space-y-2 max-w-xl">
@@ -395,7 +395,7 @@ export default function AmmoPage() {
                   <span>Spend $ (min)</span><span>Bonus %</span><span></span>
                 </div>
                 {tiers.length === 0 && (
-                  <div className="text-xs text-gray-500 py-3">No tiers yet. Add one to give bonus Ammo for bigger spends.</div>
+                  <div className="text-xs text-gray-500 py-3">No tiers yet. Add one to give bonus Spins for bigger spends.</div>
                 )}
                 {tiers.map(t => {
                   const err = tierErrs[t.id]
@@ -454,7 +454,7 @@ export default function AmmoPage() {
                 <h2 className="font-semibold text-white">Free plays</h2>
               </div>
               <p className="text-xs text-gray-500">
-                Every account gets 5 free plays a day, on any track — no featured track to pick. For accounts that have bought Ammo, those 5 free plays build Node Power. For accounts that haven't, the 5 are just music and build nothing. Once the 5 are used and there's no Ammo, the next play is blocked until they buy Ammo or the daily reset comes around. Nothing to set here.
+                Every account gets 5 free plays a day, on any track — no featured track to pick. Once those are used, each play spends 1 Spin — and every Spin played mints Embers, multiplied by the listener's Heat streak. With no Spins and no free plays left, the next play is blocked until they buy Spins or the daily reset comes around. Nothing to set here.
               </p>
             </div>
 
@@ -462,10 +462,10 @@ export default function AmmoPage() {
             <div className="rounded-xl bg-gray-900 border border-gray-800 p-6">
               <div className="flex items-center gap-2 mb-1">
                 <Gift className="w-5 h-5 text-primary" />
-                <h2 className="font-semibold text-white">Grant Ammo</h2>
+                <h2 className="font-semibold text-white">Grant Spins</h2>
               </div>
               <p className="text-xs text-amber-500/80 mb-4">
-                Ammo is non-refundable and non-transferable. A grant is permanent free credit — log a clear reason.
+                Spins is non-refundable and non-transferable. A grant is permanent free credit — log a clear reason.
               </p>
               <div className="space-y-3">
                 <input
@@ -512,7 +512,7 @@ export default function AmmoPage() {
               <h2 className="font-semibold text-white">Top holders</h2>
             </div>
             {holders.length === 0 ? (
-              <div className="px-6 py-8 text-sm text-gray-600">No Ammo balances yet.</div>
+              <div className="px-6 py-8 text-sm text-gray-600">No Spins balances yet.</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -520,7 +520,7 @@ export default function AmmoPage() {
                     <tr className="border-b border-gray-800">
                       <th className="text-left px-6 py-3 font-medium">User</th>
                       <th className="text-left px-6 py-3 font-medium">ID</th>
-                      <th className="text-right px-6 py-3 font-medium">Ammo</th>
+                      <th className="text-right px-6 py-3 font-medium">Spins</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -597,7 +597,7 @@ export default function AmmoPage() {
                     <tr className="border-b border-gray-800">
                       <th className="text-left px-6 py-3 font-medium">When</th>
                       <th className="text-left px-6 py-3 font-medium">User</th>
-                      <th className="text-right px-6 py-3 font-medium">Ammo</th>
+                      <th className="text-right px-6 py-3 font-medium">Spins</th>
                       <th className="text-right px-6 py-3 font-medium">USD</th>
                       <th className="text-left px-6 py-3 font-medium">Rail</th>
                       <th className="text-left px-6 py-3 font-medium">Status</th>

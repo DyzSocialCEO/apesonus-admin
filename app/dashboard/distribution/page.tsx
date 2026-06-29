@@ -3,7 +3,7 @@
 /**
  * /dashboard/distribution — clean profit split.
  *
- * Set the three pools (Operational / Team / Ecosystem), add partners with a
+ * Set the three pools (Operational / Team / Development), add partners with a
  * SOL address + a % of the Team pool and lock them in (the unallocated
  * remainder is you). Every confirmed purchase auto-splits and freezes each
  * locked partner's cut — forward-only — so accrued/paid/owed is always live.
@@ -12,7 +12,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import {
-  Coins, DollarSign, Users2, Wrench, Megaphone, Lock, Unlock, Plus,
+  Coins, DollarSign, Users2, Wrench, Code2, Lock, Unlock, Plus,
   Loader2, CheckCircle2, AlertCircle, Send, Trash2, Pencil, X, ShieldCheck,
 } from "lucide-react"
 
@@ -140,7 +140,7 @@ export default function DistributionPage() {
         <StatCard icon={DollarSign} label="Gross revenue" value={usd(data.gross_cents)} sub="all confirmed purchases" accent="#c6ff2e" />
         <StatCard icon={Wrench} label={`Operational ${data.config.ops_pct}%`} value={usd(data.ops_cents)} />
         <StatCard icon={Users2} label={`Team ${data.config.team_pct}%`} value={usd(data.team_cents)} />
-        <StatCard icon={Megaphone} label={`Ecosystem ${data.config.eco_pct}%`} value={usd(data.eco_cents)} />
+        <StatCard icon={Code2} label={`Development ${data.config.eco_pct}%`} value={usd(data.eco_cents)} />
       </div>
 
       {/* pool config */}
@@ -152,7 +152,7 @@ export default function DistributionPage() {
             : <span className={`text-xs ${sumOk ? "text-green-400" : "text-red-400"}`}>Total: {sum}%</span>}
         </div>
         <div className="grid grid-cols-3 gap-3 mt-4">
-          {[["Operational", ops, setOps], ["Team", team, setTeam], ["Ecosystem", eco, setEco]].map(([lab, val, set]: any) => (
+          {[["Operational", ops, setOps], ["Team", team, setTeam], ["Development", eco, setEco]].map(([lab, val, set]: any) => (
             <label key={lab} className="block">
               <span className="text-xs text-gray-500 uppercase tracking-wide">{lab}</span>
               <div className="mt-1 flex items-center rounded-lg bg-gray-950 border border-gray-800 px-3">
@@ -167,8 +167,8 @@ export default function DistributionPage() {
           <label className="block"><span className="text-xs text-gray-500 uppercase tracking-wide">Operational wallet (SOL)</span>
             <input value={opsW} onChange={(e) => setOpsW(e.target.value)} placeholder="reserve address"
               className="mt-1 w-full rounded-lg bg-gray-950 border border-gray-800 px-3 py-2.5 text-white text-sm outline-none" /></label>
-          <label className="block"><span className="text-xs text-gray-500 uppercase tracking-wide">Ecosystem wallet (SOL)</span>
-            <input value={ecoW} onChange={(e) => setEcoW(e.target.value)} placeholder="marketing / promos address"
+          <label className="block"><span className="text-xs text-gray-500 uppercase tracking-wide">Development wallet (SOL)</span>
+            <input value={ecoW} onChange={(e) => setEcoW(e.target.value)} placeholder="development fund address"
               className="mt-1 w-full rounded-lg bg-gray-950 border border-gray-800 px-3 py-2.5 text-white text-sm outline-none" /></label>
         </div>
         <div className="flex items-center gap-3 mt-4">
