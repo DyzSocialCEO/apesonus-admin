@@ -16,6 +16,7 @@ const pctOf = (frac: number) => `${Math.round((frac || 0) * 1000) / 10}%`
 export default function ReferralsPage() {
   const [d, setD] = useState<Data | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadErr, setLoadErr] = useState("")
   const [l1, setL1] = useState("20")
   const [l2, setL2] = useState("5")
   const [saving, setSaving] = useState(false)
@@ -23,14 +24,19 @@ export default function ReferralsPage() {
   const [err, setErr] = useState("")
 
   const load = () => {
+    setLoading(true); setLoadErr("")
     fetch("/api/admin/referrals", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data: Data) => {
-        setD(data)
-        if (Number.isFinite(data.l1_pct)) setL1(String(Math.round(data.l1_pct * 1000) / 10))
-        if (Number.isFinite(data.l2_pct)) setL2(String(Math.round(data.l2_pct * 1000) / 10))
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({} as Record<string, unknown>))
+        if (!r.ok || (data as { error?: string }).error) {
+          setLoadErr((data as { error?: string }).error || `Server error (${r.status})`); setD(null); return
+        }
+        const dd = data as Data
+        setD(dd)
+        if (Number.isFinite(dd.l1_pct)) setL1(String(Math.round(dd.l1_pct * 1000) / 10))
+        if (Number.isFinite(dd.l2_pct)) setL2(String(Math.round(dd.l2_pct * 1000) / 10))
       })
-      .catch(() => {})
+      .catch(() => setLoadErr("Could not reach the server"))
       .finally(() => setLoading(false))
   }
   useEffect(load, [])
@@ -50,7 +56,18 @@ export default function ReferralsPage() {
   }
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-600" /></div>
-  if (!d) return <div className="p-10 text-gray-500">Could not load referrals.</div>
+  if (loadErr || !d) return (
+    <div className="p-6 lg:p-10 max-w-2xl mx-auto">
+      <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+        <div className="flex items-center gap-2 text-white font-semibold"><Share2 className="w-5 h-5 text-primary" /> Referrals</div>
+        <p className="text-sm text-gray-400 mt-3">Couldn&apos;t load referrals{loadErr ? `: ${loadErr}` : ""}.</p>
+        <p className="text-xs text-gray-600 mt-1">If this page was just deployed, make sure the referrals migration has been run in the database.</p>
+        <button onClick={load} className="mt-4 text-sm bg-primary text-gray-950 font-semibold px-4 py-2 rounded-lg hover:bg-primary/90">Retry</button>
+      </div>
+    </div>
+  )
+  const top = d.top_referrers || []
+  const recent = d.recent || []
 
   const Card = ({ icon: Icon, label, value, hint, accent }: { icon: any; label: string; value: string; hint?: string; accent?: string }) => (
     <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
@@ -118,7 +135,7 @@ export default function ReferralsPage() {
           <Network className="w-4 h-4 text-primary" />
           <h2 className="font-semibold text-white">Top referrers</h2>
         </div>
-        {d.top_referrers.length === 0 ? (
+        {top.length === 0 ? (
           <div className="px-6 py-8 text-sm text-gray-600">No referrals yet.</div>
         ) : (
           <div className="overflow-x-auto">
@@ -134,7 +151,7 @@ export default function ReferralsPage() {
                 </tr>
               </thead>
               <tbody>
-                {d.top_referrers.map((r, i) => (
+                {top.map((r, i) => (
                   <tr key={i} className="border-b border-gray-800/60 last:border-0">
                     <td className="px-6 py-3 text-gray-600 tabular-nums">{i + 1}</td>
                     <td className="px-6 py-3 font-medium text-white">{r.name}</td>
@@ -156,11 +173,11 @@ export default function ReferralsPage() {
           <Coins className="w-4 h-4 text-primary" />
           <h2 className="font-semibold text-white">Recent commissions</h2>
         </div>
-        {d.recent.length === 0 ? (
+        {recent.length === 0 ? (
           <div className="px-6 py-8 text-sm text-gray-600">No commissions paid yet.</div>
         ) : (
           <div className="divide-y divide-gray-800/60">
-            {d.recent.map((c, i) => (
+            {recent.map((c, i) => (
               <div key={i} className="flex items-center gap-3 px-6 py-3 text-sm">
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${c.level === 1 ? "text-primary border border-primary/30" : "text-gray-400 border border-gray-700"}`}>L{c.level}</span>
                 <div className="flex items-center gap-1.5 min-w-0 text-gray-300">
