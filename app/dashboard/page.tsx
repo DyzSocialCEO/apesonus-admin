@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Users, Music, Play, TrendingUp, Activity, Crown } from "lucide-react"
 import { formatNumber } from "@/lib/utils"
+import { LiveSignups } from "@/components/live-signups"
 
 /**
  * /dashboard — main admin home.
@@ -168,6 +169,8 @@ export default async function DashboardPage() {
           </Card>
         ))}
       </div>
+
+      <LiveSignups />
 
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
