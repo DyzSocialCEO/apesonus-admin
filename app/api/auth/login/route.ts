@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { verifyCredentials, createSession, checkLoginAttempts, recordFailedAttempt, clearAttempts } from "@/lib/auth"
+import { verifyCredentials, verifyPartner, createSession, checkLoginAttempts, recordFailedAttempt, clearAttempts } from "@/lib/auth"
 import { adminLoginRatelimit, getClientIp } from "@/lib/upstash"
 
 export const dynamic = "force-dynamic"
@@ -40,17 +40,23 @@ export async function POST(request: Request) {
       )
     }
 
-    const isValid = await verifyCredentials(username, password)
-
-    if (!isValid) {
-      await recordFailedAttempt(ip)
-      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+    const isAdmin = await verifyCredentials(username, password)
+    if (isAdmin) {
+      await clearAttempts(ip)
+      await createSession(username, "admin")
+      return NextResponse.json({ success: true, redirect: "/dashboard" })
     }
 
-    await clearAttempts(ip)
-    await createSession(username)
+    // Partner login (email + password). The "username" field carries the email.
+    const partner = await verifyPartner(username, password)
+    if (partner) {
+      await clearAttempts(ip)
+      await createSession(username.toLowerCase().trim(), "partner", partner.partnerId)
+      return NextResponse.json({ success: true, redirect: "/partner" })
+    }
 
-    return NextResponse.json({ success: true })
+    await recordFailedAttempt(ip)
+    return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
   } catch {
     return NextResponse.json({ error: "Authentication failed" }, { status: 500 })
   }

@@ -1,6 +1,7 @@
 import { cookies } from "next/headers"
 import crypto from "crypto"
 import { kvGet, kvSet, kvDelete } from "./upstash"
+import { createAdminClient } from "./supabase"
 
 const ADMIN_COOKIE_NAME = "apesonus_admin_session"
 const SESSION_DURATION = 24 * 60 * 60 * 1000 // 24 hours
@@ -48,6 +49,8 @@ interface AdminSession {
   username: string
   loginAt: number
   expiresAt: number
+  role?: "admin" | "partner"   // legacy sessions (no role) are treated as admin
+  partnerId?: string           // set only for partner sessions
 }
 
 function getSigningSecret(): string {
@@ -180,7 +183,49 @@ export async function verifyCredentials(
   return passwordMatch
 }
 
-export async function createSession(username: string): Promise<void> {
+// ── Partner accounts (read-only investor logins) ────────────────
+// The super-admin above is env-based and untouched. Partner accounts live in
+// the partner_accounts table, each linked to a pit_partners row.
+
+/** Hash a password for storage: "scrypt:<salt>:<hash>". */
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString("hex")
+  const hash = crypto.scryptSync(password, salt, 64).toString("hex")
+  return `scrypt:${salt}:${hash}`
+}
+
+/** Timing-safe verify of a password against a stored scrypt hash. */
+export function verifyPasswordHash(password: string, stored: string): boolean {
+  if (!stored?.startsWith("scrypt:")) return false
+  const parts = stored.split(":")
+  if (parts.length !== 3) return false
+  const [, salt, storedHash] = parts
+  try {
+    const derived = crypto.scryptSync(password, salt, 64).toString("hex")
+    return derived.length === storedHash.length &&
+      crypto.timingSafeEqual(Buffer.from(derived), Buffer.from(storedHash))
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Verify a partner login. Email is matched case-insensitively (stored
+ * lowercased). Returns the linked partnerId on success, else null.
+ */
+export async function verifyPartner(email: string, password: string): Promise<{ partnerId: string } | null> {
+  const supabase = await createAdminClient()
+  const { data } = await supabase
+    .from("partner_accounts")
+    .select("partner_id, password_hash, is_active")
+    .eq("email", email.toLowerCase().trim())
+    .maybeSingle()
+  if (!data || !data.is_active) return null
+  if (!verifyPasswordHash(password, data.password_hash as string)) return null
+  return { partnerId: String(data.partner_id) }
+}
+
+export async function createSession(username: string, role: "admin" | "partner" = "admin", partnerId?: string): Promise<void> {
   const cookieStore = await cookies()
   const now = Date.now()
 
@@ -188,6 +233,8 @@ export async function createSession(username: string): Promise<void> {
     username,
     loginAt: now,
     expiresAt: now + SESSION_DURATION,
+    role,
+    ...(partnerId ? { partnerId } : {}),
   }
 
   const signedToken = createSignedToken(session)

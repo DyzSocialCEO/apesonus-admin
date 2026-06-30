@@ -31,7 +31,7 @@ export default function LoginPage() {
         return
       }
 
-      router.push("/dashboard")
+      router.push(data.redirect || "/dashboard")
       router.refresh()
     } catch {
       setError("Something went wrong")
@@ -52,13 +52,13 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-300">Username</label>
+            <label className="text-sm font-medium text-gray-300">Email or username</label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-              placeholder="Enter username"
+              placeholder="Email or username"
               required
             />
           </div>
