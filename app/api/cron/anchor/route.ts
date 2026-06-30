@@ -10,7 +10,7 @@ export const runtime = "nodejs"
  * GET /api/cron/anchor
  *
  * Builds one tamper-evidence commit for the window since the last commit:
- *   plays in window → Merkle root, Node Power state → digest,
+ *   plays in window → Merkle root, Embers state → digest,
  *   chained to the previous commit's hash, the whole thing hashed and posted
  *   on-chain via SPL Memo. Stores the row in pit_chain_commits either way —
  *   if no signing key is set, signature stays null and the chain still builds.
@@ -61,12 +61,16 @@ export async function GET(request: Request) {
     }))
     const plays_root = playsRoot(leaves)
 
-    // ── Node Power state → digest ──
-    const { data: nodes } = await supabase
-      .from("pit_nodes").select("user_id, artist_id, np").gt("np", 0)
-    const npRows = (nodes || []).map((n) => ({ u: n.user_id, a: n.artist_id, np: Number(n.np) }))
-      .sort((x, y) => (x.u + x.a).localeCompare(y.u + y.a))
-    const state_hash = stateDigest({ nodes: npRows })
+    // ── Embers state → digest ──
+    // Every account's Ember balance, sorted by user, hashed deterministically
+    // and anchored alongside the plays root. Makes total Embers publicly
+    // reconcilable against the play chain — none can be conjured off-ledger.
+    const { data: emberRows } = await supabase
+      .from("pit_embers").select("user_id, embers").gt("embers", 0)
+    const embers = (emberRows || []).map((e) => ({ u: e.user_id, e: Number(e.embers) }))
+      .sort((x, y) => x.u.localeCompare(y.u))
+    const embers_total = embers.reduce((a, r) => a + r.e, 0)
+    const state_hash = stateDigest({ embers, embers_total })
 
     // ── Build, chain, hash, anchor ──
     const seq = Number(last?.seq || 0) + 1
