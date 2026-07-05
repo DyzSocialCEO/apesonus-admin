@@ -8,9 +8,9 @@ export const runtime = "nodejs"
 /**
  * GET /api/admin/golden
  *
- * The Golden Ticket Desk snapshot: every pool with its ceilings and progress,
- * and the payout-queue summary (pending real-value claims by currency plus the
- * paid/credited totals). The full claims list lives at /claims.
+ * Golden Ticket Desk snapshot, raffle model: every campaign with sponsor, pool,
+ * tiers, timing, live entry count, status; plus the payout-queue summary.
+ * Campaigns past their end time and still 'live' are flagged ready_to_draw.
  */
 export async function GET() {
   const session = await getSession()
@@ -18,43 +18,45 @@ export async function GET() {
 
   try {
     const supabase = await createAdminClient()
+    const now = Date.now()
 
-    const { data: pools } = await supabase
-      .from("pit_golden_pools").select("*").order("created_at", { ascending: false }).limit(50)
+    const { data: campaigns } = await supabase
+      .from("pit_gt_campaigns").select("*").order("created_at", { ascending: false }).limit(50)
 
-    const { data: tickets } = await supabase
-      .from("pit_golden_tickets").select("reward_currency, value, status")
+    const ids = (campaigns || []).map((c: any) => c.id)
+    const counts: Record<number, number> = {}
+    if (ids.length) {
+      const { data: entries } = await supabase
+        .from("pit_gt_entries").select("campaign_id").in("campaign_id", ids)
+      for (const e of entries || []) counts[e.campaign_id] = (counts[e.campaign_id] || 0) + 1
+    }
 
-    // Queue summary. pending_payout = owed to wallets; credited = Spins already
-    // given; paid = real value already sent.
+    const list = (campaigns || []).map((c: any) => {
+      const ended = new Date(c.ends_at).getTime() <= now
+      return {
+        id: c.id, sponsor_name: c.sponsor_name, sponsor_url: c.sponsor_url,
+        reward_currency: c.reward_currency, token_mint: c.token_mint,
+        total_pool_value: Number(c.total_pool_value) || 0, spins_pot: Number(c.spins_pot) || 0,
+        tiers: c.tiers, activation_threshold: c.activation_threshold,
+        starts_at: c.starts_at, ends_at: c.ends_at, status: c.status,
+        settled_at: c.settled_at, draw_summary: c.draw_summary,
+        entries: counts[c.id] || 0, ready_to_draw: c.status === "live" && ended,
+      }
+    })
+
+    const { data: tickets } = await supabase.from("pit_golden_tickets").select("reward_currency, value, status")
     const pendingByCur: Record<string, { count: number; value: number }> = {}
     let paidCount = 0, creditedCount = 0
     for (const t of tickets || []) {
       if (t.status === "pending_payout") {
-        const c = pendingByCur[t.reward_currency] ||= { count: 0, value: 0 }
-        c.count += 1; c.value += Number(t.value) || 0
+        const g = pendingByCur[t.reward_currency] ||= { count: 0, value: 0 }
+        g.count += 1; g.value += Number(t.value) || 0
       } else if (t.status === "paid") paidCount += 1
       else if (t.status === "credited") creditedCount += 1
     }
 
     return NextResponse.json({
-      pools: (pools || []).map((p) => ({
-        id: p.id,
-        reward_currency: p.reward_currency,
-        token_mint: p.token_mint,
-        sponsor: p.sponsor_name,
-        total_tickets: p.total_tickets,
-        tickets_remaining: p.tickets_remaining,
-        value_min: Number(p.value_min),
-        value_max: Number(p.value_max),
-        total_pool_value: Number(p.total_pool_value),
-        value_spent: Number(p.value_spent),
-        max_reward_spins: Number(p.max_reward_spins),
-        hit_probability: Number(p.hit_probability),
-        track_scope: p.track_scope,
-        status: p.status,
-        created_at: p.created_at,
-      })),
+      campaigns: list,
       queue: { pending: pendingByCur, paid_count: paidCount, credited_count: creditedCount },
     })
   } catch (e: any) {
