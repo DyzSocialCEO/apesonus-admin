@@ -16,7 +16,7 @@ const navigation = [
   { name: "Artists",         href: "/dashboard/artists",         icon: UserCircle      },
   { name: "Chart",           href: "/dashboard/chart",           icon: TrendingUp      },
   { name: "Co-Sign",         href: "/dashboard/cosign",          icon: PenLine         },
-  { name: "Golden Ticket",   href: "/dashboard/golden",          icon: Ticket          },
+  { name: "Payouts",         href: "/dashboard/payouts",         icon: DollarSign      },
   { name: "Users",           href: "/dashboard/users",           icon: Users           },
   { name: "Banners",         href: "/dashboard/banners",         icon: Megaphone       },
   { name: "Spins",           href: "/dashboard/ammo",            icon: Zap             },

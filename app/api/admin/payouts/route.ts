@@ -6,12 +6,12 @@ export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 
 /**
- * GET  /api/admin/golden/claims?status=pending_payout|paid
+ * GET  /api/admin/payouts?status=pending_payout|paid
  *   The manual payout queue. Real-value rewards (usdc/token) that are owed to
  *   a wallet, or already paid. Each row: wallet, amount, currency, track, when.
  *   Spins rewards are 'credited' (already given) and don't appear here.
  *
- * POST /api/admin/golden/claims  { ids: number[], tx_signature }
+ * POST /api/admin/payouts  { ids: number[], tx_signature }
  *   Mark a batch paid after you send from your wallet. Stamps tx_signature and
  *   paid_at, flips status to 'paid'. Only pending_payout rows are touched.
  */
