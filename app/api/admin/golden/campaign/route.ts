@@ -99,7 +99,16 @@ export async function PATCH(request: Request) {
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       return NextResponse.json({ ok: true })
     }
-    return bad("action must be draw, end_now, or void.")
+    if (action === "delete") {
+      // Full removal: campaign, its entries (cascade), and its reward rows.
+      // The operator's undo for test or mistaken campaigns — paid history goes
+      // with it, so this asks for intent in the UI.
+      await supabase.from("pit_golden_tickets").delete().eq("campaign_id", id)
+      const { error } = await supabase.from("pit_gt_campaigns").delete().eq("id", id)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ ok: true, deleted: id })
+    }
+    return bad("action must be draw, end_now, void, or delete.")
   } catch (e: any) {
     console.error("[admin/golden/campaign PATCH]", e)
     return NextResponse.json({ error: String(e?.message || e) }, { status: 500 })

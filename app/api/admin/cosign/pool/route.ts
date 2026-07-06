@@ -58,3 +58,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: String(e?.message || e) }, { status: 500 })
   }
 }
+
+/**
+ * DELETE /api/admin/cosign/pool?week=YYYY-MM-DD&calls=1
+ *   Admin reset. Removes the week's pool row; with calls=1 also wipes that
+ *   week's co-sign calls. Defaults to the current week. Settled weeks can be
+ *   cleared too — this is the operator's undo, use with intent.
+ */
+export async function DELETE(request: Request) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const url = new URL(request.url)
+  const week = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("week") || "")
+    ? url.searchParams.get("week")! : currentWeekStartUTC()
+  const alsoCalls = url.searchParams.get("calls") === "1"
+  try {
+    const supabase = await createAdminClient()
+    let callsRemoved = 0
+    if (alsoCalls) {
+      const { data } = await supabase.from("pit_cosigns").delete().eq("week_start", week).select("id")
+      callsRemoved = (data || []).length
+    }
+    const { error } = await supabase.from("pit_cosign_pools").delete().eq("week_start", week)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true, week, calls_removed: callsRemoved })
+  } catch (e: any) {
+    return NextResponse.json({ error: String(e?.message || e) }, { status: 500 })
+  }
+}

@@ -117,6 +117,7 @@ export default function GoldenDeskPage() {
   }
 
   const campaignAction = async (id: number, action: string) => {
+    if (action === "delete" && !window.confirm("Delete this campaign, its entries, and its reward records? This cannot be undone.")) return
     const res = await fetch("/api/admin/golden/campaign", {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action }),
     })
@@ -282,6 +283,7 @@ export default function GoldenDeskPage() {
                     {c.ready_to_draw && <button onClick={() => campaignAction(c.id, "draw")} className="text-primary font-semibold hover:underline flex items-center gap-1"><Play className="w-3 h-3" /> Draw now</button>}
                     {c.status === "live" && !c.ready_to_draw && <button onClick={() => campaignAction(c.id, "end_now")} className="text-gray-400 hover:text-white">End now</button>}
                     {c.status === "live" && <button onClick={() => campaignAction(c.id, "void")} className="text-gray-500 hover:text-red-400 flex items-center gap-1"><X className="w-3 h-3" /> Void</button>}
+                    <button onClick={() => campaignAction(c.id, "delete")} className="text-gray-600 hover:text-red-400 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Delete</button>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-sm">

@@ -72,6 +72,16 @@ export default function CoSignDeskPage() {
     } catch { setErr("Could not save") } finally { setSaving(false) }
   }
 
+  const resetWeek = async (alsoCalls: boolean) => {
+    const what = alsoCalls ? "Remove this week's pool AND wipe all calls?" : "Remove this week's pool?"
+    if (!window.confirm(what + " This cannot be undone.")) return
+    const res = await fetch(`/api/admin/cosign/pool?calls=${alsoCalls ? 1 : 0}`, { method: "DELETE" })
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok) { setErr(j.error || "Reset failed"); return }
+    setSponsor(""); setSponsorUrl(""); setPoolVal(""); setSpinsPot("")
+    load()
+  }
+
   const settle = async () => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(week)) { setSettleMsg("Enter that week's Monday, YYYY-MM-DD"); return }
     setSettling(true); setSettleMsg("")
@@ -131,6 +141,12 @@ export default function CoSignDeskPage() {
           <button onClick={savePool} disabled={saving} className="mt-4 w-full bg-primary text-gray-950 font-semibold text-sm py-2.5 rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}{saved ? "Saved" : "Save pool"}
           </button>
+          {d?.pool && (
+            <div className="mt-3 flex gap-2">
+              <button onClick={() => resetWeek(false)} className="flex-1 text-xs py-2 rounded-lg border border-gray-700 text-gray-300 hover:border-red-500 hover:text-red-400">Remove pool</button>
+              <button onClick={() => resetWeek(true)} className="flex-1 text-xs py-2 rounded-lg border border-gray-700 text-gray-300 hover:border-red-500 hover:text-red-400">Remove pool + wipe calls</button>
+            </div>
+          )}
           <p className="text-[11px] text-gray-600 mt-2">Callers of the #1 artist split the cash by call order (earlier = more). Everyone else who called gets Spins.</p>
         </div>
 
