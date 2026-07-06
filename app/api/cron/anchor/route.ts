@@ -108,11 +108,24 @@ export async function GET(request: Request) {
       console.error("[anchor] ammo ledger failed:", (e as Error).message)
     }
 
+    // Rewards ledger on the same beat — Golden Ticket draws + Co-Sign
+    // settlements, anonymized and anchored. Best-effort like the ammo ledger;
+    // never blocks the play-chain commit.
+    let rewards: { hash?: string; signature?: string | null } = {}
+    try {
+      const { anchorRewardsLedger } = await import("@/lib/onus-chain/rewards-ledger")
+      const res = await anchorRewardsLedger(supabase)
+      rewards = { hash: res.hash, signature: res.signature }
+    } catch (e) {
+      console.error("[anchor] rewards ledger failed:", (e as Error).message)
+    }
+
     return NextResponse.json({
       ok: true, seq, play_count: leaves.length, plays_root, commit_hash,
       anchored: !!signature, signature, cluster: signature ? cluster : null,
       period: { start: periodStart, end: periodEnd },
       ammo_ledger: ammo,
+      rewards_ledger: rewards,
     })
   } catch (e) {
     console.error("[anchor] error:", (e as Error).message)
