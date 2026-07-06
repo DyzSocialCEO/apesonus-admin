@@ -46,6 +46,7 @@ export default function GoldenDeskPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [queue, setQueue] = useState<any>(null)
   const [claims, setClaims] = useState<Claim[]>([])
+  const [queueView, setQueueView] = useState<"pending_payout" | "paid">("pending_payout")
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState("")
 
@@ -71,13 +72,13 @@ export default function GoldenDeskPage() {
     setLoading(true); setErr("")
     Promise.all([
       fetch("/api/admin/golden", { cache: "no-store" }).then((r) => r.json()),
-      fetch("/api/admin/golden/claims?status=pending_payout", { cache: "no-store" }).then((r) => r.json()),
+      fetch(`/api/admin/golden/claims?status=${queueView}`, { cache: "no-store" }).then((r) => r.json()),
     ]).then(([o, c]) => {
       if (o.error) { setErr(o.error); return }
       setCampaigns(o.campaigns || []); setQueue(o.queue || null); setClaims(c.claims || [])
     }).catch(() => setErr("Could not reach the server")).finally(() => setLoading(false))
   }
-  useEffect(load, [])
+  useEffect(load, [queueView])
 
   const pctSum = useMemo(() => tiers.reduce((a, t) => a + (Number(t.pct) || 0), 0), [tiers])
   const winnerSlots = useMemo(() => tiers.reduce((m, t) => Math.max(m, Number(t.rank_to) || 0), 0), [tiers])
@@ -216,10 +217,20 @@ export default function GoldenDeskPage() {
         <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 text-white font-semibold"><Send className="w-4 h-4 text-primary" /> Payout queue</div>
-            <div className="text-xs text-gray-500">{queue?.paid_count || 0} paid · {queue?.credited_count || 0} Spins credited</div>
+            <div className="flex items-center gap-3">
+              <div className="flex gap-1 bg-gray-950 border border-gray-800 rounded-lg p-0.5">
+                {(["pending_payout", "paid"] as const).map((v) => (
+                  <button key={v} onClick={() => setQueueView(v)}
+                    className={`text-[11px] px-2.5 py-1 rounded-md font-semibold ${queueView === v ? "bg-primary text-gray-950" : "text-gray-400"}`}>
+                    {v === "pending_payout" ? "Pending" : "Paid"}
+                  </button>
+                ))}
+              </div>
+              <div className="text-xs text-gray-500">{queue?.paid_count || 0} paid · {queue?.credited_count || 0} Spins credited</div>
+            </div>
           </div>
           {claims.length === 0 ? (
-            <p className="text-sm text-gray-500 py-8 text-center">No real-value rewards waiting. Spins are credited automatically at the draw.</p>
+            <p className="text-sm text-gray-500 py-8 text-center">{queueView === "paid" ? "Nothing paid yet." : "No real-value rewards waiting. Spins are credited automatically at the draw."}</p>
           ) : (
             <>
               <div className="flex items-center justify-between mb-2">
