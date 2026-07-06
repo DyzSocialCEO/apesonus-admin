@@ -6,26 +6,30 @@ export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 
 /**
- * POST /api/admin/cosign/settle  { week }
+ * POST /api/admin/cosign/settle   { week? }
  *
- * Manually settles a co-sign week via pit_cosign_settle (idempotent — a
- * settled week no-ops). The weekly cron does this automatically; this is the
- * by-hand path for testing or a missed run. week = that week's Monday (UTC).
+ * Runs the backing draw for a round via pit_cosign_settle (idempotent — a
+ * settled round no-ops). With no body it settles the CURRENT round (the latest
+ * open one) — the one-click "settle now" used for the test timer. Pass a week
+ * key to settle a specific past round. The weekly cron does this automatically.
  */
 export async function POST(request: Request) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const body = await request.json().catch(() => ({})) as { week?: string }
-  if (!body.week || !/^\d{4}-\d{2}-\d{2}$/.test(body.week)) {
-    return NextResponse.json({ error: "week must be YYYY-MM-DD (that week's Monday)." }, { status: 400 })
-  }
-
   try {
     const supabase = await createAdminClient()
-    const { data, error } = await supabase.rpc("pit_cosign_settle", { p_week: body.week })
+    let week = body.week && /^\d{4}-\d{2}-\d{2}$/.test(body.week) ? body.week : null
+    if (!week) {
+      const { data } = await supabase.from("pit_cosign_pools").select("week_start").eq("status", "set").order("closes_at", { ascending: false }).limit(1).maybeSingle()
+      week = data?.week_start || null
+    }
+    if (!week) return NextResponse.json({ error: "No round to settle." }, { status: 400 })
+
+    const { data, error } = await supabase.rpc("pit_cosign_settle", { p_week: week })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ ok: true, week: body.week, result: data })
+    return NextResponse.json({ ok: true, week, result: data })
   } catch (e: any) {
     console.error("[admin/cosign/settle]", e)
     return NextResponse.json({ error: String(e?.message || e) }, { status: 500 })
