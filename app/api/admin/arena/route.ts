@@ -100,10 +100,18 @@ export async function DELETE(request: Request) {
   try {
     const supabase = await createAdminClient()
     const { count } = await supabase.from("pit_arena_picks").select("id", { count: "exact", head: true }).eq("match_id", id)
-    if ((count || 0) > 0) return NextResponse.json({ error: "This match already has stakes — settle it instead of deleting (deleting would strand locked Spins)." }, { status: 409 })
-    const { error } = await supabase.from("pit_arena_matches").delete().eq("id", id)
+    if ((count || 0) === 0) {
+      // no stakes → safe hard delete
+      const { error } = await supabase.from("pit_arena_matches").delete().eq("id", id)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ ok: true, deleted: id })
+    }
+    // has stakes → void + refund every locked stake (never force-settle a match being cancelled)
+    const { data, error } = await supabase.rpc("pit_arena_void", { p_match: id })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ ok: true, deleted: id })
+    const r = (data || {}) as any
+    if (!r.ok) return NextResponse.json({ error: r.reason === "already_settled" ? "That match is already settled — it can't be cancelled." : "Couldn't cancel that match." }, { status: 409 })
+    return NextResponse.json({ ok: true, voided: true, refunded_count: r.refunded_count, refunded_total: r.refunded_total })
   } catch (e: any) {
     return NextResponse.json({ error: String(e?.message || e) }, { status: 500 })
   }

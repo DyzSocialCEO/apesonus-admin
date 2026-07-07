@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react"
-import { Swords, Loader2, PlayCircle, Trash2, Clock, Check, Trophy } from "lucide-react"
+import { Swords, Loader2, PlayCircle, Trash2, Clock, Check, Trophy, Ban } from "lucide-react"
 
 type Match = {
   id: number; artist_a: string; artist_b: string; name_a: string; name_b: string
@@ -42,6 +42,8 @@ function MatchRow({ m, onChange }: { m: Match; onChange: () => void }) {
   const cd = useCountdown(m.closes_at)
   const [busy, setBusy] = useState<"settle" | "delete" | null>(null)
   const settled = m.status === "settled"
+  const voided = m.status === "void"
+  const live = m.status === "set"
   const aPct = m.total_pool > 0 ? Math.round((m.pool_a / m.total_pool) * 100) : 50
 
   const settle = async () => {
@@ -52,7 +54,10 @@ function MatchRow({ m, onChange }: { m: Match; onChange: () => void }) {
     } finally { setBusy(null); onChange() }
   }
   const del = async () => {
-    if (!confirm(`Cancel ${m.name_a} vs ${m.name_b}?`)) return
+    const msg = m.pick_count > 0
+      ? `Cancel ${m.name_a} vs ${m.name_b} and refund ${m.pick_count} stake${m.pick_count === 1 ? "" : "s"}?`
+      : `Cancel ${m.name_a} vs ${m.name_b}?`
+    if (!confirm(msg)) return
     setBusy("delete")
     try {
       const r = await fetch(`/api/admin/arena?id=${m.id}`, { method: "DELETE" })
@@ -77,6 +82,10 @@ function MatchRow({ m, onChange }: { m: Match; onChange: () => void }) {
           <div className="flex items-center gap-1.5 text-sm font-semibold text-primary">
             <Trophy className="w-4 h-4" /> {winName} · {fmt(m.a_streams)}–{fmt(m.b_streams)}
           </div>
+        ) : voided ? (
+          <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-400">
+            <Ban className="w-4 h-4" /> cancelled · refunded
+          </div>
         ) : (
           <div className="flex items-center gap-2 font-mono text-sm text-gray-300">
             <Clock className="w-4 h-4 text-primary" /> {cd.label}
@@ -84,7 +93,7 @@ function MatchRow({ m, onChange }: { m: Match; onChange: () => void }) {
         )}
       </div>
 
-      {!settled && (
+      {live && (
         <div className="mt-3">
           <div className="flex h-2 w-full rounded-full overflow-hidden bg-gray-800">
             <div style={{ width: `${aPct}%`, background: "#c6ff2e" }} />
@@ -98,19 +107,20 @@ function MatchRow({ m, onChange }: { m: Match; onChange: () => void }) {
       )}
 
       <div className="mt-3 flex items-center gap-2">
-        {!settled && (
+        {live && (
           <button onClick={settle} disabled={busy !== null}
             className="inline-flex items-center gap-1.5 rounded-md bg-primary/15 border border-primary/40 px-3 py-1.5 text-[13px] font-semibold text-primary hover:bg-primary/25 disabled:opacity-50">
             {busy === "settle" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlayCircle className="w-3.5 h-3.5" />} Settle now
           </button>
         )}
-        {m.pick_count === 0 && !settled && (
+        {live && (
           <button onClick={del} disabled={busy !== null}
             className="inline-flex items-center gap-1.5 rounded-md border border-red-900 bg-red-950/40 px-3 py-1.5 text-[13px] font-semibold text-red-300 hover:bg-red-950/70 disabled:opacity-50">
             {busy === "delete" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Cancel
           </button>
         )}
         {settled && <span className="inline-flex items-center gap-1.5 text-[13px] text-gray-500"><Check className="w-3.5 h-3.5" /> settled</span>}
+        {voided && <span className="inline-flex items-center gap-1.5 text-[13px] text-gray-500"><Ban className="w-3.5 h-3.5" /> cancelled</span>}
       </div>
     </div>
   )
