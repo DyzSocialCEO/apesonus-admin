@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     const mins = Math.max(1, Math.min(1440, Math.round(Number(b.test_minutes) || 5)))
     opensAt = new Date()
     closesAt = new Date(Date.now() + mins * 60 * 1000)
-    weekKey = dateKey(opensAt)
+    weekKey = dateKey(opensAt) // provisional; made unique below
   } else {
     opensAt = saturdayUTC()
     closesAt = new Date(opensAt.getTime() + 7 * 86400000 - 60000) // next Sat 00:00 minus 1 min = Fri 23:59
@@ -54,6 +54,21 @@ export async function POST(request: Request) {
 
   try {
     const supabase = await createAdminClient()
+
+    // For TEST rounds, pick the next free date key so a new test round never
+    // collides with a settled/older one (which would otherwise 409). Weekly
+    // rounds keep their true Saturday key (one weekly round per week).
+    if (mode === "test") {
+      const { data: latest } = await supabase.from("pit_cosign_pools").select("week_start").order("week_start", { ascending: false }).limit(1).maybeSingle()
+      const today = new Date(); today.setUTCHours(0, 0, 0, 0)
+      let keyDate = today
+      if (latest?.week_start) {
+        const maxD = new Date(latest.week_start + "T00:00:00Z")
+        if (maxD >= today) keyDate = new Date(maxD.getTime() + 86400000)
+      }
+      weekKey = dateKey(keyDate)
+    }
+
     const { data: existing } = await supabase.from("pit_cosign_pools").select("status").eq("week_start", weekKey).maybeSingle()
     if (existing?.status === "settled") return NextResponse.json({ error: "That round is already settled. Start a new one." }, { status: 409 })
 
