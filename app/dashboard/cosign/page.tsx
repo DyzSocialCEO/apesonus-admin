@@ -90,7 +90,7 @@ export default function BackingDeskPage() {
   }
 
   const settleNow = async () => {
-    if (!window.confirm("Settle this round now and run the draw?")) return
+    if (!window.confirm("Run the draw now? This captures the seed, picks winners, and seals the entrant list on-chain.")) return
     setSettling(true); setSettleMsg("")
     try {
       const res = await fetch("/api/admin/cosign/settle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) })
@@ -188,7 +188,7 @@ export default function BackingDeskPage() {
           {round && (
             <div className="mt-3 flex gap-2">
               <button onClick={settleNow} disabled={settling} className="flex-1 text-xs py-2 rounded-lg border border-primary/50 text-primary hover:bg-primary/10 disabled:opacity-50 flex items-center justify-center gap-1">
-                {settling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trophy className="w-3 h-3" />} Settle now
+                {settling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trophy className="w-3 h-3" />} Run the draw
               </button>
               <button onClick={() => resetRound(true)} className="flex-1 text-xs py-2 rounded-lg border border-gray-700 text-gray-300 hover:border-red-500 hover:text-red-400 flex items-center justify-center gap-1"><Trash2 className="w-3 h-3" /> Reset</button>
             </div>
