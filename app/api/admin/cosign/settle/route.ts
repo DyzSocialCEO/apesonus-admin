@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
+import { captureDrawSeed } from "@/lib/draw-seed"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -27,9 +28,11 @@ export async function POST(request: Request) {
     }
     if (!week) return NextResponse.json({ error: "No round to settle." }, { status: 400 })
 
-    const { data, error } = await supabase.rpc("pit_cosign_settle", { p_week: week })
+    const seed = await captureDrawSeed()
+    const { data, error } = await supabase.rpc("pit_cosign_settle", { p_week: week, p_seed: seed?.seed ?? null })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ ok: true, week, result: data })
+    if (seed) await supabase.from("pit_cosign_pools").update({ seed_slot: seed.slot }).eq("week_start", week)
+    return NextResponse.json({ ok: true, week, seeded: !!seed, result: data })
   } catch (e: any) {
     console.error("[admin/cosign/settle]", e)
     return NextResponse.json({ error: String(e?.message || e) }, { status: 500 })

@@ -64,6 +64,7 @@ export async function POST(request: Request) {
       reward_currency: currency,
       token_mint: currency === "token" ? String(b.token_mint).trim() : null,
       total_pool_value: pool,
+      live_url: typeof b.live_url === "string" ? b.live_url.trim().slice(0, 400) : null,
       pool_spins: 0,
       opens_at: opensAt.toISOString(),
       closes_at: closesAt.toISOString(),

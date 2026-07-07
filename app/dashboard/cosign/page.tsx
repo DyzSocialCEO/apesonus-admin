@@ -16,7 +16,7 @@ import { PenLine, Loader2, Save, Check, Trophy, PlayCircle, Clock, Trash2 } from
 type Race = { rank: number; artist: string; streams: number; backers: number }
 type Slot = { place: number; pct: number; cash: number; filled: boolean }
 type Preview = { winner_artist?: string; backers: number; currency?: string; pool: number; slots?: Slot[] }
-type Round = { week_start: string; sponsor: string | null; sponsor_url: string | null; currency: string; token_mint: string | null; total_pool_value: number; opens_at: string; closes_at: string; status: string }
+type Round = { week_start: string; sponsor: string | null; sponsor_url: string | null; currency: string; token_mint: string | null; total_pool_value: number; opens_at: string; closes_at: string; status: string; live_url?: string | null }
 type Hist = { week_start: string; sponsor: string | null; total_pool_value: number; currency: string; draw_summary: any }
 type Data = { round: Round | null; race: Race[]; preview: Preview; history: Hist[] }
 
@@ -49,6 +49,7 @@ export default function BackingDeskPage() {
   const [sponsorUrl, setSponsorUrl] = useState("")
   const [mint, setMint] = useState("")
   const [poolVal, setPoolVal] = useState("")
+  const [liveUrl, setLiveUrl] = useState("")
   const [mode, setMode] = useState<"weekly" | "test">("test")
   const [testMins, setTestMins] = useState("5")
   const [saving, setSaving] = useState(false)
@@ -63,7 +64,7 @@ export default function BackingDeskPage() {
       if (data.round) {
         setCurrency(data.round.currency === "token" ? "token" : "usdc")
         setSponsor(data.round.sponsor || ""); setSponsorUrl(data.round.sponsor_url || "")
-        setMint(data.round.token_mint || ""); setPoolVal(String(data.round.total_pool_value || ""))
+        setMint(data.round.token_mint || ""); setPoolVal(String(data.round.total_pool_value || "")); setLiveUrl(data.round.live_url || "")
       }
     }).catch(() => setErr("Could not reach the server")).finally(() => setLoading(false))
   }
@@ -78,7 +79,7 @@ export default function BackingDeskPage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           reward_currency: currency, token_mint: currency === "token" ? mint : undefined,
-          sponsor_name: sponsor, sponsor_url: sponsorUrl, total_pool_value: Number(poolVal),
+          sponsor_name: sponsor, sponsor_url: sponsorUrl, total_pool_value: Number(poolVal), live_url: liveUrl,
           round_mode: mode, test_minutes: mode === "test" ? Number(testMins) : undefined,
         }),
       })
@@ -173,6 +174,7 @@ export default function BackingDeskPage() {
             <div><label className={label}>Sponsor link</label><input className={input} value={sponsorUrl} onChange={(e) => setSponsorUrl(e.target.value)} placeholder="https://..." /></div>
             {currency === "token" && <div className="col-span-2"><label className={label}>Token mint</label><input className={input} value={mint} onChange={(e) => setMint(e.target.value)} placeholder="mint address" /></div>}
             <div className="col-span-2"><label className={label}>Prize pool ({curLabel(currency)})</label><input className={input} value={poolVal} onChange={(e) => setPoolVal(e.target.value)} inputMode="decimal" placeholder="1000" /></div>
+            <div className="col-span-2"><label className={label}>Live stream URL (Mux / YouTube / HLS) — optional, shown on /live during the draw</label><input className={input} value={liveUrl} onChange={(e) => setLiveUrl(e.target.value)} placeholder="https://stream.mux.com/... or a Mux playback ID" /></div>
           </div>
 
           <div className="mt-3 rounded-lg border border-dashed border-primary/30 bg-primary/5 p-3 text-xs text-gray-400">
