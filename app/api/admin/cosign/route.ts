@@ -8,14 +8,28 @@ export const runtime = "nodejs"
 /**
  * GET /api/admin/cosign
  *
- * Backing Desk snapshot: the current round (sponsor, cash pool, open/close
- * times, status), the live artist race (artists by total streams in the round
- * window with backing counts), and a settlement preview — if the round closed
- * now, which artist wins and how the top-5 draw pool looks. Plus settled-round
- * history.
+ * Backing Desk snapshot: the current round (Spins pool, open/close times,
+ * status), the live artist race (artists by total streams in the round window
+ * with backing counts), and a settlement preview — if the round closed now,
+ * which artist wins and how the timestamp-weighted Spins split would land
+ * across its backers (earlier lock = bigger slice). Plus settled-round history.
  */
-const DECAY = 0.9
 function normalize(name: string): string { return name === "Coinalisa Murado" ? "Coinalisa" : name }
+
+// Mirror of the settle split: weight = max(1, secs remaining at lock)^alpha,
+// integer largest-remainder — so the preview matches the real result exactly.
+function previewSplit(rows: { ts: number; seq: number }[], closesAtMs: number, pool: number, alpha: number): number[] {
+  const w = rows.map((r) => Math.pow(Math.max(1, Math.floor((closesAtMs - r.ts) / 1000)), alpha))
+  const wsum = w.reduce((a, x) => a + x, 0)
+  if (!wsum || pool <= 0 || !rows.length) return rows.map(() => 0)
+  const base = w.map((x) => Math.floor((pool * x) / wsum))
+  const frac = w.map((x, i) => (pool * x) / wsum - base[i])
+  let leftover = pool - base.reduce((a, x) => a + x, 0)
+  const order = rows.map((r, i) => ({ i, f: frac[i], ts: r.ts, seq: r.seq }))
+    .sort((a, b) => b.f - a.f || a.ts - b.ts || a.seq - b.seq)
+  for (const o of order) { if (leftover <= 0) break; base[o.i] += 1; leftover-- }
+  return base
+}
 
 export async function GET() {
   const session = await getSession()
@@ -44,22 +58,25 @@ export async function GET() {
       const streams: Record<string, number> = {}
       for (const p of plays || []) { const a = trackArtist[p.track_id]; if (a) streams[a] = (streams[a] || 0) + 1 }
 
-      const { data: backs } = await supabase.from("pit_cosigns").select("artist_id, seq").eq("week_start", round.week_start).not("artist_id", "is", null)
-      const backCount: Record<string, number> = {}, seqByArtist: Record<string, number[]> = {}
-      for (const c of backs || []) { backCount[c.artist_id] = (backCount[c.artist_id] || 0) + 1; (seqByArtist[c.artist_id] ||= []).push(c.seq) }
+      const { data: backs } = await supabase.from("pit_cosigns").select("artist_id, seq, created_at").eq("week_start", round.week_start).not("artist_id", "is", null)
+      const backCount: Record<string, number> = {}, backsByArtist: Record<string, { ts: number; seq: number }[]> = {}
+      for (const c of backs || []) { backCount[c.artist_id] = (backCount[c.artist_id] || 0) + 1; (backsByArtist[c.artist_id] ||= []).push({ ts: new Date(c.created_at).getTime(), seq: c.seq }) }
 
       const ranked = Object.entries(streams).map(([a, s]) => ({ artist: a, streams: s })).sort((x, y) => y.streams - x.streams || x.artist.localeCompare(y.artist))
       race = ranked.slice(0, 15).map((r, i) => ({ rank: i + 1, artist: r.artist, streams: r.streams, backers: backCount[r.artist] || 0 }))
 
       if (ranked.length > 0) {
         const winner = ranked[0].artist
-        const seqs = (seqByArtist[winner] || []).sort((a, b) => a - b)
-        const totalW = seqs.reduce((a, s) => a + Math.pow(DECAY, s - 1), 0)
-        const tiers = [45, 25, 15, 10, 5]
-        const pool = Number(round.total_pool_value) || 0
-        // preview shows the tier prizes (who fills them is random at draw)
-        const slots = tiers.map((pct, i) => ({ place: i + 1, pct, cash: (pct / 100) * pool, filled: seqs.length > i }))
-        preview = { winner_artist: winner, backers: seqs.length, currency: round.reward_currency || "usdc", pool, slots }
+        // alpha from app_settings — the settle reads the same key.
+        let alpha = 1
+        const { data: al } = await supabase.from("app_settings").select("value").eq("key", "cosign_weight_alpha").maybeSingle()
+        const av = Number(al?.value); if (Number.isFinite(av) && av > 0) alpha = av
+
+        const winnerBacks = (backsByArtist[winner] || []).sort((a, b) => a.ts - b.ts || a.seq - b.seq)
+        const pool = Number(round.pool_spins ?? round.total_pool_value) || 0
+        const shares = previewSplit(winnerBacks, new Date(round.closes_at).getTime(), pool, alpha)
+        const slots = winnerBacks.slice(0, 8).map((b, i) => ({ place: i + 1, ts: new Date(b.ts).toISOString(), spins: shares[i] || 0 }))
+        preview = { winner_artist: winner, backers: winnerBacks.length, pool_spins: pool, alpha, slots }
       }
     }
 

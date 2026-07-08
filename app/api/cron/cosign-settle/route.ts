@@ -12,9 +12,10 @@ export const runtime = "nodejs"
  *
  * Settles every backing round that has closed but is still open (status 'set',
  * closes_at in the past). For each round it runs the same end-to-end flow the
- * Backing Desk "Settle now" button uses — public Solana blockhash seed ->
- * pit_cosign_settle -> on-chain entrant seal — so an auto-settled round carries
- * the exact same proof as a hand-settled one. Idempotent: a settled round is
+ * Backing Desk "Settle now" button uses — pit_cosign_settle (skill split, no
+ * draw; the blockhash is stored for the seal only) -> on-chain winner-list
+ * seal — so an auto-settled round carries the exact same proof as a
+ * hand-settled one. Idempotent: a settled round is
  * never picked up again. Schedule every ~5 min so both short test rounds and the
  * weekly round settle promptly after they close.
  *
@@ -34,23 +35,25 @@ function authed(request: Request): boolean {
 
 // One round, end to end — mirrors POST /api/admin/cosign/settle exactly.
 async function settleRound(supabase: any, week: string) {
-  // 1 + 2: capture the provably-fair public seed, then run the draw.
+  // 1 + 2: capture the public blockhash (seal metadata only), then settle.
   const seed = await captureDrawSeed()
   const { data: result, error } = await supabase.rpc("pit_cosign_settle", { p_week: week, p_seed: seed?.seed ?? null })
   if (error) return { week, ok: false, error: error.message }
   if (seed) await supabase.from("pit_cosign_pools").update({ seed_slot: seed.slot }).eq("week_start", week)
 
-  // 3: seal the frozen entrant list on-chain (the draw stays valid even if this fails).
+  // 3: seal the winner list + timestamps on-chain (the result stays valid even if this fails).
   let sealed: { hash: string; signature: string } | null = null
   try {
     const { data: pool } = await supabase
       .from("pit_cosign_pools").select("draw_summary, draw_seed, seed_slot").eq("week_start", week).maybeSingle()
     const ds = pool?.draw_summary || {}
     if (ds.winner && Array.isArray(ds.entrants) && ds.entrants.length > 0) {
-      sealed = await commitHash("backing-draw", {
-        round: week, winner: ds.winner, seed: pool?.draw_seed, seed_slot: pool?.seed_slot,
-        entrants: ds.entrants.map((e: any) => ({ handle: e.handle, seq: e.seq })),
-        winners: ds.entrants.filter((e: any) => e.place).map((e: any) => ({ handle: e.handle, place: e.place, cash: e.cash })),
+      sealed = await commitHash("backing-split", {
+        round: week, winner: ds.winner, model: ds.model || "skill_split",
+        pool_spins: ds.pool_spins, alpha: ds.alpha,
+        seed: pool?.draw_seed, seed_slot: pool?.seed_slot,
+        entrants: ds.entrants.map((e: any) => ({ handle: e.handle, seq: e.seq, ts: e.ts })),
+        winners: ds.entrants.filter((e: any) => e.won || e.place).map((e: any) => ({ handle: e.handle, spins: e.spins ?? e.cash })),
       })
       if (sealed) {
         await supabase.from("pit_cosign_pools").update({ entrant_hash: sealed.hash, entrant_tx: sealed.signature }).eq("week_start", week)

@@ -8,23 +8,25 @@ export const runtime = "nodejs"
 /**
  * POST /api/admin/cosign/pool
  *   Open a backing round. Body:
- *   { sponsor_name?, sponsor_url?, reward_currency:'usdc'|'token', token_mint?,
- *     total_pool_value, round_mode:'weekly'|'test', test_minutes? }
+ *   { sponsor_name?, sponsor_url?, pool_spins, round_mode:'weekly'|'test',
+ *     test_minutes?, live_url? }
  *
- *   round_mode 'weekly' → opens the real round: Saturday 00:00 UTC → Friday
- *   23:59 UTC. 'test' → a short round starting now for test_minutes (e.g. 5),
- *   so the whole loop can be watched fast with real code. The round is keyed by
- *   its opening date; a settled round is never overwritten.
+ *   Prize = a FIXED SPINS POOL (pool_spins) — everyone who backs the winning
+ *   artist splits it by lock-in time. round_mode 'weekly' → the real round:
+ *   Sunday 00:00 UTC → Saturday 23:59 UTC. 'test' → a short round starting now
+ *   for test_minutes (e.g. 5), so the whole loop can be watched fast with real
+ *   code. The round is keyed by its opening date; a settled round is never
+ *   overwritten.
  *
  * DELETE /api/admin/cosign/pool?week=YYYY-MM-DD&calls=1  — operator reset.
  */
-function saturdayUTC(): Date {
+function sundayUTC(): Date {
   const now = new Date()
-  const daysSinceSat = (now.getUTCDay() + 1) % 7 // Sat=0, Sun=1 ...
-  const sat = new Date(now)
-  sat.setUTCDate(now.getUTCDate() - daysSinceSat)
-  sat.setUTCHours(0, 0, 0, 0)
-  return sat
+  const daysSinceSun = now.getUTCDay() // Sun=0, Mon=1 ...
+  const sun = new Date(now)
+  sun.setUTCDate(now.getUTCDate() - daysSinceSun)
+  sun.setUTCHours(0, 0, 0, 0)
+  return sun
 }
 const dateKey = (d: Date) => d.toISOString().split("T")[0]
 
@@ -33,11 +35,8 @@ export async function POST(request: Request) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const b = await request.json().catch(() => ({})) as Record<string, unknown>
-  const currency = String(b.reward_currency || "usdc")
-  if (!["usdc", "token"].includes(currency)) return NextResponse.json({ error: "reward_currency must be usdc or token." }, { status: 400 })
-  const pool = Number(b.total_pool_value)
-  if (!Number.isFinite(pool) || pool < 0) return NextResponse.json({ error: "total_pool_value invalid." }, { status: 400 })
-  if (currency === "token" && !String(b.token_mint || "").trim()) return NextResponse.json({ error: "token_mint required for a token pool." }, { status: 400 })
+  const poolSpins = Math.round(Number(b.pool_spins))
+  if (!Number.isFinite(poolSpins) || poolSpins < 0) return NextResponse.json({ error: "pool_spins invalid." }, { status: 400 })
 
   const mode = b.round_mode === "test" ? "test" : "weekly"
   let opensAt: Date, closesAt: Date, weekKey: string
@@ -47,8 +46,8 @@ export async function POST(request: Request) {
     closesAt = new Date(Date.now() + mins * 60 * 1000)
     weekKey = dateKey(opensAt) // provisional; made unique below
   } else {
-    opensAt = saturdayUTC()
-    closesAt = new Date(opensAt.getTime() + 7 * 86400000 - 60000) // next Sat 00:00 minus 1 min = Fri 23:59
+    opensAt = sundayUTC()
+    closesAt = new Date(opensAt.getTime() + 7 * 86400000 - 60000) // next Sun 00:00 minus 1 min = Sat 23:59
     weekKey = dateKey(opensAt)
   }
 
@@ -76,11 +75,11 @@ export async function POST(request: Request) {
       week_start: weekKey,
       sponsor_name: typeof b.sponsor_name === "string" ? b.sponsor_name.trim().slice(0, 120) : null,
       sponsor_url: typeof b.sponsor_url === "string" ? b.sponsor_url.trim().slice(0, 300) : null,
-      reward_currency: currency,
-      token_mint: currency === "token" ? String(b.token_mint).trim() : null,
-      total_pool_value: pool,
+      reward_currency: "spins",
+      token_mint: null,
+      total_pool_value: poolSpins,   // mirrored so every legacy display shows "N Spins"
       live_url: typeof b.live_url === "string" ? b.live_url.trim().slice(0, 400) : null,
-      pool_spins: 0,
+      pool_spins: poolSpins,
       opens_at: opensAt.toISOString(),
       closes_at: closesAt.toISOString(),
       status: "set",

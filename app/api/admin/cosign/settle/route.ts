@@ -46,10 +46,12 @@ export async function POST(request: Request) {
       const { data: pool } = await supabase.from("pit_cosign_pools").select("draw_summary, draw_seed, seed_slot").eq("week_start", week).maybeSingle()
       const ds = pool?.draw_summary || {}
       if (ds.winner && Array.isArray(ds.entrants) && ds.entrants.length > 0) {
-        sealed = await commitHash("backing-draw", {
-          round: week, winner: ds.winner, seed: pool?.draw_seed, seed_slot: pool?.seed_slot,
-          entrants: ds.entrants.map((e: any) => ({ handle: e.handle, seq: e.seq })),
-          winners: ds.entrants.filter((e: any) => e.place).map((e: any) => ({ handle: e.handle, place: e.place, cash: e.cash })),
+        sealed = await commitHash("backing-split", {
+          round: week, winner: ds.winner, model: ds.model || "skill_split",
+          pool_spins: ds.pool_spins, alpha: ds.alpha,
+          seed: pool?.draw_seed, seed_slot: pool?.seed_slot,
+          entrants: ds.entrants.map((e: any) => ({ handle: e.handle, seq: e.seq, ts: e.ts })),
+          winners: ds.entrants.filter((e: any) => e.won || e.place).map((e: any) => ({ handle: e.handle, spins: e.spins ?? e.cash })),
         })
         if (sealed) {
           await supabase.from("pit_cosign_pools").update({ entrant_hash: sealed.hash, entrant_tx: sealed.signature }).eq("week_start", week)
