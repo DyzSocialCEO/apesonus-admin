@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
   Megaphone, TrendingUp,
-  ScrollText, UserCircle, DollarSign, Coins, Zap, Share2, PenLine, Ticket, KeyRound } from "lucide-react"
+  ScrollText, UserCircle, DollarSign, Coins, Zap, Share2, PenLine, KeyRound } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
