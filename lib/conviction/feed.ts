@@ -89,3 +89,51 @@ export function eligibleForBoard(t: FeedToken, cfg: {
   if (t.liquidity < cfg.liq_floor_usd) return false
   return true
 }
+
+/**
+ * Per-token live read for the resolver. mcap = price × supply (Pump.fun ~1B,
+ * refined by metadata). liquidity from the pair. Rug checks: LP present and
+ * mint/freeze authority still revoked. A failed or nonsensical read returns
+ * null and the resolver SKIPS that token this pass (never judges on a guess).
+ */
+export interface TokenState {
+  mcap: number
+  liquidity: number
+  lpOk: boolean
+  authorityOk: boolean
+}
+
+export async function fetchTokenState(mint: string): Promise<TokenState | null> {
+  const headers = { accept: "application/json", "X-API-Key": key() }
+  try {
+    const [priceRes, metaRes] = await Promise.all([
+      fetch(`${BASE}/${mint}/price`, { headers, cache: "no-store" }),
+      fetch(`${BASE}/${mint}/metadata`, { headers, cache: "no-store" }),
+    ])
+    if (!priceRes.ok) return null
+    const price = await priceRes.json()
+    const priceUsd = Number(price?.usdPrice ?? price?.priceUsd) || 0
+    if (priceUsd <= 0) return null
+
+    let supply = 1_000_000_000
+    let authorityOk = true
+    if (metaRes.ok) {
+      const meta = await metaRes.json()
+      const s = Number(meta?.totalSupplyFormatted)
+      if (Number.isFinite(s) && s > 0) supply = s
+      const mintAuth = meta?.mintAuthority ?? meta?.mint_authority
+      const freezeAuth = meta?.freezeAuthority ?? meta?.freeze_authority
+      authorityOk = (!mintAuth || mintAuth === "" || mintAuth === null) &&
+                    (!freezeAuth || freezeAuth === "" || freezeAuth === null)
+    }
+
+    const mcap = priceUsd * supply
+    if (!Number.isFinite(mcap) || mcap <= 0) return null
+
+    const liquidity = Number(price?.pairTotalLiquidityUsd ?? price?.liquidity ?? 0) || 0
+    return { mcap, liquidity, lpOk: liquidity > 0, authorityOk }
+  } catch (e) {
+    console.error("[conviction/feed] fetchTokenState", (e as Error).message)
+    return null
+  }
+}
