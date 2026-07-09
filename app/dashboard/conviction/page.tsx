@@ -103,6 +103,15 @@ export default function ConvictionDeskPage() {
     load(null); setFocusId(null)
   }
 
+  const resolveContest = async (id: number, action: "settle" | "void") => {
+    const verb = action === "void" ? "Void and refund" : "Force settle"
+    if (!window.confirm(verb + " contest #" + id + "?")) return
+    const r = await fetch("/api/admin/conviction/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contest: id, action }) })
+    const j = await r.json()
+    setMsg(r.ok ? JSON.stringify(j) : (j.error || "failed"))
+    load(focusId)
+  }
+
   const input = "w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/60"
   const labelCls = "block text-xs text-gray-400 mb-1.5"
 
@@ -163,7 +172,7 @@ export default function ConvictionDeskPage() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-white">Contest {focus ? `#${focus.id} · ${focus.label}` : ""}</h2>
             {focus && focus.status !== "settled" && (
-              <button onClick={() => voidContest(focus.id)} className="text-xs text-red-400 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Void</button>
+              <div className="flex items-center gap-3"><button onClick={() => resolveContest(focus.id, "settle")} className="text-xs text-primary flex items-center gap-1"><PlayCircle className="w-3 h-3" /> Settle now</button><button onClick={() => resolveContest(focus.id, "void")} className="text-xs text-red-400 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Void + refund</button></div>
             )}
           </div>
           {focus ? (
