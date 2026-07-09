@@ -31,12 +31,12 @@ const curLabel = (c: string) => (c === "usdc" ? "USDC" : c === "spins" ? "SPINS"
 const shortWallet = (w: string | null) => (w ? `${w.slice(0, 6)}…${w.slice(-4)}` : "—")
 
 export default function PayoutsPage() {
-  const [view, setView] = useState<"pending_payout" | "paid">("pending_payout")
+  const [view, setView] = useState<"requested" | "sent">("requested")
   const [claims, setClaims] = useState<Claim[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState("")
   const [sel, setSel] = useState<Set<number>>(new Set())
-  const [tx, setTx] = useState("")
+  const [results, setResults] = useState<{ id: number; ok: boolean; signature?: string; error?: string }[]>([])
   const [paying, setPaying] = useState(false)
 
   const load = () => {
@@ -55,16 +55,18 @@ export default function PayoutsPage() {
   const selTotals: Record<string, number> = {}
   for (const c of claims) if (sel.has(c.id)) selTotals[c.currency] = (selTotals[c.currency] || 0) + c.value
 
-  const markPaid = async () => {
-    if (sel.size === 0 || !tx.trim()) return
-    setPaying(true)
+  const sendBatch = async () => {
+    if (sel.size === 0) return
+    if (!window.confirm(`Send USDC to ${sel.size} winner(s) now? This moves real funds and can't be undone.`)) return
+    setPaying(true); setResults([])
     try {
       const res = await fetch("/api/admin/payouts", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: Array.from(sel), tx_signature: tx.trim() }),
+        body: JSON.stringify({ ids: Array.from(sel) }),
       })
       const j = await res.json().catch(() => ({}))
-      if (res.ok) { setTx(""); load() } else setErr(j.error || "Could not mark paid")
+      if (res.ok) { setResults(j.results || []); setTimeout(load, 1500) }
+      else setErr(j.error || "Send failed")
     } finally { setPaying(false) }
   }
 
@@ -75,19 +77,19 @@ export default function PayoutsPage() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2"><DollarSign className="w-6 h-6 text-primary" /><h1 className="text-xl font-bold text-white">Payouts</h1></div>
         <div className="flex gap-1 bg-gray-950 border border-gray-800 rounded-lg p-0.5">
-          {(["pending_payout", "paid"] as const).map((v) => (
+          {(["requested", "sent"] as const).map((v) => (
             <button key={v} onClick={() => setView(v)}
               className={`text-xs px-3 py-1.5 rounded-md font-semibold ${view === v ? "bg-primary text-gray-950" : "text-gray-400 hover:text-white"}`}>
-              {v === "pending_payout" ? "Pending" : "Paid"}
+              {v === "requested" ? "Requested" : "Sent"}
             </button>
           ))}
         </div>
       </div>
 
       <p className="text-[13px] text-gray-500 mb-4">
-        {view === "pending_payout"
-          ? "Rewards players have requested. Send from the house wallet, then record the tx here to clear them."
-          : "Rewards already sent, with their transaction signatures."}
+        {view === "requested"
+          ? "Winners who claimed and gave a wallet. Select and Send USDC — the server sends each transfer and records it."
+          : "Prizes already paid, with their on-chain signatures."}
       </p>
 
       {err && <div className="mb-4 rounded-lg border border-red-900 bg-red-950/40 px-4 py-3 text-sm text-red-300">{err}</div>}
@@ -96,11 +98,11 @@ export default function PayoutsPage() {
         <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-gray-600" /></div>
       ) : claims.length === 0 ? (
         <div className="rounded-xl border border-gray-800 bg-gray-900 p-10 text-center text-sm text-gray-500">
-          {view === "pending_payout" ? "Nothing waiting to be paid." : "Nothing paid yet."}
+          {view === "requested" ? "No claims waiting to be paid." : "Nothing paid yet."}
         </div>
       ) : (
         <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
-          {view === "pending_payout" && (
+          {view === "requested" && (
             <div className="flex items-center justify-between mb-3">
               <button onClick={() => setSel(new Set(payable.map((c) => c.id)))} className="text-xs text-primary hover:underline">Select all payable ({payable.length})</button>
               <button onClick={() => setSel(new Set())} className="text-xs text-gray-500 hover:underline">Clear</button>
@@ -109,11 +111,11 @@ export default function PayoutsPage() {
 
           <div className="space-y-1.5 max-h-[26rem] overflow-y-auto pr-1">
             {claims.map((c) => {
-              const selectable = view === "pending_payout" && !c.needs_wallet
+              const selectable = view === "requested" && !c.needs_wallet
               return (
                 <div key={c.id} onClick={() => selectable && toggle(c.id)}
                   className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${c.needs_wallet ? "border-gray-800 opacity-50" : sel.has(c.id) ? "border-primary bg-primary/5 cursor-pointer" : "border-gray-800 " + (selectable ? "hover:border-gray-700 cursor-pointer" : "")}`}>
-                  {view === "pending_payout" && (
+                  {view === "requested" && (
                     <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${sel.has(c.id) ? "bg-primary" : "border border-gray-700"}`}>
                       {sel.has(c.id) && <Check className="w-3 h-3 text-gray-950" />}
                     </div>
@@ -131,16 +133,24 @@ export default function PayoutsPage() {
             })}
           </div>
 
-          {view === "pending_payout" && sel.size > 0 && (
+          {view === "requested" && sel.size > 0 && (
             <div className="mt-4 rounded-lg border border-gray-800 bg-gray-950 p-3">
               <div className="text-xs text-gray-400 mb-2">
-                Sending {sel.size}: {Object.entries(selTotals).map(([c, v]) => `${fmtV(v)} ${curLabel(c)}`).join(" · ")}
+                Paying {sel.size}: {Object.entries(selTotals).map(([c, v]) => `$${fmtV(v)} ${curLabel(c)}`).join(" · ")} from the payout wallet
               </div>
-              <input className={input + " mb-2"} value={tx} onChange={(e) => setTx(e.target.value)} placeholder="paste tx signature after sending" />
-              <button onClick={markPaid} disabled={paying || !tx.trim()}
+              <button onClick={sendBatch} disabled={paying}
                 className="w-full bg-primary text-gray-950 font-semibold text-sm py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2">
-                {paying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Mark {sel.size} paid
+                {paying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Send USDC to {sel.size}
               </button>
+              {results.length > 0 && (
+                <div className="mt-3 space-y-1 text-[11px] font-mono">
+                  {results.map((r) => (
+                    <div key={r.id} className={r.ok ? "text-green-400" : "text-red-400"}>
+                      #{r.id} {r.ok ? `sent · ${r.signature?.slice(0, 10)}…` : `failed · ${r.error}`}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
