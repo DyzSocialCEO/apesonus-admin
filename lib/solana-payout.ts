@@ -77,6 +77,34 @@ export async function sendUsdc(toOwner: string, amountUsdc: number): Promise<Sub
 
 /** Best-effort confirmation. Never throws; returns false if unknown/slow. The
  *  signature is already persisted by the caller, so this only refines the note. */
+export async function sendSplToken(
+  mintAddress: string, decimals: number, toOwner: string, amountTokens: number
+): Promise<SubmitResult> {
+  const payer = loadPayer()
+  const connection = new Connection(rpcUrl(), { commitment: "confirmed", confirmTransactionInitialTimeout: 20000 })
+  const mint = new PublicKey(mintAddress)
+  const dest = new PublicKey(toOwner)
+  const amountBase = BigInt(Math.round(amountTokens * Math.pow(10, decimals)))
+  if (amountBase <= BigInt(0)) throw new Error("amount must be positive")
+
+  const fromAta = await getAssociatedTokenAddress(mint, payer.publicKey)
+  const toAta = await getAssociatedTokenAddress(mint, dest)
+  const tx = new Transaction()
+  const toInfo = await withTimeout(connection.getAccountInfo(toAta), LOOKUP_MS, "account lookup")
+  if (!toInfo) tx.add(createAssociatedTokenAccountInstruction(payer.publicKey, toAta, dest, mint))
+  tx.add(createTransferCheckedInstruction(fromAta, mint, toAta, payer.publicKey, amountBase, decimals))
+
+  const { blockhash } = await withTimeout(connection.getLatestBlockhash("confirmed"), LOOKUP_MS, "blockhash fetch")
+  tx.recentBlockhash = blockhash
+  tx.feePayer = payer.publicKey
+  tx.sign(payer)
+  const signature = await withTimeout(
+    connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 3 }),
+    SUBMIT_MS, "submit"
+  )
+  return { signature, from: payer.publicKey.toBase58() }
+}
+
 export async function confirmSig(signature: string): Promise<boolean> {
   try {
     const connection = new Connection(rpcUrl(), "confirmed")
