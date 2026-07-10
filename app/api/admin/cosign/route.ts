@@ -73,7 +73,11 @@ export async function GET() {
         const av = Number(al?.value); if (Number.isFinite(av) && av > 0) alpha = av
 
         const winnerBacks = (backsByArtist[winner] || []).sort((a, b) => a.ts - b.ts || a.seq - b.seq)
-        const pool = Number(round.pool_spins ?? round.total_pool_value) || 0
+        // Pool now builds from stakes: sum spins_staked across this round's backers.
+        const { data: stakeRows } = await supabase
+          .from("pit_cosigns").select("spins_staked")
+          .eq("week_start", round.week_start).not("artist_id", "is", null)
+        const pool = (stakeRows || []).reduce((a: number, r: any) => a + (Number(r.spins_staked) || 0), 0)
         const shares = previewSplit(winnerBacks, new Date(round.closes_at).getTime(), pool, alpha)
         const slots = winnerBacks.slice(0, 8).map((b, i) => ({ place: i + 1, ts: new Date(b.ts).toISOString(), spins: shares[i] || 0 }))
         preview = { winner_artist: winner, backers: winnerBacks.length, pool_spins: pool, alpha, slots }

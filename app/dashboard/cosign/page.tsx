@@ -160,12 +160,12 @@ export default function BackingDeskPage() {
           <div className="grid grid-cols-2 gap-3">
             <div><label className={label}>Sponsor name (optional)</label><input className={input} value={sponsor} onChange={(e) => setSponsor(e.target.value)} placeholder="Coinbase" /></div>
             <div><label className={label}>Sponsor link</label><input className={input} value={sponsorUrl} onChange={(e) => setSponsorUrl(e.target.value)} placeholder="https://..." /></div>
-            <div className="col-span-2"><label className={label}>Prize pool (Spins)</label><input className={input} value={poolVal} onChange={(e) => setPoolVal(e.target.value)} inputMode="numeric" placeholder="10000" /></div>
+            <div className="col-span-2"><label className={label}>Prize pool</label><div className="rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-[13px] text-gray-400">Builds itself from player stakes — no need to set it. Winners split the total staked; losing picks burn in.</div></div>
             <div className="col-span-2"><label className={label}>Live stream URL (Mux / YouTube / HLS) — optional, shown on /live during the draw</label><input className={input} value={liveUrl} onChange={(e) => setLiveUrl(e.target.value)} placeholder="https://stream.mux.com/... or a Mux playback ID" /></div>
           </div>
 
           <div className="mt-3 rounded-lg border border-dashed border-primary/30 bg-primary/5 p-3 text-xs text-gray-400">
-            <span className="text-primary">No draw.</span> Everyone who backs the winning artist wins — the Spins pool splits by lock-in time (earlier = bigger slice). Min-Spins entry gate + curve steepness live in app_settings (<span className="font-mono">cosign_min_spins</span>, <span className="font-mono">cosign_weight_alpha</span>). Nobody right → pool stays with the house.
+            <span className="text-primary">No draw.</span> Players stake Spins on one artist; everyone who backs the winner splits the pooled stake, weighted by stake size and lock-in time (bigger + earlier = bigger slice). Losing picks burn into the pool. Min stake + curve steepness live in app_settings (<span className="font-mono">cosign_min_spins</span>, <span className="font-mono">cosign_weight_alpha</span>). Nobody right → pool stays with the house.
           </div>
 
           <button onClick={openRound} disabled={saving} className="mt-4 w-full bg-primary text-gray-950 font-semibold text-sm py-2.5 rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2">
