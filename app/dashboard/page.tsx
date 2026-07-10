@@ -145,7 +145,7 @@ export default async function DashboardPage() {
     { title: "Active (7d)",    value: formatNumber(stats.activeUsers),   icon: TrendingUp, color: "text-green-400",  bg: "bg-green-400/10" },
     { title: "Total Plays",    value: formatNumber(stats.totalPlays),    icon: Play,       color: "text-purple-400", bg: "bg-purple-400/10" },
     { title: "Tracks",         value: formatNumber(stats.totalTracks),   icon: Music,      color: "text-primary",    bg: "bg-primary/10" },
-    { title: "Ammo sold",      value: formatNumber(stats.ammoSold),      icon: Activity,   color: "text-cyan-400",   bg: "bg-cyan-400/10" },
+    { title: "Spins sold",      value: formatNumber(stats.ammoSold),      icon: Activity,   color: "text-cyan-400",   bg: "bg-cyan-400/10" },
     { title: "Paying users",   value: formatNumber(stats.payingUsers),   icon: Crown,      color: "text-yellow-400", bg: "bg-yellow-400/10" },
   ]
 
@@ -185,7 +185,7 @@ export default async function DashboardPage() {
                   <th className="text-left  py-3 px-4 text-sm font-medium text-gray-400">ID</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Plays</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Loyalty</th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Ammo</th>
+                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Spins</th>
                   <th className="text-right  py-3 px-4 text-sm font-medium text-gray-400">Joined</th>
                 </tr>
               </thead>

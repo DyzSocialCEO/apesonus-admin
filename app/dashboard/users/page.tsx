@@ -189,7 +189,7 @@ export default function UsersPage() {
                     <th className="text-left   py-4 px-4 text-sm font-medium text-gray-400">User</th>
                     <th className="text-left   py-4 px-4 text-sm font-medium text-gray-400">User ID</th>
                     <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Tier</th>
-                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Ammo</th>
+                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Spins</th>
                     <th className="text-right  py-4 px-4 text-sm font-medium text-gray-400">Joined</th>
                   </tr>
                 </thead>
