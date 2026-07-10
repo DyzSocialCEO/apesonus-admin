@@ -65,7 +65,7 @@ export async function GET(request: Request) {
     if (focusId) {
       const { data: b } = await supabase
         .from("conviction_board")
-        .select("token_mint, symbol, name, logo, launch_ts, mcap_at_add, liquidity_at_add, last_mcap, last_liquidity, last_seen_at, added_at")
+        .select("token_mint, symbol, name, logo, launch_ts, mcap_at_add, liquidity_at_add, last_mcap, last_liquidity, last_seen_at, added_at, claimed_by, claimed_at")
         .eq("contest_id", focusId)
         .order("added_at", { ascending: false })
         .limit(200)
