@@ -13,13 +13,14 @@
  *
  * BEST-EFFORT: any failure returns null + logs once; never blocks settlement.
  *
- * Env: ONUS_COMMIT_SECRET (JSON byte array), ONUS_RPC_URL (defaults to devnet)
+ * Env: ONUS_COMMIT_SECRET (JSON byte array OR base58 string), ONUS_RPC_URL (defaults to devnet)
  */
 
 import {
   Connection, Keypair, PublicKey, Transaction, TransactionInstruction,
 } from "@solana/web3.js"
 import { createHash } from "node:crypto"
+import bs58 from "bs58"
 
 const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr")
 
@@ -43,10 +44,16 @@ export function hashDataset(dataset: unknown): { canonical: string; hash: string
 }
 
 function loadKeypair(): Keypair | null {
-  const raw = process.env.ONUS_COMMIT_SECRET
+  const raw = process.env.ONUS_COMMIT_SECRET?.trim()
   if (!raw) return null
   try {
-    return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(raw)))
+    // Accept either format so the paste "just works":
+    //   1. JSON byte array  e.g. [12,45,...] (solana-keygen output)
+    //   2. base58 string    (Phantom "export private key")
+    if (raw.startsWith("[")) {
+      return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(raw)))
+    }
+    return Keypair.fromSecretKey(bs58.decode(raw))
   } catch (e) {
     console.error("[onus-commit] bad ONUS_COMMIT_SECRET:", (e as Error).message)
     return null

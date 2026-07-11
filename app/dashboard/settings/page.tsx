@@ -185,6 +185,7 @@ export default function SettingsPage() {
 
       {/* Receiving wallet — the one live, working control */}
       <ReceivingWalletCard />
+      <PaymentsToggleCard />
 
       {/* Health snapshot */}
       <Card className="bg-gray-900 border-gray-800">
@@ -218,6 +219,95 @@ export default function SettingsPage() {
       </Card>
 
     </div>
+  )
+}
+
+function PaymentsToggleCard() {
+  const [on, setOn] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(null)
+    try {
+      const res = await fetch("/api/admin/settings")
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      setOn(String(data.settings?.payments_enabled ?? "").toLowerCase() === "true")
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Load failed")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const toggle = async () => {
+    const next = !on
+    setSaving(true); setErr(null)
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates: { payments_enabled: next ? "true" : "false" } }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error || `Failed (${res.status})`)
+      setOn(next)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Save failed")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card className="bg-gray-900 border-gray-800">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-white">
+          <Wallet className="w-4 h-4" /> Spin purchases
+        </CardTitle>
+        <CardDescription>
+          Master switch for taking money. When off, the app runs fully (music, games, Embers)
+          but no one can buy Spins — used for a soft launch before payments go live.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="flex items-center gap-2 text-gray-400 text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+          </div>
+        ) : (
+          <div className="flex items-center gap-4">
+            <button
+              onClick={toggle}
+              disabled={saving}
+              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${on ? "bg-emerald-500" : "bg-gray-700"}`}
+              aria-pressed={on}
+            >
+              <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${on ? "translate-x-6" : "translate-x-1"}`} />
+            </button>
+            <div className="text-sm">
+              <span className={on ? "text-emerald-400 font-semibold" : "text-gray-400 font-semibold"}>
+                {saving ? "Saving…" : on ? "Payments ON — Spins are for sale" : "Payments OFF — purchases blocked"}
+              </span>
+              {!on && (
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  Also requires a receiving wallet set above before turning on.
+                </p>
+              )}
+            </div>
+            {err && (
+              <span className="flex items-center gap-1.5 text-xs text-red-400 ml-auto">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {err}
+              </span>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

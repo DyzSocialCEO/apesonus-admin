@@ -33,6 +33,7 @@ const ALLOWED_KEYS = new Set([
   "genesis_window_duration_hours",
   "helius_treasury_wallet",
   "helius_webhook_secret",
+  "payments_enabled",
   "cp_pack_topup_cents",
   "cp_pack_bundle_cents",
   "cp_pack_whale_cents",
@@ -107,6 +108,10 @@ function validate(key: string, value: string): string | null {
       return looksLikeSolanaAddress(value)
         ? null
         : "helius_treasury_wallet must be a valid Solana address (32-44 base58 chars)"
+    }
+    case "payments_enabled": {
+      if (value === "true" || value === "false" || value === "") return null
+      return "payments_enabled must be 'true' or 'false'"
     }
     case "helius_webhook_secret": {
       if (value === "") return null
