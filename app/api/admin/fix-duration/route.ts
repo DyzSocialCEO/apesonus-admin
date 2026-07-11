@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
-import { detectDurationServer } from "@/lib/duration-detect"
+import { detectDurationServer, refererFromRequest } from "@/lib/duration-detect"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -24,6 +24,9 @@ export async function POST(request: Request) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+  // Referer Bunny will accept (the admin's own origin — add it to the allowlist).
+  const referer = refererFromRequest(request)
+
   let body: { trackId?: number; all?: boolean; audioUrl?: string }
   try { body = await request.json() } catch { return NextResponse.json({ error: "Invalid body" }, { status: 400 }) }
 
@@ -31,7 +34,7 @@ export async function POST(request: Request) {
   // modal, where the track may not be saved yet). No DB write — just
   // return the detected duration so the form can show it.
   if (body.audioUrl && !body.trackId && !body.all) {
-    const { duration, reason } = await detectDurationServer(body.audioUrl)
+    const { duration, reason } = await detectDurationServer(body.audioUrl, referer)
     if (duration > 0) return NextResponse.json({ ok: true, duration })
     return NextResponse.json({ ok: false, duration: 0, reason: reason || "could not detect" })
   }
@@ -70,7 +73,7 @@ export async function POST(request: Request) {
       results.push({ id: t.id, title: t.title, ok: false, reason: "no audio URL stored on track" })
       continue
     }
-    const { duration, reason } = await detectDurationServer(t.audio)
+    const { duration, reason } = await detectDurationServer(t.audio, referer)
     if (duration > 0) {
       const { error } = await supabase
         .from("tracks")

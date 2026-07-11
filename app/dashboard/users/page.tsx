@@ -44,12 +44,22 @@ interface AdminUser {
   is_genesis_holder: boolean | null
   genesis_active: boolean | null
   has_paid: boolean | null
+  ammo: number | null
+  embers: number | null
   created_at: string
 }
 
 function isPaid(u: AdminUser): boolean {
-  // Paid = premium_status is set to anything other than 'none'.
-  return !!u.premium_status && u.premium_status !== "none"
+  // Paid = has ever made a confirmed purchase.
+  return !!u.has_paid
+}
+
+function embersTier(e: number): { label: string; cls: string } {
+  if (e >= 1000) return { label: "DIAMOND", cls: "bg-cyan-500/20 text-cyan-300" }
+  if (e >= 200) return { label: "DEGEN", cls: "bg-pink-500/20 text-pink-400" }
+  if (e >= 50) return { label: "BELIEVER", cls: "bg-yellow-500/20 text-yellow-400" }
+  if (e >= 10) return { label: "BACKER", cls: "bg-lime-500/20 text-lime-400" }
+  return { label: "SCOUT", cls: "bg-gray-500/20 text-gray-400" }
 }
 
 function shortId(id: string | null | undefined): string {
@@ -108,7 +118,6 @@ export default function UsersPage() {
   })
 
   const paidCount = users.filter(isPaid).length
-  const genesisCount = users.filter((u) => !!u.is_genesis_holder).length
 
   /**
    * Tier badge driven by premium_status (the canonical column).
@@ -118,26 +127,8 @@ export default function UsersPage() {
    * as a muted badge for never-paid users.
    */
   const tierBadge = (user: AdminUser) => {
-    const status = user.premium_status
-    if (status === "genesis") {
-      return (
-        <Badge className="bg-yellow-500/20 text-yellow-400 border-0 text-[10px]">
-          GENESIS
-        </Badge>
-      )
-    }
-    if (status === "standard") {
-      return (
-        <Badge className="bg-blue-500/20 text-blue-400 border-0 text-[10px]">
-          STANDARD
-        </Badge>
-      )
-    }
-    return (
-      <Badge className="bg-gray-500/20 text-gray-400 border-0 text-[10px]">
-        FREE
-      </Badge>
-    )
+    const t = embersTier(user.embers || 0)
+    return <Badge className={`${t.cls} border-0 text-[10px]`}>{t.label}</Badge>
   }
 
   return (
@@ -146,7 +137,7 @@ export default function UsersPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Users</h1>
           <p className="text-gray-400">
-            {users.length} total · {paidCount} paid · {genesisCount} genesis
+            {users.length} total · {paidCount} paid
           </p>
         </div>
         <button
@@ -198,9 +189,8 @@ export default function UsersPage() {
                     <th className="text-left   py-4 px-4 text-sm font-medium text-gray-400">User</th>
                     <th className="text-left   py-4 px-4 text-sm font-medium text-gray-400">User ID</th>
                     <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Tier</th>
-                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">$ONUS</th>
-                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Joined</th>
-                    <th className="text-right  py-4 px-4 text-sm font-medium text-gray-400">Actions</th>
+                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Spins</th>
+                    <th className="text-right  py-4 px-4 text-sm font-medium text-gray-400">Joined</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -227,9 +217,6 @@ export default function UsersPage() {
                                 <p className="text-white font-medium text-sm">
                                   {user.display_name || user.email?.split("@")[0] || "Unknown"}
                                 </p>
-                                {!!user.is_genesis_holder && (
-                                  <Crown className="w-3.5 h-3.5 text-yellow-400" />
-                                )}
                               </div>
                               <p className="text-xs text-gray-500">{user.email || "—"}</p>
                             </div>
@@ -242,31 +229,17 @@ export default function UsersPage() {
                           {tierBadge(user)}
                         </td>
                         <td className="py-3 px-4 text-center text-primary text-sm font-medium">
-                          {user.total_onus || 0}
+                          {(user.ammo || 0).toLocaleString("en-US")}
                         </td>
-                        <td className="py-3 px-4 text-center text-gray-500 text-xs">
+                        <td className="py-3 px-4 text-right text-gray-500 text-xs">
                           {new Date(user.created_at).toLocaleDateString()}
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => handleAction(user.id, "grant_coins", 100)}
-                              disabled={acting !== null}
-                              className="px-2 py-1.5 rounded-lg text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 disabled:opacity-50"
-                              title="Grant 100 $ONUS"
-                            >
-                              {acting === `${user.id}-grant_coins`
-                                ? <Loader2 className="w-3 h-3 animate-spin" />
-                                : <Coins className="w-3 h-3" />}
-                            </button>
-                          </div>
                         </td>
                       </tr>
                     )
                   })}
                   {filteredUsers.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center text-gray-500">
+                      <td colSpan={5} className="py-12 text-center text-gray-500">
                         {searchQuery ? "No users match your search" : "No users yet"}
                       </td>
                     </tr>

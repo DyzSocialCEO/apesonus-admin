@@ -4,28 +4,31 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
-  Activity, Megaphone, Coins, TrendingUp, Disc3, Gauge,
-  ScrollText, UserCircle, CreditCard,
-} from "lucide-react"
+  Megaphone, TrendingUp,
+  ScrollText, UserCircle, DollarSign, Coins, Zap, Share2, PenLine, KeyRound, Gem, Gift } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
 const navigation = [
-  { name: "Dashboard",     href: "/dashboard",              icon: LayoutDashboard },
-  { name: "Tracks",        href: "/dashboard/tracks",       icon: Music           },
-  { name: "Artists",       href: "/dashboard/artists",      icon: UserCircle      },
-  { name: "The Record",    href: "/dashboard/record",       icon: Disc3           },
-  { name: "Chart",         href: "/dashboard/chart",        icon: TrendingUp      },
-  { name: "Culture Pulse", href: "/dashboard/pulse",        icon: Activity        },
-  { name: "Sentimetre",    href: "/dashboard/sentimetre",   icon: Gauge           },
-  { name: "Subscriptions", href: "/dashboard/subscriptions",icon: CreditCard      },
-  { name: "CP Economy",    href: "/dashboard/cp-economy",   icon: Coins           },
-  { name: "Users",         href: "/dashboard/users",        icon: Users           },
-  { name: "Banners",       href: "/dashboard/banners",      icon: Megaphone       },
-  { name: "$ONUS",         href: "/dashboard/onus",         icon: Coins           },
-  { name: "Analytics",     href: "/dashboard/analytics",    icon: BarChart3       },
-  { name: "Logs",          href: "/dashboard/logs",         icon: ScrollText      },
-  { name: "Settings",      href: "/dashboard/settings",     icon: Settings        },
+  { name: "Dashboard",       href: "/dashboard",                 icon: LayoutDashboard },
+  { name: "Finance",         href: "/dashboard/finance",         icon: DollarSign      },
+  { name: "Tracks",          href: "/dashboard/tracks",          icon: Music           },
+  { name: "Artists",         href: "/dashboard/artists",         icon: UserCircle      },
+  { name: "Chart",           href: "/dashboard/chart",           icon: TrendingUp      },
+  { name: "Co-Sign",         href: "/dashboard/cosign",          icon: PenLine         },
+  { name: "Conviction",      href: "/dashboard/conviction",      icon: Gem             },
+  { name: "Payouts",         href: "/dashboard/payouts",         icon: DollarSign      },
+  { name: "Airdrops",        href: "/dashboard/airdrops",        icon: Gift            },
+  { name: "Users",           href: "/dashboard/users",           icon: Users           },
+  { name: "Banners",         href: "/dashboard/banners",         icon: Megaphone       },
+  { name: "Spins",           href: "/dashboard/ammo",            icon: Zap             },
+  { name: "Revenue",         href: "/dashboard/revenue",         icon: DollarSign     },
+  { name: "Distribution",    href: "/dashboard/distribution",    icon: Coins          },
+  { name: "Referrals",       href: "/dashboard/referrals",       icon: Share2          },
+  { name: "Partner Access",  href: "/dashboard/partner-access",  icon: KeyRound        },
+  { name: "Analytics",       href: "/dashboard/analytics",       icon: BarChart3       },
+  { name: "Logs",            href: "/dashboard/logs",            icon: ScrollText      },
+  { name: "Settings",        href: "/dashboard/settings",        icon: Settings        },
 ]
 
 export function Sidebar() {

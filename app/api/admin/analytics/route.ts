@@ -36,11 +36,6 @@ export async function GET() {
 
     const { count: totalTracks } = await supabase.from("tracks").select("*", { count: "exact", head: true }).eq("is_active", true)
 
-    const today = new Date().toISOString().split("T")[0]
-    const { count: todayVotes } = await supabase.from("market_sentiment_votes").select("*", { count: "exact", head: true }).eq("vote_date", today)
-
-    const { count: activeStreaks } = await supabase.from("user_streaks").select("*", { count: "exact", head: true }).eq("is_active", true)
-
     // Mood breakdown from mood_stats
     const { data: moodData } = await supabase.from("mood_stats").select("mood, play_count")
     const moodBreakdown: Record<string, number> = { moon: 0, rekt: 0, cope: 0, degen: 0, zen: 0 }
@@ -61,8 +56,6 @@ export async function GET() {
       newUsers: newUsers || 0,
       totalPlays: totalPlays || 0,
       totalTracks: totalTracks || 0,
-      todayVotes: todayVotes || 0,
-      activeStreaks: activeStreaks || 0,
       totalReferrals: totalReferrals || 0,
       moodBreakdown,
       topTracks: topTracks || [],

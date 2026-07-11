@@ -47,7 +47,7 @@ export default function ChartPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-white">Weekly Chart & Forecast</h2>
+          <h2 className="text-2xl font-bold text-white">Weekly Chart</h2>
           <p className="text-gray-400 text-sm">Week of {data?.weekStart} · {chart.length} tracks ranked</p>
         </div>
         <Button variant="outline" size="sm" onClick={fetchData}>
@@ -55,50 +55,6 @@ export default function ChartPage() {
         </Button>
       </div>
 
-      {/* Forecast Controls */}
-      <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Zap className="w-5 h-5 text-purple-400" /> Forecast Controls</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="p-4 rounded-lg bg-gray-800/50 text-center">
-              <p className="text-2xl font-bold text-white">{data?.forecastCount || 0}</p>
-              <p className="text-xs text-gray-400">Picks this week</p>
-            </div>
-            <div className="p-4 rounded-lg bg-gray-800/50 text-center">
-              <p className="text-2xl font-bold text-white flex items-center justify-center gap-2">
-                {locked ? <><Lock className="w-5 h-5 text-red-400" /> Locked</> : <><Unlock className="w-5 h-5 text-green-400" /> Open</>}
-              </p>
-              <p className="text-xs text-gray-400">Forecast page status</p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant={locked ? "default" : "destructive"}
-              disabled={acting !== null}
-              onClick={() => doAction(locked ? "unlock" : "lock")}>
-              {acting === "lock" || acting === "unlock" ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> :
-                locked ? <Unlock className="w-4 h-4 mr-2" /> : <Lock className="w-4 h-4 mr-2" />}
-              {locked ? "Unlock Forecast" : "Lock Forecast (Coming Soon)"}
-            </Button>
-
-            <Button size="sm" variant="outline" disabled={acting !== null}
-              onClick={() => doAction("resolve")}>
-              {acting === "resolve" ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-              Resolve Last Week
-            </Button>
-
-            <Button size="sm" variant="destructive" disabled={acting !== null}
-              onClick={() => doAction("reset", "⚠️ This will DELETE all forecast data. Are you sure?")}>
-              {acting === "reset" ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RotateCcw className="w-4 h-4 mr-2" />}
-              Reset All Forecasts
-            </Button>
-          </div>
-
-          {msg && (
-            <div className="p-3 rounded-lg bg-gray-800/50 text-sm text-gray-300 break-all">{msg}</div>
-          )}
-        </CardContent>
-      </Card>
 
       {/* Chart Table */}
       <Card>
