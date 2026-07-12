@@ -39,7 +39,19 @@ unless noted)
 - /api/cron/cosign-settle: every 5 min. THE canonical settler; seals
   on-chain. The PWA's settle route is a fallback and is never scheduled.
 - /api/pit/cron/reconcile: hourly, on the PWA. Payment backstop.
+- /api/pit/cron/decay: hourly, on the PWA. Kingdom War decay tick
+  (pit_run_decay). Required for live standings; schedule before launch.
+- /api/cron/conviction-feed is PAUSED for Season 1 (game flag-gated).
+  Do not delete the job; resume it with the Season 2 flag flip.
 - Phase 3/4 add: /api/cron/conviction-resolve and /api/cron/conviction-open.
+
+## War Desk (Season 1)
+/dashboard/war runs the Kingdom War: edit the live season (name, dates,
+Ember prize pool — this is how Season 1 is seeded with real launch dates),
+standings, rosters, and the settle button (pit_settle_season, typed SETTLE
+confirmation, idempotent). Conviction's season gate (conviction_enabled in
+pit_config) is toggled from Settings; the Conviction Desk shows a banner
+while it's off. All mutations audit-log.
 
 ## Console conventions
 - Next 14 / React 18, @/* maps to repo root, pages under

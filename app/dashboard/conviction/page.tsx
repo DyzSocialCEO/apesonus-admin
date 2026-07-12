@@ -63,6 +63,7 @@ const DIALS: { key: string; label: string }[] = [
 
 export default function ConvictionDeskPage() {
   const [d, setD] = useState<Desk | null>(null)
+  const [gameEnabled, setGameEnabled] = useState<boolean | null>(null)
   const [focusId, setFocusId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -79,6 +80,14 @@ export default function ConvictionDeskPage() {
       .catch(() => {}).finally(() => setLoading(false))
   }
   useEffect(() => { load(focusId); const t = setInterval(() => load(focusId), 20000); return () => clearInterval(t) }, [focusId])
+
+  // Season gate status — banner only, the toggle lives in Settings.
+  useEffect(() => {
+    fetch("/api/admin/war", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((x) => { if (x) setGameEnabled(x.conviction_enabled === true) })
+      .catch(() => {})
+  }, [])
 
   const applyPreset = (name: string) => { setLabel(name); setDials({ ...(PRESETS[name] as Record<string, string>) }) }
 
@@ -126,6 +135,17 @@ export default function ConvictionDeskPage() {
         <h1 className="text-xl font-semibold text-white">Conviction Desk</h1>
       </div>
       <p className="text-sm text-gray-500 mb-6">Daily memecoin survival. Configure the gauntlet, open the board, watch it fill. Liability never exceeds the pot ceiling.</p>
+
+      {gameEnabled === false && (
+        <div className="mb-4 flex items-center gap-2 text-xs rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 px-3 py-2.5">
+          <Gem className="w-4 h-4 shrink-0" />
+          <span>
+            Conviction is <b>disabled for Season 1</b>. The Call tab is hidden in the PWA and players see the
+            Season 2 teaser. The Desk still works for prep and QA. Flip the switch in Settings when Season 2 opens,
+            and re-enable the Moralis feed job on cron-job.org.
+          </span>
+        </div>
+      )}
 
       {msg && <div className="mb-4 text-xs rounded-lg border border-primary/30 bg-primary/5 text-primary px-3 py-2">{msg}</div>}
 
