@@ -45,13 +45,16 @@ unless noted)
   Do not delete the job; resume it with the Season 2 flag flip.
 - Phase 3/4 add: /api/cron/conviction-resolve and /api/cron/conviction-open.
 
-## War Desk (Season 1)
-/dashboard/war runs the Kingdom War: edit the live season (name, dates,
-Ember prize pool — this is how Season 1 is seeded with real launch dates),
-standings, rosters, and the settle button (pit_settle_season, typed SETTLE
-confirmation, idempotent). Conviction's season gate (conviction_enabled in
-pit_config) is toggled from Settings; the Conviction Desk shows a banner
-while it's off. All mutations audit-log.
+## War Desk (Season 1) — sealed prize model
+/dashboard/war runs the Kingdom War: edit the live season's dates, the
+PRIZE VAULT (name, token mint, sponsor, artwork, reveal date — invisible
+to players until prize_reveal_at passes; public API sends only a
+countdown), Ember standings (pit_kingdom_ember_standings), rosters, and
+the settle button (pit_settle_season, typed SETTLE, idempotent). Settle
+pays nothing: distribute the prize from the Airdrops page, split by
+pit_season_winner_shares (per-member season Embers). Conviction's season
+gate (conviction_enabled in pit_config) is toggled from Settings; the
+Conviction Desk shows a banner while it's off. All mutations audit-log.
 
 ## Console conventions
 - Next 14 / React 18, @/* maps to repo root, pages under

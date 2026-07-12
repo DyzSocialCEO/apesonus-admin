@@ -31,9 +31,9 @@ export async function GET() {
   const [seasonsRes, standingsRes, cfgRes] = await Promise.all([
     supabase
       .from("pit_war_seasons")
-      .select("id, name, status, is_current, started_at, enrollment_ends_at, scheduled_end_at, ended_at, settled_at, ember_prize_pool, winner_kingdom_id")
+      .select("id, name, status, is_current, started_at, enrollment_ends_at, scheduled_end_at, ended_at, settled_at, winner_kingdom_id, prize_name, prize_token_mint, prize_sponsor, prize_sponsor_url, prize_image_url, prize_reveal_at")
       .order("id", { ascending: false }),
-    supabase.rpc("pit_kingdom_standings"),
+    supabase.rpc("pit_kingdom_ember_standings"),
     supabase.from("app_settings").select("value").eq("key", "pit_config").maybeSingle(),
   ])
 
@@ -105,12 +105,19 @@ export async function PATCH(req: Request) {
       patch[k] = t.toISOString()
     }
   }
-  if (body.ember_prize_pool !== undefined) {
-    const n = Number(body.ember_prize_pool)
-    if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
-      return NextResponse.json({ error: "ember_prize_pool must be a non-negative integer" }, { status: 400 })
+  // Prize vault. Sealed until prize_reveal_at passes — the public season
+  // route enforces that; this admin surface always sees everything.
+  for (const k of ["prize_name", "prize_token_mint", "prize_sponsor", "prize_sponsor_url", "prize_image_url"]) {
+    if (body[k] !== undefined) patch[k] = String(body[k] || "").trim() || null
+  }
+  if (body.prize_reveal_at !== undefined) {
+    if (!body.prize_reveal_at) {
+      patch.prize_reveal_at = null
+    } else {
+      const t = new Date(body.prize_reveal_at)
+      if (Number.isNaN(t.getTime())) return NextResponse.json({ error: "prize_reveal_at is not a valid date" }, { status: 400 })
+      patch.prize_reveal_at = t.toISOString()
     }
-    patch.ember_prize_pool = n
   }
   if (!Object.keys(patch).length) return NextResponse.json({ error: "nothing to update" }, { status: 400 })
 
@@ -154,7 +161,6 @@ export async function POST(req: Request) {
     const name = String(body?.name || "").trim()
     if (!name) return NextResponse.json({ error: "name required" }, { status: 400 })
     const enrollmentDays = Math.max(1, Number(body?.enrollment_days) || 7)
-    const pool = Math.max(0, Math.floor(Number(body?.ember_prize_pool) || 0))
     const scheduledEnd = body?.scheduled_end_at ? new Date(body.scheduled_end_at) : null
     if (scheduledEnd && Number.isNaN(scheduledEnd.getTime())) {
       return NextResponse.json({ error: "scheduled_end_at is not a valid date" }, { status: 400 })
@@ -169,13 +175,12 @@ export async function POST(req: Request) {
         started_at: new Date().toISOString(),
         enrollment_ends_at: new Date(Date.now() + enrollmentDays * 86400000).toISOString(),
         scheduled_end_at: scheduledEnd ? scheduledEnd.toISOString() : null,
-        ember_prize_pool: pool,
       })
       .select("id")
       .maybeSingle()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    await logAdminAction(supabase, req, session.username, "war.season.create", { season_id: data?.id, name, pool })
+    await logAdminAction(supabase, req, session.username, "war.season.create", { season_id: data?.id, name })
     return NextResponse.json({ ok: true, season_id: data?.id })
   }
 

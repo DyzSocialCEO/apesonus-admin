@@ -3,24 +3,25 @@
 /**
  * /dashboard/war — War Desk.
  *
- * Run the Kingdom War season: edit the live season's dates and Ember prize
- * pool (this is how Season 1 gets seeded with real launch dates), watch the
- * six-kingdom standings and rosters, and settle the season when it ends.
- * Settle is one click behind a typed confirmation — it runs the final decay
- * tick, picks the winner, splits the pool by season contribution
- * (largest-remainder, sum exactly = pool) and locks the season forever.
+ * Run the Kingdom War season: edit the live season's dates (this is how
+ * Season 1 gets seeded with real launch dates), configure the sealed prize
+ * vault (hidden from players until the reveal date), watch the Ember
+ * standings and rosters, and settle when the season ends. Settle picks the
+ * winner by season Embers and locks the season; the prize itself goes out
+ * through the Airdrops page, split by pit_season_winner_shares.
  */
 
 import { useEffect, useState } from "react"
-import { Swords, Loader2, Save, Check, Crown, Trophy, Plus } from "lucide-react"
+import { Swords, Loader2, Save, Check, Crown, Trophy, Plus, Gift } from "lucide-react"
 
 type Season = {
   id: number; name: string; status: string; is_current: boolean
   started_at: string; enrollment_ends_at: string; scheduled_end_at: string | null
-  ended_at: string | null; settled_at: string | null
-  ember_prize_pool: number; winner_kingdom_id: string | null
+  ended_at: string | null; settled_at: string | null; winner_kingdom_id: string | null
+  prize_name: string | null; prize_token_mint: string | null; prize_sponsor: string | null
+  prize_sponsor_url: string | null; prize_image_url: string | null; prize_reveal_at: string | null
 }
-type Standing = { kingdom_id: string; name: string; emoji: string; color: string; population: number; score: number; rank: number }
+type Standing = { kingdom_id: string; name: string; emoji: string; color: string; population: number; season_embers: number; rank: number }
 type Roster = { count: number; recent: { name: string; pledged_at: string }[] }
 type Data = { seasons: Season[]; standings: Standing[]; rosters: Record<string, Roster>; conviction_enabled: boolean }
 
@@ -42,7 +43,12 @@ export default function WarDeskPage() {
   const [startedAt, setStartedAt] = useState("")
   const [enrollEnds, setEnrollEnds] = useState("")
   const [schedEnd, setSchedEnd] = useState("")
-  const [pool, setPool] = useState("0")
+  const [prizeName, setPrizeName] = useState("")
+  const [prizeMint, setPrizeMint] = useState("")
+  const [prizeSponsor, setPrizeSponsor] = useState("")
+  const [prizeSponsorUrl, setPrizeSponsorUrl] = useState("")
+  const [prizeImage, setPrizeImage] = useState("")
+  const [prizeRevealAt, setPrizeRevealAt] = useState("")
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [err, setErr] = useState("")
@@ -53,7 +59,6 @@ export default function WarDeskPage() {
 
   const [newName, setNewName] = useState("")
   const [newDays, setNewDays] = useState("7")
-  const [newPool, setNewPool] = useState("0")
   const [creating, setCreating] = useState(false)
 
   const load = () => {
@@ -72,7 +77,12 @@ export default function WarDeskPage() {
           setStartedAt(toLocalInput(cur.started_at))
           setEnrollEnds(toLocalInput(cur.enrollment_ends_at))
           setSchedEnd(toLocalInput(cur.scheduled_end_at))
-          setPool(String(cur.ember_prize_pool || 0))
+          setPrizeName(cur.prize_name || "")
+          setPrizeMint(cur.prize_token_mint || "")
+          setPrizeSponsor(cur.prize_sponsor || "")
+          setPrizeSponsorUrl(cur.prize_sponsor_url || "")
+          setPrizeImage(cur.prize_image_url || "")
+          setPrizeRevealAt(toLocalInput(cur.prize_reveal_at))
         }
       })
       .catch(() => setLoadErr("Could not reach the server"))
@@ -95,7 +105,12 @@ export default function WarDeskPage() {
           started_at: startedAt ? new Date(startedAt).toISOString() : undefined,
           enrollment_ends_at: enrollEnds ? new Date(enrollEnds).toISOString() : undefined,
           scheduled_end_at: schedEnd ? new Date(schedEnd).toISOString() : undefined,
-          ember_prize_pool: Number(pool),
+          prize_name: prizeName,
+          prize_token_mint: prizeMint,
+          prize_sponsor: prizeSponsor,
+          prize_sponsor_url: prizeSponsorUrl,
+          prize_image_url: prizeImage,
+          prize_reveal_at: prizeRevealAt ? new Date(prizeRevealAt).toISOString() : "",
         }),
       })
       const j = await res.json()
@@ -118,7 +133,7 @@ export default function WarDeskPage() {
       if (!res.ok || j.error) { setSettleMsg(j.error || "Settle failed"); return }
       setSettleMsg(
         j.ok
-          ? `Settled. Winner: ${j.winner_kingdom_id || "nobody"} — ${fmt(j.embers_paid || 0)} Embers to ${fmt(j.members_paid || 0)} members.`
+          ? `Settled. Winner: ${j.winner_kingdom_id || "nobody"} with ${fmt(j.winner_season_embers || 0)} season Embers across ${fmt(j.winner_citizens || 0)} citizens. Run the drop from the Airdrops page.`
           : `Refused: ${j.reason}`,
       )
       setSettleConfirm("")
@@ -133,7 +148,7 @@ export default function WarDeskPage() {
     try {
       const res = await fetch("/api/admin/war", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", name: newName.trim(), enrollment_days: Number(newDays) || 7, ember_prize_pool: Number(newPool) || 0 }),
+        body: JSON.stringify({ action: "create", name: newName.trim(), enrollment_days: Number(newDays) || 7 }),
       })
       const j = await res.json()
       if (!res.ok || j.error) { setErr(j.error || "Could not create season"); return }
@@ -155,7 +170,7 @@ export default function WarDeskPage() {
     </div>
   )
 
-  const topScore = Math.max(1, ...d.standings.map((k) => Number(k.score) || 0))
+  const topScore = Math.max(1, ...d.standings.map((k) => Number(k.season_embers) || 0))
 
   return (
     <div className="p-6 lg:p-10 max-w-5xl mx-auto space-y-6">
@@ -179,9 +194,8 @@ export default function WarDeskPage() {
                 className="mt-1 w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white" />
             </label>
             <label className="block">
-              <span className="text-xs text-gray-500">Ember prize pool (winning kingdom splits this)</span>
-              <input value={pool} onChange={(e) => setPool(e.target.value)} inputMode="numeric"
-                className="mt-1 w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white" />
+              <span className="text-xs text-gray-500">Season name shown to players</span>
+              <span className="block text-[11px] text-gray-600 mt-1">The prize is configured in its own vault below and stays hidden from players until the reveal date.</span>
             </label>
             <label className="block">
               <span className="text-xs text-gray-500">Season starts (contribution window opens)</span>
@@ -208,12 +222,66 @@ export default function WarDeskPage() {
             </div>
           </div>
 
+          {/* prize vault */}
+          <div className="mt-5 pt-4 border-t border-gray-800">
+            <div className="text-sm text-white font-semibold flex items-center gap-2">
+              <Gift className="w-4 h-4 text-amber-400" /> The prize vault
+              {(() => {
+                const revealed = !!(current.prize_name && current.prize_reveal_at && new Date(current.prize_reveal_at).getTime() <= Date.now())
+                return (
+                  <span className={`text-[10px] px-2 py-0.5 rounded uppercase tracking-wide ${revealed ? "bg-emerald-500/20 text-emerald-400" : "bg-amber-500/20 text-amber-300"}`}>
+                    {revealed ? "Revealed" : "Sealed"}
+                  </span>
+                )
+              })()}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Everything here stays invisible to players until the reveal date passes. The public API sends
+              only a countdown before then, so you can sign the sponsor mid-season without leaking a word.
+              Match the token to the leading culture (Frog winning means talk to the frog coin).
+            </p>
+            <div className="grid md:grid-cols-2 gap-4 mt-3">
+              <label className="block">
+                <span className="text-xs text-gray-500">Prize name (what players see at reveal, e.g. "1B PEPE")</span>
+                <input value={prizeName} onChange={(e) => setPrizeName(e.target.value)}
+                  className="mt-1 w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white" />
+              </label>
+              <label className="block">
+                <span className="text-xs text-gray-500">Token mint (for the airdrop send)</span>
+                <input value={prizeMint} onChange={(e) => setPrizeMint(e.target.value)}
+                  className="mt-1 w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white font-mono" />
+              </label>
+              <label className="block">
+                <span className="text-xs text-gray-500">Sponsor name</span>
+                <input value={prizeSponsor} onChange={(e) => setPrizeSponsor(e.target.value)}
+                  className="mt-1 w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white" />
+              </label>
+              <label className="block">
+                <span className="text-xs text-gray-500">Sponsor link</span>
+                <input value={prizeSponsorUrl} onChange={(e) => setPrizeSponsorUrl(e.target.value)}
+                  className="mt-1 w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white" />
+              </label>
+              <label className="block">
+                <span className="text-xs text-gray-500">Prize artwork URL (optional)</span>
+                <input value={prizeImage} onChange={(e) => setPrizeImage(e.target.value)}
+                  className="mt-1 w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white" />
+              </label>
+              <label className="block">
+                <span className="text-xs text-gray-500">Reveal date (prize goes public at this moment)</span>
+                <input type="datetime-local" value={prizeRevealAt} onChange={(e) => setPrizeRevealAt(e.target.value)}
+                  className="mt-1 w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white" />
+              </label>
+            </div>
+            <p className="text-[11px] text-gray-600 mt-2">Saved with the Save season button above.</p>
+          </div>
+
           {/* settle */}
           <div className="mt-5 pt-4 border-t border-gray-800">
             <div className="text-sm text-white font-semibold flex items-center gap-2"><Trophy className="w-4 h-4 text-amber-400" /> Settle the season</div>
             <p className="text-xs text-gray-500 mt-1">
-              Runs the final decay tick, picks the winning kingdom, splits the Ember pool by each
-              member&apos;s own season contribution, and locks the season. Cannot be undone or run twice.
+              Freezes the mint window, picks the winning kingdom by season Embers, and locks the
+              season. Pays nothing itself: the prize goes out through the Airdrops page, split by
+              each winner&apos;s season Embers (pit_season_winner_shares). Cannot be undone or run twice.
             </p>
             <div className="flex items-center gap-3 mt-3">
               <input value={settleConfirm} onChange={(e) => setSettleConfirm(e.target.value)} placeholder='Type SETTLE to arm'
@@ -231,12 +299,10 @@ export default function WarDeskPage() {
         <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
           <div className="text-white font-semibold flex items-center gap-2"><Plus className="w-4 h-4 text-primary" /> New season</div>
           <p className="text-xs text-gray-500 mt-1">No season is current. Create the next one to reopen enrollment.</p>
-          <div className="grid md:grid-cols-3 gap-4 mt-3">
+          <div className="grid md:grid-cols-2 gap-4 mt-3">
             <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Season 2: ..."
               className="bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white" />
             <input value={newDays} onChange={(e) => setNewDays(e.target.value)} placeholder="Enrollment days" inputMode="numeric"
-              className="bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white" />
-            <input value={newPool} onChange={(e) => setNewPool(e.target.value)} placeholder="Ember prize pool" inputMode="numeric"
               className="bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white" />
           </div>
           <button onClick={createSeason} disabled={creating || !newName.trim()}
@@ -250,7 +316,7 @@ export default function WarDeskPage() {
       {/* ── standings ── */}
       <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
         <div className="text-white font-semibold">Standings</div>
-        <p className="text-xs text-gray-500 mt-0.5">Live weighted score (decays hourly) and population, per kingdom.</p>
+        <p className="text-xs text-gray-500 mt-0.5">Embers minted this season and population, per kingdom.</p>
         <div className="mt-4 space-y-3">
           {d.standings.map((k) => (
             <div key={k.kingdom_id} className="flex items-center gap-3">
@@ -259,10 +325,10 @@ export default function WarDeskPage() {
               <div className="flex-1">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-white">{k.name}</span>
-                  <span className="text-gray-400">{fmt(k.population)} citizens · {fmt(Math.round(Number(k.score)))} wt</span>
+                  <span className="text-gray-400">{fmt(k.population)} citizens · {fmt(Number(k.season_embers))} Embers</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-gray-800 mt-1.5">
-                  <div className="h-full rounded-full" style={{ width: `${Math.max(2, Math.round((Number(k.score) / topScore) * 100))}%`, background: k.color }} />
+                  <div className="h-full rounded-full" style={{ width: `${Math.max(2, Math.round((Number(k.season_embers) / topScore) * 100))}%`, background: k.color }} />
                 </div>
               </div>
             </div>
@@ -308,7 +374,7 @@ export default function WarDeskPage() {
                 <span className="text-gray-300">{s.name}</span>
                 <span className="text-gray-500 text-xs">
                   {s.settled_at
-                    ? `settled ${new Date(s.settled_at).toLocaleDateString()} · winner: ${s.winner_kingdom_id || "nobody"} · pool ${fmt(s.ember_prize_pool)}`
+                    ? `settled ${new Date(s.settled_at).toLocaleDateString()} · winner: ${s.winner_kingdom_id || "nobody"}${s.prize_name ? ` · prize ${s.prize_name}` : ""}`
                     : s.status}
                 </span>
               </div>
