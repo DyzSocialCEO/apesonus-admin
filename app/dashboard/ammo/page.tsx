@@ -428,7 +428,7 @@ export default function AmmoPage() {
                 <h2 className="font-semibold text-white">Free plays</h2>
               </div>
               <p className="text-xs text-gray-500">
-                Every account gets 5 free plays a day, on any track — no featured track to pick. Once those are used, each play spends 1 Spin — and every Spin played mints Embers, multiplied by the listener's Heat streak. With no Spins and no free plays left, the next play is blocked until they buy Spins or the daily reset comes around. Nothing to set here.
+                Every account gets 2 free plays a day (free_daily_plays in pit_config), on any track. Once those are used, each play spends 1 Spin, and every paid play mints exactly one Ember. With no Spins and no free plays left, the next play is blocked until they buy Spins or the daily reset comes around.
               </p>
             </div>
 
