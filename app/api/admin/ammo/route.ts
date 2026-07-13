@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase"
+import { createAdminClient, createServiceClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
 import { adminOnusRatelimit, getClientIp } from "@/lib/upstash"
 import { logAdminAction } from "@/lib/admin-audit"
@@ -19,14 +19,19 @@ export async function GET() {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    const supabase = await createAdminClient()
+    // Cookieless service client: the cookie-bound one can downgrade off
+    // service_role (documented in lib/supabase.ts) and render every stat as
+    // a silent zero. Stats must never lie.
+    const supabase = createServiceClient()
 
     // Outstanding Ammo + top holders.
-    const { data: balances } = await supabase
+    const errors: string[] = []
+    const { data: balances, error: balancesErr } = await supabase
       .from("pit_ammo_balances")
       .select("user_id, balance")
       .order("balance", { ascending: false })
 
+    if (balancesErr) errors.push(`balances: ${balancesErr.message}`)
     let outstanding = 0
     let holders = 0
     for (const b of balances || []) {
@@ -57,10 +62,11 @@ export async function GET() {
     }
 
     // Lifetime sold (confirmed purchases).
-    const { data: sold } = await supabase
+    const { data: sold, error: soldErr } = await supabase
       .from("pit_ammo_purchases")
       .select("ammo_amount, usd_cents")
       .eq("status", "confirmed")
+    if (soldErr) errors.push(`sold: ${soldErr.message}`)
     let ammoSold = 0
     let usdCents = 0
     for (const s of sold || []) {
@@ -69,9 +75,10 @@ export async function GET() {
     }
 
     // Lifetime granted.
-    const { data: grantRows } = await supabase
+    const { data: grantRows, error: grantsErr } = await supabase
       .from("pit_ammo_grants")
       .select("amount")
+    if (grantsErr) errors.push(`grants: ${grantsErr.message}`)
     let ammoGranted = 0
     for (const g of grantRows || []) ammoGranted += Number(g.amount || 0)
 
@@ -102,6 +109,7 @@ export async function GET() {
       .limit(50)
 
     return NextResponse.json({
+      errors: errors.length ? errors : undefined,
       stats: {
         outstanding,
         holders,
