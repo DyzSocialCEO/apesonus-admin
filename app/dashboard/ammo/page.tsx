@@ -23,7 +23,6 @@ type Holder = {
 
 type GrantRow = { id: number; user_id: string; amount: number; reason: string | null; actor: string | null; created_at: string }
 type PurchaseRow = { id: number; user_id: string; ammo_amount: number; usd_cents: number; rail: string; status: string; created_at: string }
-type TrackOpt = { id: number; title: string; artist: string }
 // ammo null = "use the discount ladder"; a filled ammo overrides the ladder.
 // price_usd / ammo are null while a field is blank in the editor.
 type Pack = { id: string; price_usd: number | null; ammo: number | null; active: boolean; label?: string }
@@ -50,8 +49,6 @@ export default function AmmoPage() {
   const [holders, setHolders] = useState<Holder[]>([])
   const [grants, setGrants] = useState<GrantRow[]>([])
   const [purchases, setPurchases] = useState<PurchaseRow[]>([])
-  const [tracks, setTracks] = useState<TrackOpt[]>([])
-  const [featuredId, setFeaturedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
 
   // grant form
@@ -62,9 +59,7 @@ export default function AmmoPage() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   // daily track
-  const [savingTrack, setSavingTrack] = useState(false)
-  const [trackSaved, setTrackSaved] = useState(false)
-  const [trackErr, setTrackErr] = useState(false)
+  const [loadErr, setLoadErr] = useState<string | null>(null)
 
   // packs + money split + discount ladder (saved together)
   const [packs, setPacks] = useState<Pack[]>([])
@@ -78,24 +73,38 @@ export default function AmmoPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
+    setLoadErr(null)
+    // Each endpoint is loaded independently and defensively. This page once
+    // showed zeros forever because a single dead fetch (the removed
+    // daily-track route) blew up a shared Promise.all before ANY state was
+    // set, discarding perfectly good data from the working endpoints. One
+    // endpoint failing must never blank the others again.
+    const grab = async (url: string) => {
+      const r = await fetch(url)
+      if (!r.ok) throw new Error(`${url} -> ${r.status}`)
+      return r.json()
+    }
+    const problems: string[] = []
     try {
-      const [a, d, c] = await Promise.all([
-        fetch("/api/admin/ammo").then(r => r.json()),
-        fetch("/api/admin/ammo/daily-track").then(r => r.json()),
-        fetch("/api/admin/ammo/config").then(r => r.json()),
-      ])
+      const a = await grab("/api/admin/ammo")
       setStats(a.stats || null)
       setHolders(a.topHolders || [])
       setGrants(a.recentGrants || [])
       setPurchases(a.recentPurchases || [])
-      setTracks(d.tracks || [])
-      setFeaturedId(d.featuredId ?? null)
+      if (Array.isArray(a.errors) && a.errors.length) problems.push(...a.errors)
+    } catch (e) {
+      problems.push(e instanceof Error ? e.message : "stats failed")
+    }
+    try {
+      const c = await grab("/api/admin/ammo/config")
       setPacks(Array.isArray(c.packs) ? c.packs.map((p: any) => ({ ...p, id: p.id || rid("pack") })) : [])
       setTiers(Array.isArray(c.discountTiers) ? c.discountTiers.map((t: any) => ({ ...t, id: rid("tier") })) : [])
       setTreasuryPct(Number.isFinite(c.treasuryPct) ? c.treasuryPct : 70)
-    } finally {
-      setLoading(false)
+    } catch (e) {
+      problems.push(e instanceof Error ? e.message : "config failed")
     }
+    setLoadErr(problems.length ? problems.join(" · ") : null)
+    setLoading(false)
   }, [])
 
   const [clearingPending, setClearingPending] = useState(false)
@@ -146,29 +155,6 @@ export default function AmmoPage() {
       setMsg({ ok: false, text: "Network error" })
     } finally {
       setGranting(false)
-    }
-  }
-
-  const saveTrack = async (val: string) => {
-    setSavingTrack(true); setTrackSaved(false); setTrackErr(false)
-    try {
-      const trackId = val === "" ? null : Number(val)
-      const res = await fetch("/api/admin/ammo/daily-track", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trackId }),
-      })
-      if (res.ok) {
-        setFeaturedId(trackId)
-        setTrackSaved(true)
-        setTimeout(() => setTrackSaved(false), 4000)
-      } else {
-        setTrackErr(true)
-      }
-    } catch {
-      setTrackErr(true)
-    } finally {
-      setSavingTrack(false)
     }
   }
 
@@ -273,6 +259,12 @@ export default function AmmoPage() {
           <p className="text-sm text-gray-500">What players buy to keep the music going. $1 = {ammoPerUsd.toLocaleString("en-US")} Spins, 1 Spin = 1 play.</p>
         </div>
       </div>
+
+      {loadErr && (
+        <div className="mb-4 text-xs rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 px-3 py-2">
+          Some data failed to load: {loadErr}. Numbers below may be incomplete — fix the failing endpoint, then reload.
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center gap-2 text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
