@@ -45,6 +45,14 @@ unless noted)
   Do not delete the job; resume it with the Season 2 flag flip.
 - Phase 3/4 add: /api/cron/conviction-resolve and /api/cron/conviction-open.
 
+## Degen Therapy mode
+war_enabled in pit_config seals the whole Kingdom War in the PWA (tab,
+overlay, badges) with all state preserved. Toggle lives in Settings beside
+the Conviction gate; the War Desk shows a vault banner while sealed but
+keeps working for prep/QA. Coming later: meme token + buyback engine
+(webhook-driven Jupiter swaps, 70/30 burn/team-SOL split, admin knobs,
+public receipts) — devnet + staging first.
+
 ## War Desk (Season 1) — sealed prize model
 /dashboard/war runs the Kingdom War: edit the live season's dates, the
 PRIZE VAULT (name, token mint, sponsor, artwork, reveal date — invisible

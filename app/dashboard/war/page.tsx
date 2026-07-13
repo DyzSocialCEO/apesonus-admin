@@ -23,7 +23,7 @@ type Season = {
 }
 type Standing = { kingdom_id: string; name: string; emoji: string; color: string; population: number; season_embers: number; rank: number }
 type Roster = { count: number; recent: { name: string; pledged_at: string }[] }
-type Data = { seasons: Season[]; standings: Standing[]; rosters: Record<string, Roster>; conviction_enabled: boolean }
+type Data = { seasons: Season[]; standings: Standing[]; rosters: Record<string, Roster>; conviction_enabled: boolean; war_enabled?: boolean }
 
 const fmt = (n: number) => (n || 0).toLocaleString("en-US")
 const toLocalInput = (iso: string | null) => {
@@ -178,6 +178,17 @@ export default function WarDeskPage() {
         <Swords className="w-6 h-6 text-primary" />
         <h1 className="text-xl font-bold text-white">War Desk</h1>
       </div>
+
+      {d.war_enabled !== true && (
+        <div className="flex items-center gap-2 text-xs rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 px-3 py-2.5">
+          <Swords className="w-4 h-4 shrink-0" />
+          <span>
+            The Kingdom War is <b>sealed in the vault</b> for the Degen Therapy launch. Players see no War
+            tab, no choose-kingdom, no badges. Everything on this desk keeps working for prep and QA, and
+            all season state is preserved. Open the vault from Settings when it&apos;s time.
+          </span>
+        </div>
+      )}
 
       {/* ── current season ── */}
       {current ? (

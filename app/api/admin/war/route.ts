@@ -76,13 +76,19 @@ export async function GET() {
   }
 
   let convictionEnabled = false
-  try { convictionEnabled = JSON.parse(cfgRes.data?.value || "{}").conviction_enabled === true } catch {}
+  let warEnabled = false
+  try {
+    const cfg = JSON.parse(cfgRes.data?.value || "{}")
+    convictionEnabled = cfg.conviction_enabled === true
+    warEnabled = cfg.war_enabled === true
+  } catch {}
 
   return NextResponse.json({
     seasons,
     standings: standingsRes.data || [],
     rosters,
     conviction_enabled: convictionEnabled,
+    war_enabled: warEnabled,
   })
 }
 
@@ -182,6 +188,23 @@ export async function POST(req: Request) {
 
     await logAdminAction(supabase, req, session.username, "war.season.create", { season_id: data?.id, name })
     return NextResponse.json({ ok: true, season_id: data?.id })
+  }
+
+  if (action === "set_war") {
+    const enabled = body?.enabled === true
+    const { data: row } = await supabase.from("app_settings").select("value").eq("key", "pit_config").maybeSingle()
+    let cfg: Record<string, unknown> = {}
+    try { cfg = JSON.parse(row?.value || "{}") } catch {}
+    const beforeVal = cfg.war_enabled === true
+    cfg.war_enabled = enabled
+    const { error } = await supabase
+      .from("app_settings")
+      .update({ value: JSON.stringify(cfg), updated_at: new Date().toISOString() })
+      .eq("key", "pit_config")
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    await logAdminAction(supabase, req, session.username, "war.flag.change", { before: beforeVal, after: enabled })
+    return NextResponse.json({ ok: true, war_enabled: enabled })
   }
 
   if (action === "set_conviction") {
