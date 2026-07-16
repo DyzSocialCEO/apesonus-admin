@@ -120,13 +120,23 @@ export default function UsersPage() {
   const paidCount = users.filter(isPaid).length
 
   /**
-   * Tier badge driven by premium_status (the canonical column).
-   * Genesis cardholders get the gold badge regardless of current
-   * genesis_active state — the card is permanent, the 3x is what
-   * toggles. STANDARD is the paid-but-no-card label. FREE is shown
-   * as a muted badge for never-paid users.
+   * Tier badge driven by Embers, with one gate in front of it.
+   *
+   * Never paid means FREE, muted, regardless of Ember count. The Ember
+   * tiers only carry meaning for payers: an Ember is the receipt for a
+   * paid play (migration 058 gates the mint on a confirmed purchase), so
+   * a tier badge on a non-payer would be describing something they never
+   * bought.
+   *
+   * NOTE: the previous comment here described a premium_status/Genesis
+   * badge system with STANDARD and gold-card labels. That code is long
+   * gone and the comment was left behind describing behavior that did not
+   * exist. If this badge changes again, change these words with it.
    */
   const tierBadge = (user: AdminUser) => {
+    if (!isPaid(user)) {
+      return <Badge className="bg-gray-500/20 text-gray-500 border-0 text-[10px]">FREE</Badge>
+    }
     const t = embersTier(user.embers || 0)
     return <Badge className={`${t.cls} border-0 text-[10px]`}>{t.label}</Badge>
   }
@@ -189,6 +199,7 @@ export default function UsersPage() {
                     <th className="text-left   py-4 px-4 text-sm font-medium text-gray-400">User</th>
                     <th className="text-left   py-4 px-4 text-sm font-medium text-gray-400">User ID</th>
                     <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Tier</th>
+                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Embers</th>
                     <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Spins</th>
                     <th className="text-right  py-4 px-4 text-sm font-medium text-gray-400">Joined</th>
                   </tr>
@@ -228,6 +239,29 @@ export default function UsersPage() {
                         <td className="py-3 px-4 text-center">
                           {tierBadge(user)}
                         </td>
+                        <td className="py-3 px-4 text-center text-sm font-medium">
+                          {/*
+                            Red means a non-payer is holding Embers, which
+                            should be impossible after migration 058 gated the
+                            mint on a confirmed purchase. If this ever lights
+                            up, the gate has failed and the airdrop basis is
+                            being diluted. Leave the canary in.
+                          */}
+                          <span
+                            className={
+                              !paid && (user.embers || 0) > 0
+                                ? "text-red-400"
+                                : "text-gray-300"
+                            }
+                            title={
+                              !paid && (user.embers || 0) > 0
+                                ? "Non-payer holding Embers. The 058 gate should prevent this."
+                                : undefined
+                            }
+                          >
+                            {(user.embers || 0).toLocaleString("en-US")}
+                          </span>
+                        </td>
                         <td className="py-3 px-4 text-center text-primary text-sm font-medium">
                           {(user.ammo || 0).toLocaleString("en-US")}
                         </td>
@@ -239,7 +273,7 @@ export default function UsersPage() {
                   })}
                   {filteredUsers.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="py-12 text-center text-gray-500">
+                      <td colSpan={6} className="py-12 text-center text-gray-500">
                         {searchQuery ? "No users match your search" : "No users yet"}
                       </td>
                     </tr>
