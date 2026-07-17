@@ -14,7 +14,6 @@ export const runtime = "nodejs"
  * which artist wins and how the timestamp-weighted Spins split would land
  * across its backers (earlier lock = bigger slice). Plus settled-round history.
  */
-function normalize(name: string): string { return name === "Coinalisa Murado" ? "Coinalisa" : name }
 
 // Mirror of the settle split: weight = max(1, secs remaining at lock)^alpha,
 // integer largest-remainder — so the preview matches the real result exactly.
@@ -45,18 +44,25 @@ export async function GET() {
     let race: any[] = []
     let preview: any = { winner: null, backers: 0 }
     if (round) {
-      // Streams per artist within the round window.
-      const { data: plays } = await supabase
-        .from("play_history").select("track_id")
-        .gte("played_at", round.opens_at).lt("played_at", round.closes_at).limit(20000)
-      const ids = Array.from(new Set((plays || []).map((p: any) => p.track_id)))
-      const trackArtist: Record<number, string> = {}
-      if (ids.length) {
-        const { data: tracks } = await supabase.from("tracks").select("id, artist").in("id", ids)
-        for (const t of tracks || []) trackArtist[t.id] = normalize(t.artist)
+      // COUNTED plays per artist, the same primitive pit_cosign_settle pays on.
+      // This used to pull play_history straight, which counted free plays AND
+      // capped out at 20k rows, so at any real volume the desk would have been
+      // previewing a truncated race. Now it asks the database the same question
+      // the settle asks, and the answer cannot drift from the payout.
+      const { data: counted } = await supabase.rpc("pit_counted_plays_by_artist", {
+        p_from: round.opens_at, p_to: round.closes_at,
+      })
+      const ROSTER_NAMES: Record<string, string> = {
+        "chartnobyl-bro": "Chartnobyl Bro", "coinalisa": "Coinalisa",
+        "lola-likwidity": "Lola Likwidity", "mcbagholder": "McBagholder",
+        "dj-dustwallet": "DJ Dustwallet", "shilliam-dafoe": "Shilliam Dafoe",
+        "satosheek": "Satosheek",
       }
       const streams: Record<string, number> = {}
-      for (const p of plays || []) { const a = trackArtist[p.track_id]; if (a) streams[a] = (streams[a] || 0) + 1 }
+      for (const row of (counted || []) as { artist_id: string; counted: number }[]) {
+        const name = ROSTER_NAMES[row.artist_id]
+        if (name) streams[name] = (streams[name] || 0) + (Number(row.counted) || 0)
+      }
 
       const { data: backs } = await supabase.from("pit_cosigns").select("artist_id, seq, created_at").eq("week_start", round.week_start).not("artist_id", "is", null)
       const backCount: Record<string, number> = {}, backsByArtist: Record<string, { ts: number; seq: number }[]> = {}
@@ -67,10 +73,14 @@ export async function GET() {
 
       if (ranked.length > 0) {
         const winner = ranked[0].artist
-        // alpha from app_settings — the settle reads the same key.
+        // alpha from app_settings, and the settle reads the same key. It now
+        // reads it the same WAY too. `av > 0` meant setting alpha to 0 in admin left
+        // this preview weighting at full strength while the settle weighted at
+        // zero, so the desk would have shown one split and paid another. Zero is
+        // a real value: power(x, 0) is 1, every stake weighs its own size.
         let alpha = 1
         const { data: al } = await supabase.from("app_settings").select("value").eq("key", "cosign_weight_alpha").maybeSingle()
-        const av = Number(al?.value); if (Number.isFinite(av) && av > 0) alpha = av
+        const av = Number(al?.value); if (Number.isFinite(av) && av >= 0) alpha = av
 
         const winnerBacks = (backsByArtist[winner] || []).sort((a, b) => a.ts - b.ts || a.seq - b.seq)
         // Pool now builds from stakes: sum spins_staked across this round's backers.
