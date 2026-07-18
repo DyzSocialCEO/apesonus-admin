@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
   Megaphone, TrendingUp,
-  ScrollText, UserCircle, DollarSign, Coins, Zap, Share2, PenLine, KeyRound, Gem, Gift, Swords } from "lucide-react"
+  ScrollText, UserCircle, DollarSign, Coins, Zap, Share2, PenLine, KeyRound, Gem, Gift, Swords, Target } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
@@ -15,6 +15,7 @@ const navigation = [
   { name: "Tracks",          href: "/dashboard/tracks",          icon: Music           },
   { name: "Artists",         href: "/dashboard/artists",         icon: UserCircle      },
   { name: "Chart",           href: "/dashboard/chart",           icon: TrendingUp      },
+  { name: "The Call",        href: "/dashboard/call",            icon: Target          },
   { name: "Co-Sign",         href: "/dashboard/cosign",          icon: PenLine         },
   { name: "Conviction",      href: "/dashboard/conviction",      icon: Gem             },
   { name: "War",             href: "/dashboard/war",             icon: Swords          },
