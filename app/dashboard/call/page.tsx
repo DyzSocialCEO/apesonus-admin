@@ -52,6 +52,18 @@ type Knobs = {
   ammo_per_usd: string | number | null
 }
 
+type DailyDay = {
+  day: string
+  status: string
+  closes_at: string
+  resolves_at: string
+  answer_track_id: number | null
+  answer: { title: string; artist: string } | null
+  pot_carry: number
+  entries: number
+  summary: Record<string, unknown> | null
+}
+
 const forInput = (iso: string) => (iso ? new Date(iso).toISOString().slice(0, 16) : "")
 const short = (iso: string | null) =>
   iso ? new Date(iso).toISOString().replace("T", " ").slice(0, 16) + " UTC" : "not set"
@@ -75,6 +87,34 @@ export default function CallDeskPage() {
   const [form, setForm] = useState<Record<string, string>>({})
   const [editing, setEditing] = useState<number | null>(null)
   const [knobDraft, setKnobDraft] = useState<Knobs | null>(null)
+  const [tab, setTab] = useState<"call" | "daily" | "artist">("call")
+  const [daily, setDaily] = useState<DailyDay[] | null>(null)
+  const [dailyBusy, setDailyBusy] = useState<string | null>(null)
+
+  const loadDaily = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/call/daily", { cache: "no-store" })
+      const body = await res.json()
+      if (res.ok) setDaily(body.days || [])
+    } catch { /* soft */ }
+  }, [])
+
+  const dailyAction = async (action: "open" | "resolve", day?: string) => {
+    setDailyBusy(action); setMsg(null)
+    try {
+      const method = action === "open" ? "POST" : "PATCH"
+      const res = await fetch("/api/admin/call/daily", {
+        method, headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, day }),
+      })
+      const r = await res.json()
+      if (!res.ok) throw new Error(r.error || "Failed")
+      setMsg({ text: action === "open" ? "Day opened." : `Resolved. ${JSON.stringify(r.result)}`, err: false })
+      await loadDaily()
+    } catch (e) {
+      setMsg({ text: e instanceof Error ? e.message : "Failed", err: true })
+    } finally { setDailyBusy(null) }
+  }
 
   const load = useCallback(async (sessionId?: number) => {
     setLoading(true)
@@ -215,6 +255,21 @@ export default function CallDeskPage() {
         </div>
       )}
 
+      <div className="flex gap-1 border-b border-gray-800">
+        {([["call", "The Call"], ["daily", "The Daily"], ["artist", "The Artist"]] as const).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => { setTab(id); if (id === "daily" && !daily) loadDaily() }}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+              tab === id ? "border-lime-500 text-white" : "border-transparent text-gray-500 hover:text-gray-300"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "call" && (<>
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
           <CardTitle className="text-white">Sessions</CardTitle>
@@ -434,6 +489,70 @@ export default function CallDeskPage() {
                 Read inside the entry function, not the UI. It is a real switch.
               </span>
             </div>
+          </CardContent>
+        </Card>
+      )}
+      </>)}
+
+      {tab === "daily" && (
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader>
+            <CardTitle className="text-white">The Daily</CardTitle>
+            <CardDescription>
+              Call tomorrow&apos;s number three. The crons open tomorrow at 00:01 UTC and resolve yesterday at 00:06.
+              These are the manual overrides. Pays the coin once it is wired; Spins until then.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex gap-2">
+              <Button onClick={() => dailyAction("open")} disabled={dailyBusy === "open"}>
+                {dailyBusy === "open" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Open tomorrow now"}
+              </Button>
+              <Button variant="outline" onClick={loadDaily} disabled={!!dailyBusy}>
+                <RefreshCw className="h-4 w-4 mr-1" /> Refresh
+              </Button>
+            </div>
+
+            <div className="space-y-1">
+              {(daily || []).map((d) => (
+                <div key={d.day} className="p-3 rounded border border-gray-800 flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <span className="text-white font-medium">{d.day}</span>
+                    <Badge className="ml-2" variant={d.status === "settled" ? "secondary" : d.status === "void" ? "outline" : "default"}>{d.status}</Badge>
+                    <span className="ml-3 text-xs text-gray-500">
+                      {d.entries} {d.entries === 1 ? "call" : "calls"}
+                      {d.pot_carry > 0 ? ` · +${d.pot_carry} carried` : ""}
+                      {d.answer ? ` · answer: ${d.answer.title}` : ""}
+                    </span>
+                  </div>
+                  {(d.status === "running" || d.status === "open") && new Date(d.resolves_at).getTime() < Date.now() && (
+                    <Button size="sm" variant="outline" disabled={dailyBusy === "resolve"} onClick={() => dailyAction("resolve", d.day)}>
+                      Resolve now
+                    </Button>
+                  )}
+                </div>
+              ))}
+              {daily && !daily.length && <p className="text-sm text-gray-500">No days yet. Open tomorrow to start, or wait for the cron.</p>}
+              {!daily && <p className="text-sm text-gray-500">Loading…</p>}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === "artist" && (
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader>
+            <CardTitle className="text-white">The Artist</CardTitle>
+            <CardDescription>Back which artist has the biggest week. Spins in, Spins out. No money fund on this one.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-gray-400">
+              The Artist round runs on the existing Backing engine, which now settles on counted plays like the rest.
+              Its controls, open a round, set the pool, settle, live on the Backing Desk.
+            </p>
+            <a href="/dashboard/cosign">
+              <Button variant="outline">Open the Backing Desk</Button>
+            </a>
           </CardContent>
         </Card>
       )}
