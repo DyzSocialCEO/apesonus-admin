@@ -406,8 +406,7 @@ export default function CallDeskPage() {
             The board {focusSession ? `· session ${focusSession.session_no}` : ""}
           </CardTitle>
           <CardDescription>
-            Raw counted plays. Payer-only, capped at {k?.call_play_cap ?? 20} per user per track
-            {k && k.call_play_cap <= 0 ? " (cap off, everything counts)" : ""}. Pot: {data?.pot_spins ?? 0} Spins.
+            Raw counted plays. Payer-only, no cap: a play is a play. Pot: {data?.pot_spins ?? 0} Spins.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -480,10 +479,6 @@ export default function CallDeskPage() {
               <label className="text-xs text-gray-400">Tickets per user
                 <Input type="number" value={k.call_tickets_per_user}
                   onChange={(e) => setKnobDraft({ ...k, call_tickets_per_user: Number(e.target.value) })} />
-              </label>
-              <label className="text-xs text-gray-400">Play cap (0 = off)
-                <Input type="number" value={k.call_play_cap}
-                  onChange={(e) => setKnobDraft({ ...k, call_play_cap: Number(e.target.value) })} />
               </label>
               <label className="text-xs text-gray-400">Daily floor
                 <Input type="number" value={k.call_daily_floor}
