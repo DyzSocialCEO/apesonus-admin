@@ -87,9 +87,35 @@ export default function CallDeskPage() {
   const [form, setForm] = useState<Record<string, string>>({})
   const [editing, setEditing] = useState<number | null>(null)
   const [knobDraft, setKnobDraft] = useState<Knobs | null>(null)
-  const [tab, setTab] = useState<"call" | "daily" | "artist">("call")
+  const [tab, setTab] = useState<"call" | "daily" | "artist" | "test">("call")
   const [daily, setDaily] = useState<DailyDay[] | null>(null)
   const [dailyBusy, setDailyBusy] = useState<string | null>(null)
+  const [test, setTest] = useState<{ enabled: boolean; test_payers: number; test_tickets: number; entry_spins: number } | null>(null)
+  const [testBusy, setTestBusy] = useState<string | null>(null)
+
+  const loadTest = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/call/test", { cache: "no-store" })
+      const body = await res.json()
+      if (res.ok) setTest(body)
+    } catch { /* soft */ }
+  }, [])
+
+  const testAction = async (action: string, extra?: Record<string, unknown>) => {
+    setTestBusy(action); setMsg(null)
+    try {
+      const res = await fetch("/api/admin/call/test", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...extra }),
+      })
+      const r = await res.json()
+      if (!res.ok) throw new Error(r.error || "Failed")
+      setMsg({ text: `${action}: ${JSON.stringify(r).slice(0, 160)}`, err: false })
+      await loadTest()
+    } catch (e) {
+      setMsg({ text: e instanceof Error ? e.message : "Failed", err: true })
+    } finally { setTestBusy(null) }
+  }
 
   const loadDaily = useCallback(async () => {
     try {
@@ -256,10 +282,10 @@ export default function CallDeskPage() {
       )}
 
       <div className="flex gap-1 border-b border-gray-800">
-        {([["call", "The Call"], ["daily", "The Daily"], ["artist", "The Artist"]] as const).map(([id, label]) => (
+        {([["call", "The Call"], ["daily", "The Daily"], ["artist", "The Artist"], ["test", "Test"]] as const).map(([id, label]) => (
           <button
             key={id}
-            onClick={() => { setTab(id); if (id === "daily" && !daily) loadDaily() }}
+            onClick={() => { setTab(id); if (id === "daily" && !daily) loadDaily(); if (id === "test") loadTest() }}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
               tab === id ? "border-lime-500 text-white" : "border-transparent text-gray-500 hover:text-gray-300"
             }`}
@@ -553,6 +579,69 @@ export default function CallDeskPage() {
             <a href="/dashboard/cosign">
               <Button variant="outline">Open the Backing Desk</Button>
             </a>
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === "test" && (
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader>
+            <CardTitle className="text-white">Test bench</CardTitle>
+            <CardDescription>
+              Fabricate a full day of The Call to watch it work, no SQL. Everything made here is fake (TESTBOT users)
+              and the launch wipe erases it. Run the steps in order, then open the player page to watch it react.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {test && (
+              <div className="flex flex-wrap gap-4 text-sm p-3 rounded bg-gray-950 border border-gray-800">
+                <span className={test.enabled ? "text-lime-400" : "text-amber-400"}>
+                  The Call: {test.enabled ? "ON" : "OFF (turn on in Knobs first)"}
+                </span>
+                <span className="text-gray-400">Test payers: <span className="text-white">{test.test_payers}</span></span>
+                <span className="text-gray-400">Test tickets: <span className="text-white">{test.test_tickets}</span></span>
+                <span className="text-gray-400">Entry: <span className="text-white">{test.entry_spins} Spins</span></span>
+              </div>
+            )}
+
+            <ol className="space-y-2">
+              {[
+                ["seed", "1. Seed 10 fake payers", "Creates 10 TESTBOT accounts with Spins.", { count: 10 }],
+                ["session", "2. Open today's session", "Runs the real daily driver. Calling is today, chart is tomorrow.", undefined],
+                ["tickets", "3. Book fake tickets", "Each payer calls five tracks. One calls the leaders exactly.", undefined],
+                ["plays", "4. Pump plays into the chart", "Weighted paid plays so a real top five forms.", undefined],
+                ["advance", "5. Jump the clock", "Backdates the session so calling closed and the chart day ended.", undefined],
+                ["settle", "6. Settle", "Runs the driver again. Grades tickets, pays the pot and the fund.", undefined],
+              ].map(([action, label, help, extra]) => (
+                <li key={action as string} className="flex items-center justify-between gap-3 p-3 rounded border border-gray-800">
+                  <div>
+                    <div className="text-sm text-white">{label as string}</div>
+                    <div className="text-xs text-gray-500">{help as string}</div>
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={!!testBusy || (test ? !test.enabled : false)}
+                    onClick={() => testAction(action as string, extra as Record<string, unknown> | undefined)}
+                  >
+                    {testBusy === action ? <Loader2 className="h-4 w-4 animate-spin" /> : "Run"}
+                  </Button>
+                </li>
+              ))}
+            </ol>
+
+            <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
+              <Button variant="outline" onClick={loadTest} disabled={!!testBusy}>
+                <RefreshCw className="h-4 w-4 mr-1" /> Refresh status
+              </Button>
+              <Button variant="destructive" disabled={!!testBusy} onClick={() => {
+                if (confirm("Remove all TESTBOT users and their data? Real data is untouched.")) testAction("clear_test")
+              }}>
+                <Trash2 className="h-4 w-4 mr-1" /> Clear test data
+              </Button>
+              <a href="https://music.apesonus.com/call" target="_blank" rel="noreferrer" className="text-sm text-lime-400 underline">
+                Open the player page
+              </a>
+            </div>
           </CardContent>
         </Card>
       )}
