@@ -273,7 +273,7 @@ export default function CallDeskPage() {
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
           <CardTitle className="text-white">Sessions</CardTitle>
-          <CardDescription>One open for calling, one live. The overlap is deliberate.</CardDescription>
+          <CardDescription>Sessions open automatically each day. Today calls tomorrow’s chart. You rarely need to make one by hand.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {(data?.sessions || []).map((s) => (
@@ -286,7 +286,7 @@ export default function CallDeskPage() {
                   <span className="text-white font-medium">Session {s.session_no}</span>
                   <Badge className="ml-2" variant={s.status === "settled" ? "secondary" : "default"}>{s.status}</Badge>
                   <span className="ml-3 text-xs text-gray-500">
-                    calls {short(s.call_opens_at)} to {short(s.call_closes_at)} · week {short(s.week_starts_at)} to {short(s.week_ends_at)}
+                    calls {short(s.call_opens_at)} to {short(s.call_closes_at)} · chart day {short(s.week_starts_at)} to {short(s.week_ends_at)}
                   </span>
                 </button>
                 <div className="flex items-center gap-2">
@@ -336,7 +336,7 @@ export default function CallDeskPage() {
           <CardTitle className="text-white flex items-center gap-2">
             <Plus className="h-4 w-4" /> {editing ? `Edit session ${form.session_no}` : "New session"}
           </CardTitle>
-          <CardDescription>All times UTC. The window must close before the week starts, or somebody calls with information.</CardDescription>
+          <CardDescription>All times UTC. Calling must close before the chart day starts, or somebody calls with information. Normally the daily cron handles this.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -356,11 +356,11 @@ export default function CallDeskPage() {
               <Input type="datetime-local" value={form.call_closes_at || ""}
                 onChange={(e) => setForm({ ...form, call_closes_at: e.target.value })} />
             </label>
-            <label className="text-xs text-gray-400">Week starts
+            <label className="text-xs text-gray-400">Chart day starts
               <Input type="datetime-local" value={form.week_starts_at || ""}
                 onChange={(e) => setForm({ ...form, week_starts_at: e.target.value })} />
             </label>
-            <label className="text-xs text-gray-400">Week ends
+            <label className="text-xs text-gray-400">Chart day ends
               <Input type="datetime-local" value={form.week_ends_at || ""}
                 onChange={(e) => setForm({ ...form, week_ends_at: e.target.value })} />
             </label>
