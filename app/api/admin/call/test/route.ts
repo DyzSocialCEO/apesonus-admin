@@ -36,6 +36,31 @@ async function testUserIds(supabase: Awaited<ReturnType<typeof createAdminClient
   return (data || []).map((u) => u.id)
 }
 
+// Delete recent sessions that have NO real (non-TESTBOT) tickets. This frees
+// today's session slot after a prior test run settled one, without ever
+// removing a session real users have entered.
+async function clearTestSessions(supabase: Awaited<ReturnType<typeof createAdminClient>>): Promise<number> {
+  const { data: recent } = await supabase
+    .from("pit_call_sessions").select("id").order("session_no", { ascending: false }).limit(8)
+  let removed = 0
+  for (const s of recent || []) {
+    const { data: tix } = await supabase
+      .from("pit_call_tickets").select("user_id").eq("session_id", s.id)
+    const userIds = (tix || []).map((t) => t.user_id)
+    let hasReal = false
+    if (userIds.length) {
+      const { data: realUsers } = await supabase
+        .from("users").select("id").in("id", userIds).not("display_name", "ilike", `${TESTPREFIX}%`).limit(1)
+      hasReal = (realUsers || []).length > 0
+    }
+    if (!hasReal) {
+      await supabase.from("pit_call_sessions").delete().eq("id", s.id)
+      removed++
+    }
+  }
+  return removed
+}
+
 export async function GET() {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -106,6 +131,12 @@ export async function POST(request: Request) {
         const ids = await testUserIds(supabase)
         if (ids.length) await supabase.from("users").delete().in("id", ids)
       }
+
+      // 1b. clear any leftover session blocking a fresh open. Earlier runs
+      // settle a session in today's slot and the driver will not reopen an
+      // existing day, so delete recent sessions that have no real (non-TESTBOT)
+      // tickets. Live data is never touched.
+      await clearTestSessions(supabase)
 
       // 2. seed payers
       const payers: string[] = []
@@ -300,12 +331,12 @@ export async function POST(request: Request) {
 
     // ── CLEAR only test data ────────────────────────────────────────
     if (action === "clear_test") {
+      const sessionsRemoved = await clearTestSessions(supabase)
       const ids = await testUserIds(supabase)
-      if (!ids.length) return NextResponse.json({ ok: true, cleared: 0 })
-      // users cascade to their plays/tickets/balances/purchases via FKs
+      if (!ids.length) return NextResponse.json({ ok: true, cleared: 0, sessions_removed: sessionsRemoved })
       const { error } = await supabase.from("users").delete().in("id", ids)
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      return NextResponse.json({ ok: true, cleared: ids.length })
+      return NextResponse.json({ ok: true, cleared: ids.length, sessions_removed: sessionsRemoved })
     }
 
     return NextResponse.json({ error: "Unknown action." }, { status: 400 })
