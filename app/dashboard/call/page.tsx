@@ -222,13 +222,14 @@ export default function CallDeskPage() {
     } finally { setBusy(null) }
   }
 
-  const saveKnobs = async () => {
+  const saveKnobs = async (override?: Partial<Knobs>) => {
     if (!knobDraft) return
+    const toSave = { ...knobDraft, ...(override || {}) }
     setBusy("knobs"); setMsg(null)
     try {
       const res = await fetch("/api/admin/call", {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "knobs", ...knobDraft }),
+        body: JSON.stringify({ action: "knobs", ...toSave }),
       })
       const r = await res.json()
       if (!res.ok) throw new Error(r.error || "Failed")
@@ -497,12 +498,17 @@ export default function CallDeskPage() {
               Splits add to {tierSum}%. Anything left over rolls, along with every tier nobody won.
             </p>
             <div className="flex items-center gap-3">
-              <Button onClick={saveKnobs} disabled={busy === "knobs" || tierSum > 100}>
+              <Button onClick={() => saveKnobs()} disabled={busy === "knobs" || tierSum > 100}>
                 {busy === "knobs" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save knobs"}
               </Button>
               <Button
                 variant={k.call_enabled ? "destructive" : "default"}
-                onClick={() => { setKnobDraft({ ...k, call_enabled: !k.call_enabled }); }}
+                disabled={busy === "knobs"}
+                onClick={() => {
+                  const next = !k.call_enabled
+                  setKnobDraft({ ...k, call_enabled: next })
+                  saveKnobs({ call_enabled: next })
+                }}
               >
                 {k.call_enabled ? "Switch The Call off" : "Switch The Call on"}
               </Button>
