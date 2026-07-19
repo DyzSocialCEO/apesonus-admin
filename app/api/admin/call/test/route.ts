@@ -93,6 +93,94 @@ export async function POST(request: Request) {
       )
     }
 
+    // ── RUN ALL: the whole cycle, correctly ordered, one click ──────
+    // The step-by-step buttons can desync (settle closes the session, then
+    // "tickets" has nothing open). This does the entire day in the right
+    // order, and crucially books the winning ticket AFTER plays are pumped so
+    // it calls the tracks that actually lead. Guaranteed Full Recovery.
+    if (action === "run_all") {
+      const log: Record<string, unknown> = {}
+
+      // 1. clear any prior test run so we start clean
+      {
+        const ids = await testUserIds(supabase)
+        if (ids.length) await supabase.from("users").delete().in("id", ids)
+      }
+
+      // 2. seed payers
+      const payers: string[] = []
+      for (let i = 0; i < 10; i++) {
+        const id = crypto.randomUUID()
+        const { error } = await supabase.from("users").insert({ id, display_name: `${TESTPREFIX}_${i + 1}_${id.slice(0, 4)}` })
+        if (error) continue
+        await supabase.from("pit_ammo_purchases").insert({ user_id: id, ammo_amount: 2000, usd_cents: 10000, rail: "usdc", status: "confirmed" })
+        await supabase.from("pit_ammo_balances").insert({ user_id: id, balance: 2000 })
+        payers.push(id)
+      }
+      log.seeded = payers.length
+      if (!payers.length) return NextResponse.json({ error: "Could not seed payers." }, { status: 500 })
+
+      // 3. open today's session (fresh) via the driver
+      await supabase.rpc("pit_call_day_open")
+      const { data: sess } = await supabase
+        .from("pit_call_sessions").select("id, week_starts_at, week_ends_at")
+        .eq("status", "open").order("session_no", { ascending: false }).limit(1).maybeSingle()
+      if (!sess) return NextResponse.json({ error: "No open session after opening. Is a session already running for today? Clear test data and retry." }, { status: 409 })
+      log.session = sess.id
+
+      // 4. pump weighted plays into the chart-day window so a clear top 5 forms
+      const { data: cat } = await supabase.from("pit_call_catalogue").select("track_id, artist_id")
+      if (!cat || cat.length < 5) return NextResponse.json({ error: "Need at least 5 tracks on the chart." }, { status: 409 })
+      const when = new Date(new Date(sess.week_starts_at).getTime() + 3600_000).toISOString()
+      const playRows: { user_id: string; artist_id: string; track_id: number; source: string; ammo_cost: number; played_at: string }[] = []
+      cat.forEach((t, idx) => {
+        const base = Math.max(1, 40 - idx * 3)
+        for (let p = 0; p < base; p++) {
+          playRows.push({ user_id: payers[(idx + p) % payers.length], artist_id: t.artist_id, track_id: t.track_id, source: "ammo", ammo_cost: 1, played_at: when })
+        }
+      })
+      for (let i = 0; i < playRows.length; i += 500) await supabase.from("pit_qualified_plays").insert(playRows.slice(i, i + 500))
+      log.plays = playRows.length
+
+      // 5. work out the ACTUAL leaders from the plays just pumped
+      const { data: counted } = await supabase.rpc("pit_counted_plays", { p_from: sess.week_starts_at, p_to: sess.week_ends_at })
+      const leaders = ((counted || []) as { track_id: number; counted: number }[])
+        .sort((a, b) => b.counted - a.counted || a.track_id - b.track_id)
+        .slice(0, 5).map((r) => r.track_id)
+      log.leaders = leaders
+
+      // 6. book tickets: payer 0 calls the real leaders exactly (guaranteed
+      //    Full Recovery), the rest shuffle so other tiers fill in
+      const allTracks = cat.map((t) => t.track_id)
+      let booked = 0
+      for (let i = 0; i < payers.length; i++) {
+        const picks = i === 0 ? leaders : [...allTracks].sort(() => Math.random() - 0.5).slice(0, 5)
+        const { data, error } = await supabase.rpc("pit_call_ticket", { p_user: payers[i], p_session: sess.id, p_picks: picks })
+        if (!error && (data as { ok?: boolean })?.ok) booked++
+      }
+      log.booked = booked
+
+      // 7. jump the clock: backdate so calling closed and chart day ended
+      const now = Date.now()
+      await supabase.from("pit_call_sessions").update({
+        call_opens_at: new Date(now - 3 * 86400_000).toISOString(),
+        call_closes_at: new Date(now - 2 * 86400_000).toISOString(),
+        week_starts_at: new Date(now - 2 * 86400_000).toISOString(),
+        week_ends_at: new Date(now - 60_000).toISOString(),
+        status: "running",
+      }).eq("id", sess.id)
+      // move the plays into the new backdated chart window so they still count
+      await supabase.from("pit_qualified_plays")
+        .update({ played_at: new Date(now - 2 * 86400_000 + 3600_000).toISOString() })
+        .eq("source", "ammo").in("user_id", payers)
+
+      // 8. settle via the driver
+      const { data: settleRes } = await supabase.rpc("pit_call_day_open")
+      log.settle = settleRes
+
+      return NextResponse.json({ ok: true, ...log })
+    }
+
     // ── SEED test payers ────────────────────────────────────────────
     if (action === "seed") {
       const n = Math.min(Math.max(Math.floor(Number(b.count) || 5), 1), 25)

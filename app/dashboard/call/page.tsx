@@ -605,6 +605,21 @@ export default function CallDeskPage() {
               </div>
             )}
 
+            <div className="p-4 rounded-lg border border-lime-700 bg-lime-950/30 flex items-center justify-between gap-4">
+              <div>
+                <div className="text-sm text-white font-medium">Run the whole day in one click</div>
+                <div className="text-xs text-gray-400">Seeds, opens, pumps plays, books a guaranteed winner, jumps the clock, settles. Then open the player page.</div>
+              </div>
+              <Button
+                disabled={!!testBusy || (test ? !test.enabled : false)}
+                onClick={() => testAction("run_all")}
+              >
+                {testBusy === "run_all" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Run full test"}
+              </Button>
+            </div>
+
+            <div className="text-xs text-gray-500 pt-1">Or run the steps one at a time:</div>
+
             <ol className="space-y-2">
               {[
                 ["seed", "1. Seed 10 fake payers", "Creates 10 TESTBOT accounts with Spins.", { count: 10 }],
