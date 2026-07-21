@@ -120,12 +120,25 @@ export async function GET(request: Request) {
       console.error("[anchor] rewards ledger failed:", (e as Error).message)
     }
 
+    // THE DRAW on the same beat — each settled day's seed + five winners hashed
+    // and anchored once, keyed off a null signature so it retries until it
+    // lands. Best-effort like the others; never blocks the play-chain commit.
+    let draw: { anchored?: string[] } = {}
+    try {
+      const { anchorDrawLedger } = await import("@/lib/onus-chain/draw-ledger")
+      const res = await anchorDrawLedger(supabase)
+      draw = { anchored: res.anchored }
+    } catch (e) {
+      console.error("[anchor] draw ledger failed:", (e as Error).message)
+    }
+
     return NextResponse.json({
       ok: true, seq, play_count: leaves.length, plays_root, commit_hash,
       anchored: !!signature, signature, cluster: signature ? cluster : null,
       period: { start: periodStart, end: periodEnd },
       ammo_ledger: ammo,
       rewards_ledger: rewards,
+      draw_ledger: draw,
     })
   } catch (e) {
     console.error("[anchor] error:", (e as Error).message)
