@@ -48,6 +48,7 @@ type Knobs = {
   call_tickets_per_user: number
   call_play_cap: number
   call_daily_floor: number
+  call_payout_pct: number
   call_tier_pct: Record<string, number>
   ammo_per_usd: string | number | null
 }
@@ -73,6 +74,7 @@ const TIER_LABEL: Record<string, string> = {
   remission: "REMISSION",
   breakthrough: "BREAKTHROUGH",
   progress: "PROGRESS",
+  call_one: "CALLED #1",
 }
 
 export default function CallDeskPage() {
@@ -87,48 +89,11 @@ export default function CallDeskPage() {
   const [form, setForm] = useState<Record<string, string>>({})
   const [editing, setEditing] = useState<number | null>(null)
   const [knobDraft, setKnobDraft] = useState<Knobs | null>(null)
-  const [tab, setTab] = useState<"call" | "daily" | "artist" | "test" | "draw">("call")
+  const [tab, setTab] = useState<"call" | "daily" | "artist" | "test">("call")
   const [daily, setDaily] = useState<DailyDay[] | null>(null)
   const [dailyBusy, setDailyBusy] = useState<string | null>(null)
   const [test, setTest] = useState<{ enabled: boolean; test_payers: number; test_tickets: number; entry_spins: number } | null>(null)
   const [testBusy, setTestBusy] = useState<string | null>(null)
-
-  type DrawDay = { day: string; status: string; pool_spins: number; carry_spins: number; tickets_total: number; players_total: number; summary: Record<string, unknown> | null }
-  const [drawData, setDrawData] = useState<{ knobs: { draw_enabled: boolean; draw_pool_pct: number }; today: { day: string; tickets: number; pool_forming: number }; days: DrawDay[] } | null>(null)
-  const [drawBusy, setDrawBusy] = useState<string | null>(null)
-  const [seedInput, setSeedInput] = useState("")
-  const [seedDay, setSeedDay] = useState("")
-
-  const loadDraw = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/call/draw", { cache: "no-store" })
-      const body = await res.json()
-      if (res.ok) setDrawData(body)
-    } catch { /* soft */ }
-  }, [])
-
-  const drawKnob = async (patch: Record<string, unknown>) => {
-    setDrawBusy("knobs"); setMsg(null)
-    try {
-      const res = await fetch("/api/admin/call/draw", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "knobs", ...patch }) })
-      const r = await res.json()
-      if (!res.ok) throw new Error(r.error || "Failed")
-      setMsg({ text: "Draw settings saved.", err: false })
-      await loadDraw()
-    } catch (e) { setMsg({ text: e instanceof Error ? e.message : "Failed", err: true }) } finally { setDrawBusy(null) }
-  }
-
-  const drawSettle = async () => {
-    if (!seedDay || seedInput.trim().length < 8) { setMsg({ text: "Give a day and a seed of at least 8 characters.", err: true }); return }
-    setDrawBusy("settle"); setMsg(null)
-    try {
-      const res = await fetch("/api/admin/call/draw", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "settle", day: seedDay, seed: seedInput.trim() }) })
-      const r = await res.json()
-      if (!res.ok) throw new Error(r.error || "Failed")
-      setMsg({ text: "Drawn. Five names picked and paid.", err: false })
-      setSeedInput(""); await loadDraw()
-    } catch (e) { setMsg({ text: e instanceof Error ? e.message : "Failed", err: true }) } finally { setDrawBusy(null) }
-  }
 
   const loadTest = useCallback(async () => {
     try {
@@ -311,19 +276,19 @@ export default function CallDeskPage() {
         </div>
       )}
 
-      {k && (k.ammo_per_usd === null || Number(k.ammo_per_usd) !== 20) && (
+      {k && (k.ammo_per_usd === null || Number(k.ammo_per_usd) !== 50) && (
         <div className="text-sm rounded p-3 bg-red-950 text-red-300 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4" />
-          ammo_per_usd reads {k.ammo_per_usd === null ? "NOT SET" : String(k.ammo_per_usd)}. It has to be 20 before payments go on,
+          ammo_per_usd reads {k.ammo_per_usd === null ? "NOT SET" : String(k.ammo_per_usd)}. It has to be 50 before payments go on,
           or the buy screen sells 100 Spins a dollar and the play cap stops meaning one dollar.
         </div>
       )}
 
       <div className="flex gap-1 border-b border-gray-800">
-        {([["call", "The Call"], ["draw", "The Draw"], ["daily", "The Daily"], ["artist", "The Artist"], ["test", "Test"]] as const).map(([id, label]) => (
+        {([["call", "The Call"], ["daily", "The Daily"], ["artist", "The Artist"], ["test", "Test"]] as const).map(([id, label]) => (
           <button
             key={id}
-            onClick={() => { setTab(id); if (id === "daily" && !daily) loadDaily(); if (id === "test") loadTest(); if (id === "draw") loadDraw() }}
+            onClick={() => { setTab(id); if (id === "daily" && !daily) loadDaily(); if (id === "test") loadTest() }}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
               tab === id ? "border-lime-500 text-white" : "border-transparent text-gray-500 hover:text-gray-300"
             }`}
@@ -523,8 +488,17 @@ export default function CallDeskPage() {
                   onChange={(e) => setKnobDraft({ ...k, call_daily_floor: Number(e.target.value) })} />
               </label>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {["full_recovery", "remission", "breakthrough", "progress"].map((t) => (
+            <div className="rounded-lg border border-gray-800 p-3 mb-1">
+              <label className="text-xs text-gray-400">Payout to players (% of the day\'s total Spins spent)
+                <Input type="number" value={k.call_payout_pct ?? 60}
+                  onChange={(e) => setKnobDraft({ ...k, call_payout_pct: Number(e.target.value) })} />
+              </label>
+              <p className="text-xs text-gray-500 mt-1">
+                The pot is this share of everything the room spent that day, entries and plays. The house keeps the rest. Split that pot across the rungs below.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              {["full_recovery", "remission", "breakthrough", "progress", "call_one"].map((t) => (
                 <label key={t} className="text-xs text-gray-400">{TIER_LABEL[t]} %
                   <Input type="number" value={k.call_tier_pct?.[t] ?? 0}
                     onChange={(e) => setKnobDraft({ ...k, call_tier_pct: { ...k.call_tier_pct, [t]: Number(e.target.value) } })} />
@@ -617,72 +591,6 @@ export default function CallDeskPage() {
             <a href="/dashboard/cosign">
               <Button variant="outline">Open the Backing Desk</Button>
             </a>
-          </CardContent>
-        </Card>
-      )}
-
-      {tab === "draw" && (
-        <Card className="bg-gray-900 border-gray-800">
-          <CardHeader>
-            <CardTitle className="text-white">The Draw</CardTitle>
-            <CardDescription>
-              Every Spin played is a ticket. Five names nightly, weighted by tickets, no name twice, first out biggest.
-              The cron settles each night with a fresh blockhash seed; manual settle below is the backup.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {drawData && (
-              <>
-                <div className="flex flex-wrap items-center gap-4 p-3 rounded bg-gray-950 border border-gray-800 text-sm">
-                  <span className={drawData.knobs.draw_enabled ? "text-lime-400" : "text-amber-400"}>
-                    {drawData.knobs.draw_enabled ? "ON" : "OFF"}
-                  </span>
-                  <span className="text-gray-400">Today&apos;s tickets: <span className="text-white">{drawData.today.tickets}</span></span>
-                  <span className="text-gray-400">Pool forming: <span className="text-white">{drawData.today.pool_forming} Spins</span></span>
-                  <Button size="sm" variant={drawData.knobs.draw_enabled ? "destructive" : "default"} disabled={drawBusy === "knobs"}
-                    onClick={() => drawKnob({ draw_enabled: !drawData.knobs.draw_enabled })}>
-                    {drawData.knobs.draw_enabled ? "Switch off" : "Switch on"}
-                  </Button>
-                  <label className="text-xs text-gray-400 flex items-center gap-2">Pool %
-                    <Input type="number" className="w-20" defaultValue={drawData.knobs.draw_pool_pct}
-                      onBlur={(e) => { const v = Number(e.target.value); if (v !== drawData.knobs.draw_pool_pct) drawKnob({ draw_pool_pct: v }) }} />
-                  </label>
-                </div>
-
-                <div className="p-3 rounded border border-gray-800 space-y-2">
-                  <div className="text-sm text-white">Manual settle</div>
-                  <div className="text-xs text-gray-500">Day (must be over) and a seed: use a Solana blockhash from after that day closed.</div>
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <Input type="date" className="w-40" value={seedDay} onChange={(e) => setSeedDay(e.target.value)} />
-                    <Input placeholder="seed (blockhash)" className="w-72" value={seedInput} onChange={(e) => setSeedInput(e.target.value)} />
-                    <Button size="sm" disabled={drawBusy === "settle"} onClick={drawSettle}>
-                      {drawBusy === "settle" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Draw five"}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  {(drawData.days || []).map((d) => (
-                    <div key={d.day} className="p-3 rounded border border-gray-800 text-sm">
-                      <div className="flex items-center gap-3">
-                        <span className="text-white font-mono">{d.day}</span>
-                        <span className={d.status === "settled" ? "text-lime-400" : d.status === "void" ? "text-amber-400" : "text-gray-400"}>{d.status}</span>
-                        <span className="text-gray-400">pool {d.pool_spins} · players {d.players_total} · tickets {d.tickets_total}{d.carry_spins > 0 ? ` · carried ${d.carry_spins}` : ""}</span>
-                      </div>
-                      {Array.isArray((d.summary as { winners?: unknown[] } | null)?.winners) && (
-                        <div className="mt-1 text-xs text-gray-400">
-                          {((d.summary as { winners: { position: number; handle: string; spins: number }[] }).winners).map((w) => (
-                            <span key={w.position} className="mr-3">{w.position}. {w.handle} +{w.spins}</span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {drawData.days?.length === 0 && <div className="text-sm text-gray-500">No draws yet.</div>}
-                </div>
-              </>
-            )}
-            {!drawData && <div className="text-sm text-gray-500">Loading…</div>}
           </CardContent>
         </Card>
       )}
