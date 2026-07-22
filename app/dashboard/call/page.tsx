@@ -219,7 +219,7 @@ export default function CallDeskPage() {
   }
 
   const settle = async (s: Session) => {
-    const typed = prompt(`Settle session ${s.session_no}? This pays the pot and queues the Recovery Fund. Type SETTLE to confirm.`)
+    const typed = prompt(`Settle session ${s.session_no}? This pays the pot in USDC to the winners. Type SETTLE to confirm.`)
     if (typed !== "SETTLE") return
     setBusy("settle"); setMsg(null)
     try {
@@ -403,10 +403,6 @@ export default function CallDeskPage() {
               <Input type="number" value={form.session_no || ""} disabled={!!editing}
                 onChange={(e) => setForm({ ...form, session_no: e.target.value })} />
             </label>
-            <label className="text-xs text-gray-400">Recovery Fund, USDC
-              <Input type="number" value={form.recovery_fund_usdc || ""}
-                onChange={(e) => setForm({ ...form, recovery_fund_usdc: e.target.value })} />
-            </label>
             <label className="text-xs text-gray-400">Calling opens
               <Input type="datetime-local" value={form.call_opens_at || ""}
                 onChange={(e) => setForm({ ...form, call_opens_at: e.target.value })} />
@@ -439,7 +435,7 @@ export default function CallDeskPage() {
             The board {focusSession ? `· session ${focusSession.session_no}` : ""}
           </CardTitle>
           <CardDescription>
-            Raw counted plays. Payer-only, no cap: a play is a play. Pot: {data?.pot_spins ?? 0} Spins.
+            Raw counted plays. Payer-only, no cap: a play is a play. The pot is a share of today&apos;s confirmed money, worked out at settle.
           </CardDescription>
         </CardHeader>
         <CardContent>
