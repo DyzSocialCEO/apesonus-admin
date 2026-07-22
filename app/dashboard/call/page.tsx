@@ -89,7 +89,13 @@ export default function CallDeskPage() {
   const [form, setForm] = useState<Record<string, string>>({})
   const [editing, setEditing] = useState<number | null>(null)
   const [knobDraft, setKnobDraft] = useState<Knobs | null>(null)
-  const [tab, setTab] = useState<"call" | "daily" | "artist" | "test">("call")
+  const [tab, setTab] = useState<"call" | "draw" | "daily" | "artist" | "test">("call")
+  const [drawData, setDrawData] = useState<{
+    knobs: { draw_enabled: boolean; draw_pool_pct: number; draw_split_pct: number[] }
+    today: { day: string; tickets: number; pool_forming: number }
+    days: { day: string; status: string; pool_spins: number; tickets_total: number; players_total: number; seed: string | null; settle_signature: string | null }[]
+  } | null>(null)
+  const [drawBusy, setDrawBusy] = useState<string | null>(null)
   const [daily, setDaily] = useState<DailyDay[] | null>(null)
   const [dailyBusy, setDailyBusy] = useState<string | null>(null)
   const [test, setTest] = useState<{ enabled: boolean; test_payers: number; test_tickets: number; entry_spins: number } | null>(null)
@@ -117,6 +123,30 @@ export default function CallDeskPage() {
     } catch (e) {
       setMsg({ text: e instanceof Error ? e.message : "Failed", err: true })
     } finally { setTestBusy(null) }
+  }
+
+  const loadDraw = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/call/draw", { cache: "no-store" })
+      const body = await res.json()
+      if (res.ok) setDrawData(body)
+    } catch { /* soft */ }
+  }, [])
+
+  const drawAction = async (action: string, extra?: Record<string, unknown>) => {
+    setDrawBusy(action); setMsg(null)
+    try {
+      const res = await fetch("/api/admin/call/draw", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...extra }),
+      })
+      const r = await res.json()
+      if (!res.ok) throw new Error(r.error || "Failed")
+      setMsg({ text: action === "knobs" ? "Saved." : `Settled: ${JSON.stringify(r.result || r).slice(0, 160)}`, err: false })
+      await loadDraw()
+    } catch (e) {
+      setMsg({ text: e instanceof Error ? e.message : "Failed", err: true })
+    } finally { setDrawBusy(null) }
   }
 
   const loadDaily = useCallback(async () => {
@@ -285,10 +315,10 @@ export default function CallDeskPage() {
       )}
 
       <div className="flex gap-1 border-b border-gray-800">
-        {([["call", "The Call"], ["daily", "The Daily"], ["artist", "The Artist"], ["test", "Test"]] as const).map(([id, label]) => (
+        {([["call", "The Call"], ["draw", "The Draw"], ["daily", "The Daily"], ["artist", "The Artist"], ["test", "Test"]] as const).map(([id, label]) => (
           <button
             key={id}
-            onClick={() => { setTab(id); if (id === "daily" && !daily) loadDaily(); if (id === "test") loadTest() }}
+            onClick={() => { setTab(id); if (id === "daily" && !daily) loadDaily(); if (id === "test") loadTest(); if (id === "draw") loadDraw() }}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
               tab === id ? "border-lime-500 text-white" : "border-transparent text-gray-500 hover:text-gray-300"
             }`}
@@ -577,20 +607,107 @@ export default function CallDeskPage() {
         </Card>
       )}
 
+      {tab === "draw" && (
+        <div className="space-y-4">
+          <Card className="bg-gray-900 border-gray-800">
+            <CardHeader>
+              <CardTitle className="text-white">The Draw</CardTitle>
+              <CardDescription>
+                Every Spin played today is a ticket. Five names pulled tonight, paid in Spins, one name per person.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!drawData ? (
+                <div className="flex items-center gap-2 text-gray-500 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> loading…</div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between rounded-lg border border-gray-800 p-3">
+                    <div>
+                      <div className="text-white text-sm font-medium">
+                        {drawData.knobs.draw_enabled ? "The Draw is ON" : "The Draw is OFF"}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {drawData.knobs.draw_enabled
+                          ? "Players see their tickets and tonight's pile."
+                          : "Players see the Draw tab with a Starts at launch note."}
+                      </div>
+                    </div>
+                    <Button
+                      variant={drawData.knobs.draw_enabled ? "destructive" : "default"}
+                      disabled={drawBusy === "knobs"}
+                      onClick={() => drawAction("knobs", { draw_enabled: !drawData.knobs.draw_enabled })}
+                    >
+                      {drawBusy === "knobs" ? "…" : drawData.knobs.draw_enabled ? "Turn off" : "Turn on"}
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="rounded-lg border border-gray-800 p-3">
+                      <div className="text-xs text-gray-500">Tickets today</div>
+                      <div className="text-xl text-white">{drawData.today.tickets.toLocaleString()}</div>
+                    </div>
+                    <div className="rounded-lg border border-gray-800 p-3">
+                      <div className="text-xs text-gray-500">Pile forming</div>
+                      <div className="text-xl text-lime-400">{drawData.today.pool_forming.toLocaleString()}</div>
+                    </div>
+                    <div className="rounded-lg border border-gray-800 p-3">
+                      <div className="text-xs text-gray-500">Pool %</div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          className="h-8 w-16 bg-gray-950 border-gray-700 text-white"
+                          defaultValue={String(drawData.knobs.draw_pool_pct)}
+                          onBlur={(e) => {
+                            const v = Number(e.target.value)
+                            if (Number.isFinite(v) && v !== drawData.knobs.draw_pool_pct) drawAction("knobs", { draw_pool_pct: v })
+                          }}
+                        />
+                        <span className="text-xs text-gray-500">% of spend</span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gray-900 border-gray-800">
+            <CardHeader>
+              <CardTitle className="text-white">Recent days</CardTitle>
+              <CardDescription>The nightly cron settles these. Settle by hand only if a night was missed.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!drawData?.days?.length ? (
+                <p className="text-sm text-gray-500">No draw days yet.</p>
+              ) : (
+                <div className="space-y-1">
+                  {drawData.days.map((d) => (
+                    <div key={d.day} className="flex items-center gap-3 py-2 border-t border-gray-800 text-sm first:border-t-0">
+                      <span className="font-mono text-gray-300 w-24">{d.day}</span>
+                      <Badge variant={d.status === "settled" ? "default" : "outline"}>{d.status}</Badge>
+                      <span className="text-gray-500 flex-1">
+                        {d.tickets_total?.toLocaleString() || 0} tickets · {d.players_total || 0} players
+                      </span>
+                      <span className="text-lime-400 font-mono">{d.pool_spins?.toLocaleString() || 0}</span>
+                      {d.settle_signature && <Badge variant="outline">anchored</Badge>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {tab === "artist" && (
         <Card className="bg-gray-900 border-gray-800">
           <CardHeader>
             <CardTitle className="text-white">The Artist</CardTitle>
             <CardDescription>Back which artist has the biggest week. Spins in, Spins out. No money fund on this one.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent>
             <p className="text-sm text-gray-400">
-              The Artist round runs on the existing Backing engine, which now settles on counted plays like the rest.
-              Its controls, open a round, set the pool, settle, live on the Backing Desk.
+              Post-beta. Beta is the daily top-5 call plus the nightly draw. Nothing to run here yet.
             </p>
-            <a href="/dashboard/cosign">
-              <Button variant="outline">Open the Backing Desk</Button>
-            </a>
           </CardContent>
         </Card>
       )}
