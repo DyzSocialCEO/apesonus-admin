@@ -27,17 +27,21 @@ export async function GET() {
     const supabase = await createAdminClient()
     const today = new Date().toISOString().slice(0, 10)
 
-    const [{ data: cfgRow }, { data: days }, { data: agg }] = await Promise.all([
+    const [{ data: cfgRow }, { data: days }, { data: agg }, { data: rev }] = await Promise.all([
       supabase.from("app_settings").select("value").eq("key", "pit_config").maybeSingle(),
       supabase.from("pit_draw_days").select("*").order("day", { ascending: false }).limit(14),
       supabase.from("pit_qualified_plays").select("ammo_cost.sum()")
         .eq("source", "ammo").gt("ammo_cost", 0).gte("played_at", `${today}T00:00:00.000Z`),
+      supabase.from("pit_ammo_purchases").select("usd_cents")
+        .eq("status", "confirmed").gte("confirmed_at", `${today}T00:00:00.000Z`),
     ])
 
     let cfg: Record<string, unknown> = {}
     try { cfg = JSON.parse(cfgRow?.value || "{}") } catch {}
     const roomTickets = Number((agg?.[0] as { sum?: number } | undefined)?.sum) || 0
-    const poolPct = Number(cfg.draw_pool_pct) || 30
+    const poolPct = Number(cfg.draw_pool_pct) || 10
+    // the pile is a slice of money confirmed today; tickets only decide who wins it
+    const revenueCents = (rev || []).reduce((a: number, r: { usd_cents: number }) => a + (Number(r.usd_cents) || 0), 0)
 
     return NextResponse.json({
       knobs: {
@@ -45,7 +49,7 @@ export async function GET() {
         draw_pool_pct: poolPct,
         draw_split_pct: cfg.draw_split_pct ?? [40, 25, 15, 12, 8],
       },
-      today: { day: today, tickets: roomTickets, pool_forming: Math.floor((roomTickets * poolPct) / 100) },
+      today: { day: today, tickets: roomTickets, pool_forming_cents: Math.floor((revenueCents * poolPct) / 100) },
       days: days || [],
     })
   } catch (e) {

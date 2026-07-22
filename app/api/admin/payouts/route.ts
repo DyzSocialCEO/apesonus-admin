@@ -16,7 +16,7 @@ export const maxDuration = 60
  *
  * POST { ids: number[] }
  *   Sends real USDC from the payout wallet to each claim's wallet, ONE tx per
- *   claim, then stamps that row sent via conviction_mark_sent. Returns a
+ *   claim, then stamps that row sent via pit_cash_mark_sent. Returns a
  *   per-id result. No manual signature paste — the server sends and records.
  *   Errors on any single claim don't abort the batch; that claim stays
  *   'requested' and is reported failed.
@@ -34,20 +34,23 @@ export async function GET(request: Request) {
   try {
     const supabase = await createAdminClient()
     const { data: rows } = await supabase
-      .from("conviction_payouts")
-      .select("id, contest_id, user_id, amount_usd, wallet_address, status, tx_signature, requested_at, created_at")
+      .from("pit_cash_ledger")
+      .select("id, user_id, usd_cents, wallet_address, status, tx_signature, created_at, sent_at")
+      .eq("kind", "withdrawal")
       .eq("status", status)
-      .order(status === "requested" ? "requested_at" : "created_at", { ascending: true })
+      .order("created_at", { ascending: true })
       .limit(500)
 
+    // usd_cents is negative on a withdrawal row (it debits the balance).
+    // The amount to send is its size.
     const claims = (rows || []).map((r: any) => ({
       id: r.id,
-      contest_id: r.contest_id,
+      contest_id: null,
       wallet: r.wallet_address,
-      value: Number(r.amount_usd) || 0,
+      value: Math.abs(Number(r.usd_cents) || 0) / 100,
       currency: "usdc",
       tx_signature: r.tx_signature,
-      when: r.requested_at || r.created_at,
+      when: r.sent_at || r.created_at,
       needs_wallet: !r.wallet_address,
     }))
 
@@ -75,16 +78,17 @@ export async function POST(request: Request) {
 
     // Re-read the claims fresh; only pay ones still 'requested' with a wallet.
     const { data: rows } = await supabase
-      .from("conviction_payouts")
-      .select("id, user_id, amount_usd, wallet_address, status")
+      .from("pit_cash_ledger")
+      .select("id, user_id, usd_cents, wallet_address, status")
       .in("id", ids)
+      .eq("kind", "withdrawal")
       .eq("status", "requested")
 
     const results: { id: number; ok: boolean; signature?: string; error?: string }[] = []
 
     for (const r of rows || []) {
       const wallet = (r as any).wallet_address as string | null
-      const amount = Number((r as any).amount_usd) || 0
+      const amount = Math.abs(Number((r as any).usd_cents) || 0) / 100
       if (!wallet || amount <= 0) {
         results.push({ id: r.id, ok: false, error: "missing wallet or amount" })
         continue
@@ -93,8 +97,8 @@ export async function POST(request: Request) {
         const { signature } = await sendUsdc(wallet, amount)
         // Best-effort confirm; even if confirmation lags, the sig is recorded.
         await confirmSig(signature).catch(() => false)
-        const { data: mark } = await supabase.rpc("conviction_mark_sent", {
-          p_payout: r.id, p_sig: signature,
+        const { data: mark } = await supabase.rpc("pit_cash_mark_sent", {
+          p_id: r.id, p_signature: signature,
         })
         if ((mark as any)?.ok) results.push({ id: r.id, ok: true, signature })
         else results.push({ id: r.id, ok: false, signature, error: "sent but not stamped — check tx" })

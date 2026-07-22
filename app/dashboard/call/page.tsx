@@ -92,8 +92,8 @@ export default function CallDeskPage() {
   const [tab, setTab] = useState<"call" | "draw" | "daily" | "artist" | "test">("call")
   const [drawData, setDrawData] = useState<{
     knobs: { draw_enabled: boolean; draw_pool_pct: number; draw_split_pct: number[] }
-    today: { day: string; tickets: number; pool_forming: number }
-    days: { day: string; status: string; pool_spins: number; tickets_total: number; players_total: number; seed: string | null; settle_signature: string | null }[]
+    today: { day: string; tickets: number; pool_forming_cents: number }
+    days: { day: string; status: string; pool_usd_cents: number; tickets_total: number; players_total: number; seed: string | null; settle_signature: string | null }[]
   } | null>(null)
   const [drawBusy, setDrawBusy] = useState<string | null>(null)
   const [daily, setDaily] = useState<DailyDay[] | null>(null)
@@ -648,7 +648,7 @@ export default function CallDeskPage() {
                     </div>
                     <div className="rounded-lg border border-gray-800 p-3">
                       <div className="text-xs text-gray-500">Pile forming</div>
-                      <div className="text-xl text-lime-400">{drawData.today.pool_forming.toLocaleString()}</div>
+                      <div className="text-xl text-lime-400">${(drawData.today.pool_forming_cents / 100).toFixed(2)}</div>
                     </div>
                     <div className="rounded-lg border border-gray-800 p-3">
                       <div className="text-xs text-gray-500">Pool %</div>
@@ -687,7 +687,7 @@ export default function CallDeskPage() {
                       <span className="text-gray-500 flex-1">
                         {d.tickets_total?.toLocaleString() || 0} tickets · {d.players_total || 0} players
                       </span>
-                      <span className="text-lime-400 font-mono">{d.pool_spins?.toLocaleString() || 0}</span>
+                      <span className="text-lime-400 font-mono">${((d.pool_usd_cents || 0) / 100).toFixed(2)}</span>
                       {d.settle_signature && <Badge variant="outline">anchored</Badge>}
                     </div>
                   ))}
