@@ -30,17 +30,26 @@ const navigation = [
   { name: "Settings",        href: "/dashboard/settings",        icon: Settings        },
 ]
 
-export function Sidebar() {
-  const pathname = usePathname()
-  const router = useRouter()
-  const [mobileOpen, setMobileOpen] = useState(false)
-
-  const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" })
-    router.push("/login"); router.refresh()
-  }
-
-  const NavContent = () => (
+/**
+ * The nav lives outside the Sidebar function on purpose.
+ *
+ * When it was declared inside, every navigation changed the pathname, which
+ * re-rendered Sidebar, which created a brand new NavContent function. React
+ * reads a new function identity as a different component type, so it threw
+ * away the nav element and built a fresh one. The scroll position went with
+ * it, which is why clicking anything low in the list bounced the menu back
+ * to the top.
+ */
+function NavContent({
+  pathname,
+  onNavigate,
+  onLogout,
+}: {
+  pathname: string
+  onNavigate: () => void
+  onLogout: () => void
+}) {
+  return (
     <>
       <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-800">
         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -56,7 +65,7 @@ export function Sidebar() {
         {navigation.map((item) => {
           const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"))
           return (
-            <Link key={item.name} href={item.href} onClick={() => setMobileOpen(false)}
+            <Link key={item.name} href={item.href} onClick={onNavigate}
               className={cn(
                 "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors",
                 isActive ? "bg-primary/10 text-primary" : "text-gray-400 hover:text-white hover:bg-gray-800"
@@ -69,7 +78,7 @@ export function Sidebar() {
       </nav>
 
       <div className="px-4 py-4 border-t border-gray-800">
-        <button onClick={handleLogout}
+        <button onClick={onLogout}
           className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors w-full">
           <LogOut className="w-5 h-5" />
           Sign Out
@@ -77,6 +86,19 @@ export function Sidebar() {
       </div>
     </>
   )
+}
+
+export function Sidebar() {
+  const pathname = usePathname()
+  const router = useRouter()
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" })
+    router.push("/login"); router.refresh()
+  }
+
+  const closeMobile = () => setMobileOpen(false)
 
   return (
     <>
@@ -86,18 +108,18 @@ export function Sidebar() {
       </button>
 
       {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setMobileOpen(false)} />
+        <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={closeMobile} />
       )}
 
       <aside className={cn(
         "lg:hidden fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 border-r border-gray-800 flex flex-col transform transition-transform duration-200",
         mobileOpen ? "translate-x-0" : "-translate-x-full"
       )}>
-        <NavContent />
+        <NavContent pathname={pathname} onNavigate={closeMobile} onLogout={handleLogout} />
       </aside>
 
       <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 bg-gray-900 border-r border-gray-800">
-        <NavContent />
+        <NavContent pathname={pathname} onNavigate={closeMobile} onLogout={handleLogout} />
       </aside>
     </>
   )
