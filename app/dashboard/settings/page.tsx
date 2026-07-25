@@ -679,6 +679,7 @@ function PayRailCard() {
   const [decimals, setDecimals] = useState("6")
   const [symbol, setSymbol] = useState("ONUS")
   const [ttl, setTtl] = useState("5")
+  const [manualPrice, setManualPrice] = useState("")
   const [loaded, setLoaded] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -698,12 +699,14 @@ function PayRailCard() {
         onus_decimals: String(s.onus_decimals ?? "6"),
         onus_symbol: String(s.onus_symbol ?? "ONUS"),
         onus_ttl_min: String(s.onus_ttl_min ?? "5"),
+        onus_manual_price_usd: String(s.onus_manual_price_usd ?? ""),
       }
       setRail(next.pay_rail === "onus" ? "onus" : "usdc")
       setMint(next.onus_mint)
       setDecimals(next.onus_decimals)
       setSymbol(next.onus_symbol)
       setTtl(next.onus_ttl_min)
+      setManualPrice(next.onus_manual_price_usd)
       setLoaded(next)
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Load failed")
@@ -726,7 +729,8 @@ function PayRailCard() {
     trimmedMint !== (loaded.onus_mint ?? "") ||
     decimals !== (loaded.onus_decimals ?? "") ||
     symbol.trim() !== (loaded.onus_symbol ?? "") ||
-    ttl !== (loaded.onus_ttl_min ?? "")
+    ttl !== (loaded.onus_ttl_min ?? "") ||
+    manualPrice.trim() !== (loaded.onus_manual_price_usd ?? "")
 
   const save = async () => {
     if (rail === "onus" && !canGoOnus) {
@@ -741,6 +745,7 @@ function PayRailCard() {
         onus_decimals: String(decimals),
         onus_symbol: symbol.trim().toUpperCase(),
         onus_ttl_min: String(ttl),
+        onus_manual_price_usd: manualPrice.trim(),
       }
       const res = await fetch("/api/admin/settings", {
         method: "PATCH",
@@ -819,6 +824,20 @@ function PayRailCard() {
                   className="bg-gray-950 border-gray-800 text-white" />
               </Field>
             </div>
+
+            <Field label="Fallback price in USD per token (leave blank unless the feeds are down)">
+              <Input
+                value={manualPrice}
+                onChange={(e) => setManualPrice(e.target.value)}
+                placeholder="e.g. 0.0000021"
+                inputMode="decimal"
+                className="bg-gray-950 border-gray-800 text-white font-mono text-xs"
+              />
+            </Field>
+            <p className="text-xs text-gray-500">
+              Live feeds are tried first and this is only used when they all go silent. A stale
+              number here sells Spins at the wrong price, so clear it once the feeds are back.
+            </p>
 
             {rail === "onus" && !canGoOnus && (
               <p className="text-xs text-amber-400">

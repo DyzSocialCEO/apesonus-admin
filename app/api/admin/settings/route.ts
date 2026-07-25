@@ -48,6 +48,7 @@ const ALLOWED_KEYS = new Set([
   "onus_decimals",
   "onus_symbol",
   "onus_ttl_min",
+  "onus_manual_price_usd",
 ])
 
 function looksLikeSolanaAddress(s: string): boolean {
@@ -144,6 +145,12 @@ function validate(key: string, value: string): string | null {
       if (value === "") return null
       const n = Number(value)
       if (!Number.isInteger(n) || n < 1 || n > 60) return "onus_ttl_min must be a whole number of minutes from 1 to 60"
+      return null
+    }
+    case "onus_manual_price_usd": {
+      if (value === "") return null
+      const n = Number(value)
+      if (!Number.isFinite(n) || n <= 0) return "onus_manual_price_usd must be a positive number, or blank"
       return null
     }
     case "helius_webhook_secret": {
