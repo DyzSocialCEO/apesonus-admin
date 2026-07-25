@@ -185,6 +185,7 @@ export default function SettingsPage() {
 
       {/* Receiving wallet — the one live, working control */}
       <ReceivingWalletCard />
+      <PayRailCard />
       <PaymentsToggleCard />
 
       <ConvictionToggleCard />
@@ -662,6 +663,189 @@ function ExpirySweepCard() {
 // ─────────────────────────────────────────────────────────────────────
 // Small inline components
 // ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Which token Spins are paid in.
+ *
+ * "usdc" is the stable rail and needs nothing set. "onus" is the floating
+ * rail: the app quotes each order in tokens at the live price and freezes
+ * that amount, so the mint and its decimals have to be right before the
+ * rail is flipped. The app refuses to switch on a malformed mint, so a
+ * half-filled form here cannot take money in a token nothing can verify.
+ */
+function PayRailCard() {
+  const [rail, setRail] = useState("usdc")
+  const [mint, setMint] = useState("")
+  const [decimals, setDecimals] = useState("6")
+  const [symbol, setSymbol] = useState("ONUS")
+  const [ttl, setTtl] = useState("5")
+  const [loaded, setLoaded] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(null)
+    try {
+      const res = await fetch("/api/admin/settings")
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      const s = data.settings || {}
+      const next = {
+        pay_rail: String(s.pay_rail ?? "usdc"),
+        onus_mint: String(s.onus_mint ?? ""),
+        onus_decimals: String(s.onus_decimals ?? "6"),
+        onus_symbol: String(s.onus_symbol ?? "ONUS"),
+        onus_ttl_min: String(s.onus_ttl_min ?? "5"),
+      }
+      setRail(next.pay_rail === "onus" ? "onus" : "usdc")
+      setMint(next.onus_mint)
+      setDecimals(next.onus_decimals)
+      setSymbol(next.onus_symbol)
+      setTtl(next.onus_ttl_min)
+      setLoaded(next)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Load failed")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const trimmedMint = mint.trim()
+  const mintValid = SOLANA_ADDRESS_RE.test(trimmedMint)
+  const decNum = Number(decimals)
+  const decValid = Number.isFinite(decNum) && decNum >= 0 && decNum <= 12
+  const ttlNum = Number(ttl)
+  const ttlValid = Number.isFinite(ttlNum) && ttlNum >= 1 && ttlNum <= 60
+  const canGoOnus = mintValid && decValid && ttlValid
+  const dirty =
+    rail !== (loaded.pay_rail === "onus" ? "onus" : "usdc") ||
+    trimmedMint !== (loaded.onus_mint ?? "") ||
+    decimals !== (loaded.onus_decimals ?? "") ||
+    symbol.trim() !== (loaded.onus_symbol ?? "") ||
+    ttl !== (loaded.onus_ttl_min ?? "")
+
+  const save = async () => {
+    if (rail === "onus" && !canGoOnus) {
+      setErr("Fill in a valid mint, decimals and window before switching the rail.")
+      return
+    }
+    setSaving(true); setErr(null); setSaved(false)
+    try {
+      const updates: Record<string, string> = {
+        pay_rail: rail,
+        onus_mint: trimmedMint,
+        onus_decimals: String(decimals),
+        onus_symbol: symbol.trim().toUpperCase(),
+        onus_ttl_min: String(ttl),
+      }
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error || `Failed (${res.status})`)
+      setLoaded(updates)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Save failed")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card className="bg-gray-900 border-gray-800">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-white">
+          <Gem className="w-4 h-4" /> Payment token
+        </CardTitle>
+        <CardDescription>
+          The token buyers pay in. On the token rail each order is quoted at the live price
+          and frozen, so the mint and decimals must be correct before you switch. Pending
+          orders keep the token they were opened on.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="flex items-center gap-2 text-gray-400 text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setRail("usdc")}
+                className={`px-3 py-2 rounded-lg text-sm border ${rail === "usdc" ? "bg-white/10 border-white/40 text-white" : "border-gray-700 text-gray-400"}`}
+              >
+                USDC (stable)
+              </button>
+              <button
+                onClick={() => setRail("onus")}
+                className={`px-3 py-2 rounded-lg text-sm border ${rail === "onus" ? "bg-white/10 border-white/40 text-white" : "border-gray-700 text-gray-400"}`}
+              >
+                Token (floating)
+              </button>
+            </div>
+
+            <Field label="Token mint address (the CA)">
+              <Input
+                value={mint}
+                onChange={(e) => setMint(e.target.value)}
+                placeholder="Paste the mint address at launch"
+                className="bg-gray-950 border-gray-800 text-white font-mono text-xs"
+              />
+            </Field>
+            {trimmedMint.length > 0 && !mintValid && (
+              <p className="text-xs text-red-400">That doesn't look like a Solana address (32-44 base58 characters).</p>
+            )}
+
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Decimals">
+                <Input value={decimals} onChange={(e) => setDecimals(e.target.value)} inputMode="numeric"
+                  className="bg-gray-950 border-gray-800 text-white" />
+              </Field>
+              <Field label="Symbol">
+                <Input value={symbol} onChange={(e) => setSymbol(e.target.value)}
+                  className="bg-gray-950 border-gray-800 text-white" />
+              </Field>
+              <Field label="Order window (min)">
+                <Input value={ttl} onChange={(e) => setTtl(e.target.value)} inputMode="numeric"
+                  className="bg-gray-950 border-gray-800 text-white" />
+              </Field>
+            </div>
+
+            {rail === "onus" && !canGoOnus && (
+              <p className="text-xs text-amber-400">
+                The app will stay on USDC until the mint, decimals and window are all valid.
+              </p>
+            )}
+
+            {err && <p className="text-xs text-red-400">{err}</p>}
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={save}
+                disabled={saving || !dirty}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-amber-500/20 text-amber-300 border border-amber-500/40 disabled:opacity-40"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save rail
+              </button>
+              {saved && <span className="text-xs text-green-400 inline-flex items-center gap-1"><Check className="w-3 h-3" /> Saved</span>}
+              {dirty && !saved && <span className="text-xs text-amber-400">Unsaved change</span>}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (

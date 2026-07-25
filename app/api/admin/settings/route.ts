@@ -42,6 +42,12 @@ const ALLOWED_KEYS = new Set([
   "cp_pack_whale_amount",
   "daily_free_cp_grant",
   "ledger_day_threshold",
+  // Payment rail — which token Spins are bought with
+  "pay_rail",
+  "onus_mint",
+  "onus_decimals",
+  "onus_symbol",
+  "onus_ttl_min",
 ])
 
 function looksLikeSolanaAddress(s: string): boolean {
@@ -112,6 +118,33 @@ function validate(key: string, value: string): string | null {
     case "payments_enabled": {
       if (value === "true" || value === "false" || value === "") return null
       return "payments_enabled must be 'true' or 'false'"
+    }
+    case "pay_rail": {
+      if (value === "usdc" || value === "onus" || value === "") return null
+      return "pay_rail must be 'usdc' or 'onus'"
+    }
+    case "onus_mint": {
+      if (value === "") return null // empty is fine while the rail is still USDC
+      return looksLikeSolanaAddress(value)
+        ? null
+        : "onus_mint must be a valid Solana address (32-44 base58 chars)"
+    }
+    case "onus_decimals": {
+      if (value === "") return null
+      const n = Number(value)
+      if (!Number.isInteger(n) || n < 0 || n > 12) return "onus_decimals must be a whole number from 0 to 12"
+      return null
+    }
+    case "onus_symbol": {
+      if (value === "") return null
+      if (value.length > 10) return "onus_symbol must be 10 characters or fewer"
+      return null
+    }
+    case "onus_ttl_min": {
+      if (value === "") return null
+      const n = Number(value)
+      if (!Number.isInteger(n) || n < 1 || n > 60) return "onus_ttl_min must be a whole number of minutes from 1 to 60"
+      return null
     }
     case "helius_webhook_secret": {
       if (value === "") return null
