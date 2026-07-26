@@ -4,11 +4,21 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
-  Megaphone, TrendingUp,
-  ScrollText, UserCircle, DollarSign, Coins, Zap, Share2, PenLine, KeyRound, Gem, Gift, Swords, Target } from "lucide-react"
+  TrendingUp,
+  ScrollText, UserCircle, DollarSign, Coins, Zap, KeyRound, Target } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
+/**
+ * Only desks that do a job at launch.
+ *
+ * Removed from the menu, deliberately: Referrals (the commission was killed, so
+ * the desk sets a rate nothing reads), Banners, and Airdrops (sponsor token
+ * drops to Ember holders). The pages still exist and nothing imports them, so
+ * any of them can be put back by restoring one line here.
+ *
+ * Partner Access and Distribution stay. They work, and partners are coming.
+ */
 const navigation = [
   { name: "Dashboard",       href: "/dashboard",                 icon: LayoutDashboard },
   { name: "Finance",         href: "/dashboard/finance",         icon: DollarSign      },
@@ -17,13 +27,10 @@ const navigation = [
   { name: "Chart",           href: "/dashboard/chart",           icon: TrendingUp      },
   { name: "The Call",        href: "/dashboard/call",            icon: Target          },
   { name: "Payouts",         href: "/dashboard/payouts",         icon: DollarSign      },
-  { name: "Airdrops",        href: "/dashboard/airdrops",        icon: Gift            },
   { name: "Users",           href: "/dashboard/users",           icon: Users           },
-  { name: "Banners",         href: "/dashboard/banners",         icon: Megaphone       },
   { name: "Spins",           href: "/dashboard/ammo",            icon: Zap             },
   { name: "Revenue",         href: "/dashboard/revenue",         icon: DollarSign     },
   { name: "Distribution",    href: "/dashboard/distribution",    icon: Coins          },
-  { name: "Referrals",       href: "/dashboard/referrals",       icon: Share2          },
   { name: "Partner Access",  href: "/dashboard/partner-access",  icon: KeyRound        },
   { name: "Analytics",       href: "/dashboard/analytics",       icon: BarChart3       },
   { name: "Logs",            href: "/dashboard/logs",            icon: ScrollText      },

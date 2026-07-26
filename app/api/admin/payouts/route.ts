@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { getSession } from "@/lib/auth"
-import { sendUsdc, confirmSig, payoutWalletAddress } from "@/lib/solana-payout"
+import { sendUsdc, sendSplToken, confirmSig, payoutWalletAddress } from "@/lib/solana-payout"
+import { readPayoutRail, tokensForUsd } from "@/lib/payout-rail"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -43,12 +44,17 @@ export async function GET(request: Request) {
 
     // usd_cents is negative on a withdrawal row (it debits the balance).
     // The amount to send is its size.
+    // What winners are actually paid in right now. Balances are always held in
+    // dollars; the rail only decides which asset settles that debt at send time.
+    const rail = await readPayoutRail(supabase)
+    const currency = rail.kind === "token" ? rail.symbol.toLowerCase() : "usdc"
+
     const claims = (rows || []).map((r: any) => ({
       id: r.id,
       contest_id: null,
       wallet: r.wallet_address,
       value: Math.abs(Number(r.usd_cents) || 0) / 100,
-      currency: "usdc",
+      currency,
       tx_signature: r.tx_signature,
       when: r.sent_at || r.created_at,
       needs_wallet: !r.wallet_address,
@@ -57,6 +63,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       status,
       claims,
+      currency,
+      pay_rail: rail.kind,
       payout_wallet: payoutWalletAddress(),
     })
   } catch (e: any) {
@@ -86,6 +94,23 @@ export async function POST(request: Request) {
 
     const results: { id: number; ok: boolean; signature?: string; error?: string }[] = []
 
+    // Winner balances are kept in dollars. On the token rail the dollar debt is
+    // converted at the live price at the moment of sending, so a winner owed $12
+    // receives twelve dollars of the token as of that second. One price is read
+    // for the whole batch, which also keeps a batch internally consistent.
+    const rail = await readPayoutRail(supabase)
+    let price: { priceUsd: number; source: string } | null = null
+    if (rail.kind === "token") {
+      const probe = await tokensForUsd(rail, 1)
+      if (!probe) {
+        return NextResponse.json(
+          { error: "No trustworthy token price right now. Nothing was sent. Set a fallback price in Settings or try again shortly." },
+          { status: 503 },
+        )
+      }
+      price = { priceUsd: probe.priceUsd, source: probe.source }
+    }
+
     for (const r of rows || []) {
       const wallet = (r as any).wallet_address as string | null
       const amount = Math.abs(Number((r as any).usd_cents) || 0) / 100
@@ -94,7 +119,10 @@ export async function POST(request: Request) {
         continue
       }
       try {
-        const { signature } = await sendUsdc(wallet, amount)
+        const { signature } =
+          rail.kind === "token" && price
+            ? await sendSplToken(rail.mint, rail.decimals, wallet, amount / price.priceUsd)
+            : await sendUsdc(wallet, amount)
         // Best-effort confirm; even if confirmation lags, the sig is recorded.
         await confirmSig(signature).catch(() => false)
         const { data: mark } = await supabase.rpc("pit_cash_mark_sent", {
@@ -108,7 +136,12 @@ export async function POST(request: Request) {
     }
 
     const sent = results.filter((x) => x.ok).length
-    return NextResponse.json({ ok: true, sent, total: results.length, results })
+    return NextResponse.json({
+      ok: true, sent, total: results.length, results,
+      paid_in: rail.kind === "token" ? rail.symbol : "USDC",
+      price_usd: price?.priceUsd ?? null,
+      price_source: price?.source ?? null,
+    })
   } catch (e: any) {
     console.error("[admin/payouts POST]", e)
     return NextResponse.json({ error: String(e?.message || e) }, { status: 500 })
