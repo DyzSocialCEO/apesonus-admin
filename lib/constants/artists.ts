@@ -13,6 +13,8 @@ type MoodType = "moon" | "rekt" | "cope" | "degen" | "zen"
 export interface ArtistProfile {
   id: string
   name: string
+  gender?: string
+  companionBible?: string
   moods: MoodType[]
   tagline: string
   backstory: string

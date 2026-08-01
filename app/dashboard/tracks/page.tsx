@@ -40,6 +40,8 @@ const ARTISTS = [
   { id: "mcbagholder",       name: "McBagholder"        },
   { id: "shilliam-dafoe",    name: "Shilliam Dafoe"     },
   { id: "satosheek",         name: "Satosheek"          },
+  { id: "shim-liquidation",  name: "Shim Liquidation"   },
+  { id: "rektina-loprez",    name: "Rektina Loprez"     },
 ]
 
 function expandAudioUrl(input: string): string {
