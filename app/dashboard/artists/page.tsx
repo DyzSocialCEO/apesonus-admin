@@ -4,7 +4,8 @@ import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Loader2, Save, AlertTriangle, CheckCircle2, Users } from "lucide-react"
+import { Loader2, Save, AlertTriangle, CheckCircle2, Users, Plus, Pencil } from "lucide-react"
+import { slugifyArtistName } from "@/lib/constants/roster-list"
 
 const IMAGE_CDN = "https://apesonus-images.b-cdn.net"
 
@@ -31,10 +32,99 @@ interface ArtistSummary {
   distinctCovers: string[]
 }
 
+interface DbArtist {
+  id: string
+  name: string
+  tagline: string
+  backstory: string
+  gender: string | null
+  moods: string[]
+  take_prompt: string
+  companion_bible: string
+  image: string | null
+  sort_order: number
+  is_active: boolean
+}
+
+const ALL_MOODS = ["moon", "rekt", "cope", "degen", "zen"]
+
+const emptyArtist: Partial<DbArtist> = {
+  name: "", tagline: "", backstory: "", gender: "", moods: [...ALL_MOODS],
+  take_prompt: "", companion_bible: "", image: "", sort_order: 0, is_active: true,
+}
+
 export default function ArtistCoversPage() {
   const [artists, setArtists] = useState<ArtistSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState("")
+
+  // ─── ADD ARTIST ────────────────────────────────────────────────
+  const [dbArtists, setDbArtists] = useState<DbArtist[]>([])
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState<Partial<DbArtist>>(emptyArtist)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [savingArtist, setSavingArtist] = useState(false)
+
+  const loadDbArtists = async () => {
+    try {
+      const res = await fetch("/api/admin/artists", { cache: "no-store" })
+      if (!res.ok) return
+      const data = await res.json()
+      setDbArtists(data.dbArtists || [])
+    } catch { /* section just stays empty */ }
+  }
+  useEffect(() => { loadDbArtists() }, [])
+
+  const openCreate = () => { setEditingId(null); setForm(emptyArtist); setShowForm(true) }
+  const openEdit = (a: DbArtist) => {
+    setEditingId(a.id)
+    setForm({ ...a, gender: a.gender || "", image: a.image ? shortenUrl(a.image, IMAGE_CDN) : "" })
+    setShowForm(true)
+  }
+
+  const toggleMood = (m: string) => {
+    const current = form.moods || []
+    setForm({ ...form, moods: current.includes(m) ? current.filter(x => x !== m) : [...current, m] })
+  }
+
+  const saveArtist = async () => {
+    const name = (form.name || "").trim()
+    if (!name) { setMsg("Name is required"); return }
+    setSavingArtist(true)
+    try {
+      const payload = {
+        ...form,
+        name,
+        image: form.image ? expandImageUrl(form.image) : "",
+        id: editingId || undefined,
+      }
+      const res = await fetch("/api/admin/artists", {
+        method: editingId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMsg(data.error || "Save failed"); return }
+      setMsg(editingId ? `Updated ${name}` : `${name} joins the staff — add their first track and they go live`)
+      setShowForm(false)
+      await loadDbArtists()
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Save failed")
+    } finally {
+      setSavingArtist(false)
+    }
+  }
+
+  const toggleActive = async (a: DbArtist) => {
+    try {
+      const res = await fetch("/api/admin/artists", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: a.id, is_active: !a.is_active }),
+      })
+      if (res.ok) await loadDbArtists()
+    } catch { /* leave as-is */ }
+  }
 
   // Local draft of the cover path per artist, keyed by artist id.
   // Starts empty, gets primed with dominantCover on first load.
@@ -114,12 +204,50 @@ export default function ArtistCoversPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Artist Covers</h1>
+          <h1 className="text-2xl font-bold text-white">Artists</h1>
           <p className="text-sm text-gray-400 mt-1">
             Upload a new image to BunnyCDN via the dashboard, then paste the path here. One save updates every track under that artist.
           </p>
         </div>
+        <Button onClick={openCreate} className="bg-yellow-600 hover:bg-yellow-500 text-black font-semibold">
+          <Plus className="w-4 h-4 mr-1.5" /> Add Artist
+        </Button>
       </div>
+
+      {dbArtists.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-widest text-gray-500">Created from admin</p>
+          <div className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+            {dbArtists.map(a => (
+              <Card key={a.id} className={`bg-gray-900/60 border-gray-800 ${a.is_active ? "" : "opacity-50"}`}>
+                <CardContent className="p-4 flex items-center gap-3">
+                  {a.image ? (
+                    <img src={a.image} alt={a.name} className="w-12 h-12 rounded-lg object-cover bg-gray-800 shrink-0" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-lg bg-gray-800 flex items-center justify-center shrink-0">
+                      <Users className="w-5 h-5 text-gray-600" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-white font-semibold truncate">{a.name}</p>
+                    <p className="text-xs text-gray-500 truncate">{a.tagline || a.id}</p>
+                    {!a.is_active && <p className="text-[10px] text-red-400 mt-0.5">HIDDEN — not in dropdown or app</p>}
+                  </div>
+                  <button onClick={() => openEdit(a)} className="p-2 text-gray-400 hover:text-white" title="Edit">
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => toggleActive(a)}
+                    className={`text-[10px] px-2 py-1 rounded border ${a.is_active ? "border-gray-700 text-gray-400 hover:text-white" : "border-yellow-700 text-yellow-500"}`}
+                  >
+                    {a.is_active ? "HIDE" : "SHOW"}
+                  </button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {msg && (
         <div className="rounded-lg border border-gray-800 bg-gray-900/60 px-4 py-3 text-sm text-gray-200">
@@ -236,6 +364,125 @@ export default function ArtistCoversPage() {
               </Card>
             )
           })}
+        </div>
+      )}
+
+      {/* ─── ADD / EDIT ARTIST MODAL ─────────────────────────────── */}
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto py-8 px-4">
+          <div className="w-full max-w-xl bg-gray-950 border border-gray-800 rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white">{editingId ? "Edit Artist" : "Add New Artist"}</h2>
+              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-white text-xl leading-none">×</button>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">Name *</label>
+              <Input
+                value={form.name || ""}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+                placeholder="Artist name"
+                disabled={!!editingId}
+                className="bg-gray-800 border-gray-700 text-white"
+              />
+              {!editingId && (form.name || "").trim() && (
+                <p className="text-[10px] text-gray-500 mt-1">
+                  URL id will be <span className="text-gray-300">{slugifyArtistName(form.name || "")}</span> — it cannot change later.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">Tagline</label>
+              <Input
+                value={form.tagline || ""}
+                onChange={e => setForm({ ...form, tagline: e.target.value })}
+                placeholder="One line under their name"
+                className="bg-gray-800 border-gray-700 text-white"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">Backstory</label>
+              <textarea
+                value={form.backstory || ""}
+                onChange={e => setForm({ ...form, backstory: e.target.value })}
+                rows={5}
+                placeholder="Who they are. Same voice as the existing profiles."
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">Gender / pronouns <span className="text-gray-500">(optional)</span></label>
+              <Input
+                value={form.gender || ""}
+                onChange={e => setForm({ ...form, gender: e.target.value })}
+                placeholder={"e.g. woman · man · androgynous, they/them"}
+                className="bg-gray-800 border-gray-700 text-white"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">Mood worlds</label>
+              <div className="flex flex-wrap gap-2">
+                {ALL_MOODS.map(m => {
+                  const on = (form.moods || []).includes(m)
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => toggleMood(m)}
+                      className={`px-3 py-1 rounded-full text-xs uppercase tracking-wide border ${on ? "bg-yellow-600 text-black border-yellow-600 font-semibold" : "border-gray-700 text-gray-400"}`}
+                    >
+                      {m}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[10px] text-gray-500 mt-1">Their typical territory — any artist can still release in any mood.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">Weekly take prompt <span className="text-gray-500">(optional)</span></label>
+              <textarea
+                value={form.take_prompt || ""}
+                onChange={e => setForm({ ...form, take_prompt: e.target.value })}
+                rows={2}
+                placeholder="You are [name] — ... Write your weekly market take in 2-3 sentences."
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">Companion bible <span className="text-gray-500">(optional)</span></label>
+              <textarea
+                value={form.companion_bible || ""}
+                onChange={e => setForm({ ...form, companion_bible: e.target.value })}
+                rows={4}
+                placeholder="WHO THEY ARE: ... VOICE: ... IN EACH SCENARIO: ..."
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">Portrait image <span className="text-gray-500">(optional)</span></label>
+              <Input
+                value={form.image || ""}
+                onChange={e => setForm({ ...form, image: e.target.value })}
+                placeholder="/images-rekterapy/artist.png"
+                className="bg-gray-800 border-gray-700 text-white"
+              />
+              <p className="text-[10px] text-gray-500 mt-1">Leave empty and the app uses their first track&apos;s cover, same as everyone else.</p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setShowForm(false)} className="border-gray-700 text-gray-300">Cancel</Button>
+              <Button onClick={saveArtist} disabled={savingArtist} className="bg-yellow-600 hover:bg-yellow-500 text-black font-semibold">
+                {savingArtist ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Save className="w-4 h-4 mr-1.5" />}
+                {editingId ? "Save Changes" : "Create Artist"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

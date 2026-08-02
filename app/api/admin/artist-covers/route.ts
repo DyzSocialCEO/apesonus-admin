@@ -7,18 +7,23 @@ import { adminGeneralRatelimit, getClientIp } from "@/lib/upstash"
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 
+import { CODE_ARTISTS } from "@/lib/constants/roster-list"
+
 // ── Artist roster ────────────────────────────────────────────────
-// Keep in sync with lib/constants/artists.ts in the main app and the
-// ARTISTS constant in app/dashboard/tracks/page.tsx.
-const ARTISTS = [
-  { id: "chartnobyl-bro",    name: "Chartnobyl Bro"    },
-  { id: "coinalisa",         name: "Coinalisa"          },
-  { id: "dj-dustwallet",     name: "DJ Dustwallet"      },
-  { id: "lola-likwidity",    name: "Lola Likwidity"     },
-  { id: "mcbagholder",       name: "McBagholder"        },
-  { id: "shilliam-dafoe",    name: "Shilliam Dafoe"     },
-  { id: "satosheek",         name: "Satosheek"          },
-]
+// Code artists come from the single shared list; admin-created artists
+// are merged in from the `artists` table at request time.
+const ARTISTS = [...CODE_ARTISTS] as { id: string; name: string }[]
+
+async function allArtists(supabase: Awaited<ReturnType<typeof createAdminClient>>): Promise<{ id: string; name: string }[]> {
+  try {
+    const { data } = await supabase.from("artists").select("id, name").eq("is_active", true).limit(500)
+    const codeIds = new Set(ARTISTS.map((a) => a.id))
+    const fresh = (data || []).filter((r) => !codeIds.has(r.id))
+    return [...ARTISTS, ...fresh]
+  } catch {
+    return ARTISTS
+  }
+}
 
 // Returns the primary artist name from "McBagholder ft. Some Guy".
 // Mirrors getPrimaryArtist() in app/dashboard/tracks/page.tsx and the
@@ -67,7 +72,8 @@ export async function GET(request: Request) {
       .select("id, artist, cover")
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    const summary = ARTISTS.map(a => {
+    const roster = await allArtists(supabase)
+    const summary = roster.map(a => {
       const nameLower = a.name.toLowerCase()
       const matching = (tracks || []).filter(t => {
         const primary = getPrimaryArtist(t.artist || "").toLowerCase()
@@ -150,12 +156,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "coverPath too long" }, { status: 400 })
     }
 
-    // Whitelist: artistName must be one of the roster names.
-    // Prevents arbitrary string injection into the DB query.
-    const known = ARTISTS.find(a => a.name.toLowerCase() === artistName.toLowerCase())
-    if (!known) return NextResponse.json({ error: "Unknown artist" }, { status: 400 })
-
     const supabase = await createAdminClient()
+
+    // Whitelist: artistName must be one of the roster names (code or DB).
+    // Prevents arbitrary string injection into the DB query.
+    const roster = await allArtists(supabase)
+    const known = roster.find(a => a.name.toLowerCase() === artistName.toLowerCase())
+    if (!known) return NextResponse.json({ error: "Unknown artist" }, { status: 400 })
 
     // Read first so we know exactly which IDs are about to change and
     // can audit-log them. Also filters out featured-on matches on our

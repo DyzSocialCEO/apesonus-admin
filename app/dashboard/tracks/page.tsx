@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { CODE_ARTISTS } from "@/lib/constants/roster-list"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -32,17 +33,7 @@ const SOUNDBATH_CATS = ["lofi", "piano", "jazz", "ambient", "meditation"]
 const AUDIO_CDN = "https://apesonus-audio.b-cdn.net"
 const IMAGE_CDN = "https://apesonus-images.b-cdn.net"
 
-const ARTISTS = [
-  { id: "chartnobyl-bro",    name: "Chartnobyl Bro"    },
-  { id: "coinalisa",         name: "Coinalisa"          },
-  { id: "dj-dustwallet",     name: "DJ Dustwallet"      },
-  { id: "lola-likwidity",    name: "Lola Likwidity"     },
-  { id: "mcbagholder",       name: "McBagholder"        },
-  { id: "shilliam-dafoe",    name: "Shilliam Dafoe"     },
-  { id: "satosheek",         name: "Satosheek"          },
-  { id: "shim-liquidation",  name: "Shim Liquidation"   },
-  { id: "rektina-loprez",    name: "Rektina Loprez"     },
-]
+const FALLBACK_ARTISTS = [...CODE_ARTISTS] as { id: string; name: string }[]
 
 function expandAudioUrl(input: string): string {
   if (!input) return ""
@@ -74,6 +65,10 @@ const emptyTrack: Partial<Track> = {
 
 export default function TracksPage() {
   const [tracks, setTracks]               = useState<Track[]>([])
+  // The roster the page renders: shared code list immediately, then the
+  // merged code+DB list from /api/admin/artists once it answers, so
+  // admin-created artists appear in the filter chips and the dropdown.
+  const [ARTISTS, setArtists]             = useState<{ id: string; name: string }[]>(FALLBACK_ARTISTS)
   const [loading, setLoading]             = useState(true)
   const [saving, setSaving]               = useState(false)
   const [showModal, setShowModal]         = useState(false)
@@ -86,6 +81,17 @@ export default function TracksPage() {
 
   // ─── Artist filter ─────────────────────────────────────────────────────────
   const [filterArtist, setFilterArtist] = useState<string>("all")
+
+  useEffect(() => {
+    fetch("/api/admin/artists", { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        const merged = (d?.artists || []).filter((a: { is_active?: boolean; source?: string }) =>
+          a.source === "code" || a.is_active !== false)
+        if (merged.length > 0) setArtists(merged)
+      })
+      .catch(() => { /* fallback list stays */ })
+  }, [])
 
   const durationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Duration detection now happens SERVER-SIDE via
