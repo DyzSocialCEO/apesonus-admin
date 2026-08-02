@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Loader2, Save, AlertTriangle, CheckCircle2, Users, Plus, Pencil } from "lucide-react"
-import { slugifyArtistName } from "@/lib/constants/roster-list"
+import { slugifyArtistName, CODE_ARTISTS } from "@/lib/constants/roster-list"
 
 const IMAGE_CDN = "https://apesonus-images.b-cdn.net"
 
@@ -64,6 +64,7 @@ export default function ArtistCoversPage() {
   const [form, setForm] = useState<Partial<DbArtist>>(emptyArtist)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [savingArtist, setSavingArtist] = useState(false)
+  const [isOverride, setIsOverride] = useState(false)
 
   const loadDbArtists = async () => {
     try {
@@ -75,9 +76,29 @@ export default function ArtistCoversPage() {
   }
   useEffect(() => { loadDbArtists() }, [])
 
-  const openCreate = () => { setEditingId(null); setForm(emptyArtist); setShowForm(true) }
+  const CODE_IDS = new Set<string>(CODE_ARTISTS.map(a => a.id))
+  const createdArtists = dbArtists.filter(a => !CODE_IDS.has(a.id))
+
+  const openCreate = () => { setEditingId(null); setIsOverride(false); setForm(emptyArtist); setShowForm(true) }
+
+  // Edit a CODE artist: the form writes an override row under their id.
+  // Prefill from the existing override if there is one; empty = code version.
+  const openCodeEdit = (id: string, name: string) => {
+    const row = dbArtists.find(a => a.id === id)
+    setEditingId(id)
+    setIsOverride(true)
+    setForm({
+      name,
+      tagline: row?.tagline || "",
+      backstory: row?.backstory || "",
+      gender: row?.gender || "",
+      image: row?.image ? shortenUrl(row.image, IMAGE_CDN) : "",
+    })
+    setShowForm(true)
+  }
   const openEdit = (a: DbArtist) => {
     setEditingId(a.id)
+    setIsOverride(false)
     setForm({ ...a, gender: a.gender || "", image: a.image ? shortenUrl(a.image, IMAGE_CDN) : "" })
     setShowForm(true)
   }
@@ -99,13 +120,13 @@ export default function ArtistCoversPage() {
         id: editingId || undefined,
       }
       const res = await fetch("/api/admin/artists", {
-        method: editingId ? "PATCH" : "POST",
+        method: editingId || isOverride ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
       const data = await res.json()
       if (!res.ok) { setMsg(data.error || "Save failed"); return }
-      setMsg(editingId ? `Updated ${name}` : `${name} joins the staff — add their first track and they go live`)
+      setMsg(editingId || isOverride ? `Updated ${name} — the app picks it up within a minute` : `${name} joins the staff — add their first track and they go live`)
       setShowForm(false)
       await loadDbArtists()
     } catch (e) {
@@ -214,11 +235,11 @@ export default function ArtistCoversPage() {
         </Button>
       </div>
 
-      {dbArtists.length > 0 && (
+      {createdArtists.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-widest text-gray-500">Created from admin</p>
           <div className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
-            {dbArtists.map(a => (
+            {createdArtists.map(a => (
               <Card key={a.id} className={`bg-gray-900/60 border-gray-800 ${a.is_active ? "" : "opacity-50"}`}>
                 <CardContent className="p-4 flex items-center gap-3">
                   {a.image ? (
@@ -282,7 +303,19 @@ export default function ArtistCoversPage() {
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="text-white font-semibold truncate">{artist.name}</p>
+                      <p className="text-white font-semibold truncate flex items-center gap-2">
+                        {artist.name}
+                        <button
+                          onClick={() => {
+                            const db = dbArtists.find(d => d.id === artist.id)
+                            if (db && !CODE_IDS.has(artist.id)) { openEdit(db) } else { openCodeEdit(artist.id, artist.name) }
+                          }}
+                          className="p-1 text-gray-500 hover:text-white shrink-0"
+                          title="Edit bio"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      </p>
                       <p className="text-xs text-gray-500 mt-0.5">
                         {artist.trackCount} track{artist.trackCount === 1 ? "" : "s"}
                       </p>
@@ -372,7 +405,7 @@ export default function ArtistCoversPage() {
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto py-8 px-4">
           <div className="w-full max-w-xl bg-gray-950 border border-gray-800 rounded-xl p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-white">{editingId ? "Edit Artist" : "Add New Artist"}</h2>
+              <h2 className="text-lg font-bold text-white">{isOverride ? `Edit ${form.name}` : editingId ? "Edit Artist" : "Add New Artist"}</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-white text-xl leading-none">×</button>
             </div>
 
@@ -382,9 +415,14 @@ export default function ArtistCoversPage() {
                 value={form.name || ""}
                 onChange={e => setForm({ ...form, name: e.target.value })}
                 placeholder="Artist name"
-                disabled={!!editingId}
+                disabled={!!editingId || isOverride}
                 className="bg-gray-800 border-gray-700 text-white"
               />
+              {isOverride && (
+                <p className="text-[10px] text-gray-500 mt-1">
+                  This artist lives in code. Anything you write here replaces what the app shows; leave a field empty to keep the original.
+                </p>
+              )}
               {!editingId && (form.name || "").trim() && (
                 <p className="text-[10px] text-gray-500 mt-1">
                   URL id will be <span className="text-gray-300">{slugifyArtistName(form.name || "")}</span> — it cannot change later.
@@ -423,6 +461,7 @@ export default function ArtistCoversPage() {
               />
             </div>
 
+            {!isOverride && (
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1.5">Mood worlds</label>
               <div className="flex flex-wrap gap-2">
@@ -441,7 +480,9 @@ export default function ArtistCoversPage() {
               </div>
               <p className="text-[10px] text-gray-500 mt-1">Their typical territory — any artist can still release in any mood.</p>
             </div>
+            )}
 
+            {!isOverride && (
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1.5">Weekly take prompt <span className="text-gray-500">(optional)</span></label>
               <textarea
@@ -452,7 +493,9 @@ export default function ArtistCoversPage() {
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
               />
             </div>
+            )}
 
+            {!isOverride && (
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1.5">Companion bible <span className="text-gray-500">(optional)</span></label>
               <textarea
@@ -463,6 +506,7 @@ export default function ArtistCoversPage() {
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
               />
             </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1.5">Portrait image <span className="text-gray-500">(optional)</span></label>
@@ -479,7 +523,7 @@ export default function ArtistCoversPage() {
               <Button variant="outline" onClick={() => setShowForm(false)} className="border-gray-700 text-gray-300">Cancel</Button>
               <Button onClick={saveArtist} disabled={savingArtist} className="bg-yellow-600 hover:bg-yellow-500 text-black font-semibold">
                 {savingArtist ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Save className="w-4 h-4 mr-1.5" />}
-                {editingId ? "Save Changes" : "Create Artist"}
+                {editingId || isOverride ? "Save Changes" : "Create Artist"}
               </Button>
             </div>
           </div>

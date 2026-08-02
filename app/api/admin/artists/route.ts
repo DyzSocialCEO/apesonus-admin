@@ -129,8 +129,30 @@ export async function PATCH(request: Request) {
     const body = (await request.json()) as ArtistBody
     const id = (body.id || "").trim()
     if (!id) return NextResponse.json({ error: "Artist id is required" }, { status: 400 })
-    if (CODE_ARTISTS.some((a) => a.id === id)) {
-      return NextResponse.json({ error: "Code-roster artists are edited in the repo, not here" }, { status: 400 })
+
+    // Code-roster artists are editable too: the row upserted under their id
+    // is an OVERRIDE — the app shows a non-empty field instead of the code
+    // version. Name and id stay locked to code; the row is always active so
+    // a code artist can never be hidden from here.
+    const codeArtist = CODE_ARTISTS.find((a) => a.id === id)
+    if (codeArtist) {
+      const supabase = await createAdminClient()
+      const { error } = await supabase.from("artists").upsert(
+        {
+          id,
+          name: codeArtist.name,
+          tagline: typeof body.tagline === "string" ? body.tagline.trim() : "",
+          backstory: typeof body.backstory === "string" ? body.backstory.trim() : "",
+          gender: typeof body.gender === "string" ? body.gender.trim() || null : null,
+          image: typeof body.image === "string" ? body.image.trim() || null : null,
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" },
+      )
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      await logAdminAction(supabase, request, session.username, "artists.override", { id })
+      return NextResponse.json({ ok: true, override: true })
     }
 
     const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
