@@ -134,7 +134,7 @@ export default function CallBetaPage() {
         <CardContent className="space-y-4 p-5">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-300">
-              Daily prize in $ONUS
+              Daily prize in dollars
             </label>
             <Input
               value={prize}
@@ -142,7 +142,8 @@ export default function CallBetaPage() {
               className="max-w-sm border-gray-700 bg-gray-800 text-white"
             />
             <p className="mt-1 text-[11px] text-gray-500">
-              Applies to days that open from now on. Today keeps its number.
+              Paid out in $PUMP, worked out at the price when it lands. Applies to days that open
+              from now on, so today keeps its number.
             </p>
           </div>
 
@@ -263,7 +264,7 @@ export default function CallBetaPage() {
           <Card key={q.id} className="border-yellow-900/60 bg-gray-900/60">
             <CardContent className="space-y-2 p-4">
               <div className="flex flex-wrap items-center gap-3 text-sm">
-                <span className="text-yellow-500">{Number(q.amount_onus).toLocaleString()} $ONUS</span>
+                <span className="text-yellow-500">${Number(q.amount_onus).toFixed(2)} of $PUMP</span>
                 <span className="font-mono text-xs text-gray-300">{q.wallet_address}</span>
                 <span className="text-[11px] text-gray-500">{new Date(q.created_at).toLocaleString()}</span>
               </div>
@@ -329,7 +330,7 @@ export default function CallBetaPage() {
                   {w.status.toUpperCase()}
                 </span>
                 <span className="text-sm text-yellow-500">
-                  {Number(w.prize_onus).toLocaleString()} $ONUS
+                  ${Number(w.prize_onus).toFixed(2)}
                 </span>
                 <span className="text-[11px] text-gray-500">
                   {cards[w.id] ?? 0} cards · {(winners[w.id] ?? []).length} paid
@@ -351,7 +352,7 @@ export default function CallBetaPage() {
                       <span className="w-5" />
                       <span>Rank {win.rank}</span>
                       <span>{win.points}/10</span>
-                      <span className="ml-auto text-yellow-600">{Number(win.amount_onus).toLocaleString()} $ONUS</span>
+                      <span className="ml-auto text-yellow-600">${Number(win.amount_onus).toFixed(2)}</span>
                     </div>
                   ))}
                 </div>
