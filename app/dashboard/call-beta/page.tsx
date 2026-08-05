@@ -14,7 +14,6 @@ interface Day {
   status: string
   top5: { track_id: number; title: string; artist: string; listeners: number }[] | null
   settled_at: string | null
-  note: string | null
 }
 
 interface Winner {
@@ -68,8 +67,7 @@ export default function CallBetaPage() {
       setWinners(d.winnersPerDay ?? {})
       setCards(d.cardsPerDay ?? {})
       setQueue(d.withdrawals ?? [])
-      const open = (d.days ?? []).find((x: Day) => x.status === "open")
-      setNoteDraft(open?.note ?? "")
+      setNoteDraft(d.note ?? "")
     } finally {
       setLoading(false)
     }
@@ -221,8 +219,9 @@ export default function CallBetaPage() {
           <div>
             <p className="text-sm font-medium text-gray-300">The doctor&apos;s line today</p>
             <p className="mt-1 text-[11px] text-gray-500">
-              Written once a day by the tick. Rewrite it here to say something of your own, or empty
-              it to take it off the wall. This is also the day&apos;s post, so copy it out.
+              Written once a day by the tick, whether or not The Call is running. Rewrite it here to
+              say something of your own, or empty it to take it off the wall. This is also the
+              day&apos;s post, so copy it out.
             </p>
           </div>
           <Input
@@ -234,12 +233,10 @@ export default function CallBetaPage() {
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={async () => {
-                const open = days.find((d) => d.status === "open")
-                if (!open) return setMsg("No open day to write on.")
                 const res = await fetch("/api/admin/call-beta", {
                   method: "PATCH",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ note: { dayId: open.id, line: noteDraft } }),
+                  body: JSON.stringify({ note: { line: noteDraft } }),
                 })
                 const d = await res.json()
                 setMsg(res.ok ? "On the wall." : d.error || "Failed")
@@ -263,12 +260,10 @@ export default function CallBetaPage() {
               variant="outline"
               className="border-gray-700 text-gray-300"
               onClick={async () => {
-                const open = days.find((d) => d.status === "open")
-                if (!open) return
                 await fetch("/api/admin/call-beta", {
                   method: "PATCH",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ note: { dayId: open.id, line: "" } }),
+                  body: JSON.stringify({ note: { line: "" } }),
                 })
                 setNoteDraft("")
                 setMsg("Cleared. The next tick writes a fresh one.")

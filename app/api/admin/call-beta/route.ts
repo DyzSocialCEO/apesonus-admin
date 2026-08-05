@@ -20,15 +20,20 @@ export async function GET() {
 
   try {
     const supabase = await createAdminClient()
-    const [config, days, awards, cards, queue] = await Promise.all([
+    const [config, days, awards, cards, note, queue] = await Promise.all([
       supabase.from("call_config").select("prize_onus, play_cap, enabled").eq("id", 1).maybeSingle(),
       supabase
         .from("call_days")
-        .select("id, opens_at, closes_at, prize_onus, status, top5, settled_at, note")
+        .select("id, opens_at, closes_at, prize_onus, status, top5, settled_at")
         .order("opens_at", { ascending: false })
         .limit(14),
       supabase.from("call_day_awards").select("day_id, rank, points, amount_onus").limit(500),
       supabase.from("call_day_cards").select("day_id").limit(5000),
+      supabase
+        .from("clinic_notes")
+        .select("line")
+        .eq("day", new Date().toISOString().slice(0, 10))
+        .maybeSingle(),
       supabase
         .from("call_withdrawals")
         .select("id, user_id, wallet_address, amount_onus, status, tx_signature, created_at")
@@ -51,6 +56,7 @@ export async function GET() {
       winnersPerDay,
       cardsPerDay,
       withdrawals: queue.data ?? [],
+      note: note.data?.line ?? "",
     })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Failed" }, { status: 500 })
@@ -67,19 +73,19 @@ export async function PATCH(request: Request) {
       play_cap?: number
       enabled?: boolean
       withdrawal?: { id: number; action: "sent" | "rejected"; tx?: string }
-      note?: { dayId: string; line: string }
+      note?: { line: string }
     }
 
-    if (body.note?.dayId) {
+    if (body.note) {
       const supabase = await createAdminClient()
+      const today = new Date().toISOString().slice(0, 10)
       const line = String(body.note.line ?? "").trim().slice(0, 240)
-      const { error } = await supabase
-        .from("call_days")
-        .update({ note: line || null })
-        .eq("id", body.note.dayId)
+      const { error } = line
+        ? await supabase.from("clinic_notes").upsert({ day: today, line }, { onConflict: "day" })
+        : await supabase.from("clinic_notes").delete().eq("day", today)
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      await logAdminAction(supabase, request, session.username, "call_beta.note", {
-        day: body.note.dayId,
+      await logAdminAction(supabase, request, session.username, "clinic.note", {
+        day: today,
         cleared: !line,
       })
       return NextResponse.json({ ok: true })
