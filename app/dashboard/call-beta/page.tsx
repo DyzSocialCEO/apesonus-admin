@@ -167,7 +167,23 @@ export default function CallBetaPage() {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setEnabled(!enabled)}
+              onClick={async () => {
+                // The switch saves itself the moment it is pressed. A pause
+                // that waits for a second button is a pause that never happens.
+                const next = !enabled
+                setEnabled(next)
+                const res = await fetch("/api/admin/call-beta", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ enabled: next }),
+                })
+                if (!res.ok) {
+                  setEnabled(!next)
+                  setMsg("The switch did not save. Try again.")
+                } else {
+                  setMsg(next ? "Running. The next tick opens a day." : "Paused. No day opens, nothing settles.")
+                }
+              }}
               className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
                 enabled ? "border-green-700 text-green-400" : "border-gray-700 text-gray-400"
               }`}
@@ -175,7 +191,7 @@ export default function CallBetaPage() {
               {enabled ? "RUNNING" : "PAUSED"}
             </button>
             <span className="text-[11px] text-gray-500">
-              Paused means no new day opens and nothing settles.
+              Saves the moment you press it. Paused means no new day opens and nothing settles.
             </span>
           </div>
 
