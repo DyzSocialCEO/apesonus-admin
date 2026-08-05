@@ -46,7 +46,6 @@ export default function CallBetaPage() {
   const [msg, setMsg] = useState("")
 
   const [prize, setPrize] = useState("25000")
-  const [cap, setCap] = useState("3")
   const [enabled, setEnabled] = useState(true)
   const [days, setDays] = useState<Day[]>([])
   const [winners, setWinners] = useState<Record<string, Winner[]>>({})
@@ -61,7 +60,6 @@ export default function CallBetaPage() {
       if (!res.ok) return
       const d = await res.json()
       setPrize(String(d.config?.prize_onus ?? 5000))
-      setCap(String(d.config?.play_cap ?? 3))
       setEnabled(d.config?.enabled !== false)
       setDays(d.days ?? [])
       setWinners(d.winnersPerDay ?? {})
@@ -83,11 +81,7 @@ export default function CallBetaPage() {
       const res = await fetch("/api/admin/call-beta", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prize_onus: Number(prize),
-          play_cap: Number(cap),
-          enabled,
-        }),
+        body: JSON.stringify({ prize_onus: Number(prize), enabled }),
       })
       const d = await res.json()
       setMsg(res.ok ? "Saved. It applies to the next week that opens." : d.error || "Save failed")
@@ -127,9 +121,10 @@ export default function CallBetaPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">The Call (beta)</h1>
         <p className="mt-1 text-sm text-gray-400">
-          Free daily game. The chart is unique listeners, one count per patient per song. Points: 2
-          for the exact seat, 1 for a top-five song in the wrong seat. The day&apos;s five best
-          scores split the prize 40/25/15/12/8; unclaimed shares carry to tomorrow.
+          Free daily game. The chart counts LISTENERS, so one patient moves a song by exactly one
+          however many times they replay it. Points: 2 for the exact seat, 1 for a top-five song in
+          the wrong seat. The day&apos;s five best scores split the prize 40/25/15/12/8, and a share
+          with nobody to claim it carries to tomorrow.
         </p>
       </div>
 
@@ -137,34 +132,18 @@ export default function CallBetaPage() {
 
       <Card className="border-gray-800 bg-gray-900/60">
         <CardContent className="space-y-4 p-5">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-300">
-                Daily prize in $ONUS
-              </label>
-              <Input
-                value={prize}
-                onChange={(e) => setPrize(e.target.value.replace(/[^0-9]/g, ""))}
-                className="border-gray-700 bg-gray-800 text-white"
-              />
-              <p className="mt-1 text-[11px] text-gray-500">
-                Applies to days that open from now on. Today keeps its number.
-              </p>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-300">
-                Counts per song per patient
-              </label>
-              <Input
-                value={cap}
-                onChange={(e) => setCap(e.target.value.replace(/[^0-9]/g, ""))}
-                className="border-gray-700 bg-gray-800 text-white"
-              />
-              <p className="mt-1 text-[11px] text-gray-500">
-                A knob held in reserve. The daily chart counts each listener once per song, so this
-                cap only matters if the counting rule ever changes.
-              </p>
-            </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-300">
+              Daily prize in $ONUS
+            </label>
+            <Input
+              value={prize}
+              onChange={(e) => setPrize(e.target.value.replace(/[^0-9]/g, ""))}
+              className="max-w-sm border-gray-700 bg-gray-800 text-white"
+            />
+            <p className="mt-1 text-[11px] text-gray-500">
+              Applies to days that open from now on. Today keeps its number.
+            </p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -219,9 +198,8 @@ export default function CallBetaPage() {
           <div>
             <p className="text-sm font-medium text-gray-300">The doctor&apos;s line today</p>
             <p className="mt-1 text-[11px] text-gray-500">
-              Written once a day by the tick, whether or not The Call is running. Rewrite it here to
-              say something of your own, or empty it to take it off the wall. This is also the
-              day&apos;s post, so copy it out.
+              The tick writes one a day by itself. Type over it to say something of your own, or
+              empty it to take the wall down. Same words work as the day&apos;s post, so copy it out.
             </p>
           </div>
           <Input
