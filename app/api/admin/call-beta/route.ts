@@ -9,9 +9,9 @@ export const runtime = "nodejs"
 /**
  * THE CALL (beta) desk.
  *
- * GET   config, the open week, and recent settled weeks with their winners
- * PATCH prize / play cap / on-off
- * POST  run the weekly tick by hand, for when a cron run was missed
+ * GET   config, days, winners, and the withdrawal queue
+ * PATCH prize / on-off, or act on a withdrawal (mark sent with the tx, reject)
+ * POST  run the daily tick by hand, for when a cron run was missed
  */
 
 export async function GET() {
@@ -20,31 +20,37 @@ export async function GET() {
 
   try {
     const supabase = await createAdminClient()
-    const [config, weeks, awards, cards] = await Promise.all([
+    const [config, days, awards, cards, queue] = await Promise.all([
       supabase.from("call_config").select("prize_onus, play_cap, enabled").eq("id", 1).maybeSingle(),
       supabase
-        .from("call_weeks")
+        .from("call_days")
         .select("id, opens_at, closes_at, prize_onus, status, top5, settled_at")
         .order("opens_at", { ascending: false })
-        .limit(12),
-      supabase.from("call_awards").select("week_id, amount_onus").limit(500),
-      supabase.from("call_cards").select("week_id").limit(5000),
+        .limit(14),
+      supabase.from("call_day_awards").select("day_id, rank, points, amount_onus").limit(500),
+      supabase.from("call_day_cards").select("day_id").limit(5000),
+      supabase
+        .from("call_withdrawals")
+        .select("id, user_id, wallet_address, amount_onus, status, tx_signature, created_at")
+        .order("created_at", { ascending: false })
+        .limit(100),
     ])
 
-    const winnersPerWeek: Record<string, number> = {}
-    for (const a of (awards.data ?? []) as { week_id: string }[]) {
-      winnersPerWeek[a.week_id] = (winnersPerWeek[a.week_id] ?? 0) + 1
+    const winnersPerDay: Record<string, { rank: number; points: number; amount_onus: number }[]> = {}
+    for (const a of (awards.data ?? []) as { day_id: string; rank: number; points: number; amount_onus: number }[]) {
+      ;(winnersPerDay[a.day_id] ??= []).push(a)
     }
-    const cardsPerWeek: Record<string, number> = {}
-    for (const c of (cards.data ?? []) as { week_id: string }[]) {
-      cardsPerWeek[c.week_id] = (cardsPerWeek[c.week_id] ?? 0) + 1
+    const cardsPerDay: Record<string, number> = {}
+    for (const c of (cards.data ?? []) as { day_id: string }[]) {
+      cardsPerDay[c.day_id] = (cardsPerDay[c.day_id] ?? 0) + 1
     }
 
     return NextResponse.json({
-      config: config.data ?? { prize_onus: 25000, play_cap: 3, enabled: true },
-      weeks: weeks.data ?? [],
-      winnersPerWeek,
-      cardsPerWeek,
+      config: config.data ?? { prize_onus: 5000, play_cap: 3, enabled: true },
+      days: days.data ?? [],
+      winnersPerDay,
+      cardsPerDay,
+      withdrawals: queue.data ?? [],
     })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Failed" }, { status: 500 })
@@ -60,6 +66,38 @@ export async function PATCH(request: Request) {
       prize_onus?: number
       play_cap?: number
       enabled?: boolean
+      withdrawal?: { id: number; action: "sent" | "rejected"; tx?: string }
+    }
+
+    if (body.withdrawal?.id) {
+      const supabase = await createAdminClient()
+      const action = body.withdrawal.action
+      if (action !== "sent" && action !== "rejected") {
+        return NextResponse.json({ error: "Unknown action" }, { status: 400 })
+      }
+      const tx = typeof body.withdrawal.tx === "string" ? body.withdrawal.tx.trim() : ""
+      if (action === "sent" && tx.length < 32) {
+        return NextResponse.json({ error: "Paste the payout signature first" }, { status: 400 })
+      }
+      const { data, error } = await supabase
+        .from("call_withdrawals")
+        .update({
+          status: action,
+          tx_signature: action === "sent" ? tx : null,
+          handled_at: new Date().toISOString(),
+        })
+        .eq("id", body.withdrawal.id)
+        .eq("status", "requested")
+        .select("id")
+        .maybeSingle()
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      if (!data) return NextResponse.json({ error: "Already handled" }, { status: 409 })
+      await logAdminAction(supabase, request, session.username, "call_beta.withdrawal", {
+        id: body.withdrawal.id,
+        action,
+        tx: tx || null,
+      })
+      return NextResponse.json({ ok: true })
     }
 
     const update: Record<string, unknown> = {}
