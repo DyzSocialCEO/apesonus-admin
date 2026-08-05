@@ -24,7 +24,7 @@ export async function GET() {
       supabase.from("call_config").select("prize_onus, play_cap, enabled").eq("id", 1).maybeSingle(),
       supabase
         .from("call_days")
-        .select("id, opens_at, closes_at, prize_onus, status, top5, settled_at")
+        .select("id, opens_at, closes_at, prize_onus, status, top5, settled_at, note")
         .order("opens_at", { ascending: false })
         .limit(14),
       supabase.from("call_day_awards").select("day_id, rank, points, amount_onus").limit(500),
@@ -67,6 +67,22 @@ export async function PATCH(request: Request) {
       play_cap?: number
       enabled?: boolean
       withdrawal?: { id: number; action: "sent" | "rejected"; tx?: string }
+      note?: { dayId: string; line: string }
+    }
+
+    if (body.note?.dayId) {
+      const supabase = await createAdminClient()
+      const line = String(body.note.line ?? "").trim().slice(0, 240)
+      const { error } = await supabase
+        .from("call_days")
+        .update({ note: line || null })
+        .eq("id", body.note.dayId)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      await logAdminAction(supabase, request, session.username, "call_beta.note", {
+        day: body.note.dayId,
+        cleared: !line,
+      })
+      return NextResponse.json({ ok: true })
     }
 
     if (body.withdrawal?.id) {

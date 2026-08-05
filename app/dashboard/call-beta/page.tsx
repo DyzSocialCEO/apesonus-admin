@@ -14,6 +14,7 @@ interface Day {
   status: string
   top5: { track_id: number; title: string; artist: string; listeners: number }[] | null
   settled_at: string | null
+  note: string | null
 }
 
 interface Winner {
@@ -52,6 +53,7 @@ export default function CallBetaPage() {
   const [winners, setWinners] = useState<Record<string, Winner[]>>({})
   const [cards, setCards] = useState<Record<string, number>>({})
   const [queue, setQueue] = useState<Withdrawal[]>([])
+  const [noteDraft, setNoteDraft] = useState("")
   const [tx, setTx] = useState<Record<number, string>>({})
 
   const load = async () => {
@@ -66,6 +68,8 @@ export default function CallBetaPage() {
       setWinners(d.winnersPerDay ?? {})
       setCards(d.cardsPerDay ?? {})
       setQueue(d.withdrawals ?? [])
+      const open = (d.days ?? []).find((x: Day) => x.status === "open")
+      setNoteDraft(open?.note ?? "")
     } finally {
       setLoading(false)
     }
@@ -207,6 +211,71 @@ export default function CallBetaPage() {
             <Button onClick={runTick} disabled={ticking} variant="outline" className="border-gray-700 text-gray-300">
               {ticking ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Play className="mr-1.5 h-4 w-4" />}
               Run the tick now
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-gray-800 bg-gray-900/60">
+        <CardContent className="space-y-3 p-5">
+          <div>
+            <p className="text-sm font-medium text-gray-300">The doctor&apos;s line today</p>
+            <p className="mt-1 text-[11px] text-gray-500">
+              Written once a day by the tick. Rewrite it here to say something of your own, or empty
+              it to take it off the wall. This is also the day&apos;s post, so copy it out.
+            </p>
+          </div>
+          <Input
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            placeholder="Nothing on the wall yet"
+            className="border-gray-700 bg-gray-800 text-white"
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={async () => {
+                const open = days.find((d) => d.status === "open")
+                if (!open) return setMsg("No open day to write on.")
+                const res = await fetch("/api/admin/call-beta", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ note: { dayId: open.id, line: noteDraft } }),
+                })
+                const d = await res.json()
+                setMsg(res.ok ? "On the wall." : d.error || "Failed")
+                if (res.ok) load()
+              }}
+              className="bg-yellow-600 font-semibold text-black hover:bg-yellow-500"
+            >
+              Put it on the wall
+            </Button>
+            <Button
+              variant="outline"
+              className="border-gray-700 text-gray-300"
+              onClick={() => {
+                navigator.clipboard?.writeText(noteDraft)
+                setMsg("Copied.")
+              }}
+            >
+              Copy for X
+            </Button>
+            <Button
+              variant="outline"
+              className="border-gray-700 text-gray-300"
+              onClick={async () => {
+                const open = days.find((d) => d.status === "open")
+                if (!open) return
+                await fetch("/api/admin/call-beta", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ note: { dayId: open.id, line: "" } }),
+                })
+                setNoteDraft("")
+                setMsg("Cleared. The next tick writes a fresh one.")
+                load()
+              }}
+            >
+              Clear and rewrite
             </Button>
           </div>
         </CardContent>
