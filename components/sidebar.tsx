@@ -23,6 +23,7 @@ const navigation = [
   { name: "Tracks",          href: "/dashboard/tracks",          icon: Music           },
   { name: "Artists",         href: "/dashboard/artists",         icon: UserCircle      },
   { name: "The Call (beta)", href: "/dashboard/call-beta",       icon: Target          },
+  { name: "Ward Check"     , href: "/dashboard/ward     ",       icon: Target          },
   { name: "Users",           href: "/dashboard/users",           icon: Users           },
   { name: "Finance",         href: "/dashboard/finance",         icon: DollarSign     },
   { name: "Analytics",       href: "/dashboard/analytics",       icon: BarChart3       },
