@@ -132,6 +132,39 @@ export async function GET(request: Request) {
       console.error("[anchor] draw ledger failed:", (e as Error).message)
     }
 
+    // THE CALL LOCK on the same beat — any day whose card fingerprint has no
+    // on-chain stamp yet gets one memo carrying the fingerprint VERBATIM in
+    // the label, so a stranger can read the memo text and compare it against
+    // /api/call/proof without knowing any hashing recipe of ours. Keyed off a
+    // null lock_tx so it retries until it lands. Best-effort like the others.
+    let callLock: { anchored?: string[] } = {}
+    try {
+      const { data: lockedDays } = await supabase
+        .from("call_days")
+        .select("id, lock_hash")
+        .not("lock_hash", "is", null)
+        .is("lock_tx", null)
+        .limit(5)
+      const done: string[] = []
+      for (const d of (lockedDays ?? []) as { id: string; lock_hash: string }[]) {
+        const res = await commitHash(`call-lock:${d.id}:${d.lock_hash}`, {
+          day: d.id,
+          lock_hash: d.lock_hash,
+        })
+        if (res?.signature) {
+          await supabase
+            .from("call_days")
+            .update({ lock_tx: res.signature })
+            .eq("id", d.id)
+            .is("lock_tx", null)
+          done.push(d.id)
+        }
+      }
+      callLock = { anchored: done }
+    } catch (e) {
+      console.error("[anchor] call lock failed:", (e as Error).message)
+    }
+
     return NextResponse.json({
       ok: true, seq, play_count: leaves.length, plays_root, commit_hash,
       anchored: !!signature, signature, cluster: signature ? cluster : null,
@@ -139,6 +172,7 @@ export async function GET(request: Request) {
       ammo_ledger: ammo,
       rewards_ledger: rewards,
       draw_ledger: draw,
+      call_lock: callLock,
     })
   } catch (e) {
     console.error("[anchor] error:", (e as Error).message)
