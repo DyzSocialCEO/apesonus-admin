@@ -24,7 +24,6 @@ const navigation = [
   { name: "Artists",         href: "/dashboard/artists",         icon: UserCircle      },
   { name: "The Call (beta)", href: "/dashboard/call-beta",       icon: Target          },
   { name: "Users",           href: "/dashboard/users",           icon: Users           },
-  { name: "Passes",           href: "/dashboard/ammo",            icon: Zap             },
   { name: "Revenue",         href: "/dashboard/revenue",         icon: DollarSign     },
   { name: "Analytics",       href: "/dashboard/analytics",       icon: BarChart3       },
   { name: "Logs",            href: "/dashboard/logs",            icon: ScrollText      },
