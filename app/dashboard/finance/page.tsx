@@ -2,116 +2,178 @@
 
 /**
  * /dashboard/finance
- * The parent money surface. Spins invariant, cash position, per-feature
- * P&L, obligations. Revenue, Distribution, and Payouts are the drill-downs.
+ *
+ * What came in, in the token it came in as, and what it is worth now.
+ * One page: the tokens received, the dollars they were sold for, the live
+ * price, and the daily line. Nothing derived, nothing from the old economy.
  */
 
 import { useEffect, useState } from "react"
-import Link from "next/link"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { CheckCircle2, AlertTriangle, ArrowUpRight } from "lucide-react"
+import { Loader2, RefreshCw } from "lucide-react"
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts"
 
 type Fin = {
-  reconcile: any
-  blended_cents_per_spin: number | null
-  pnl: any
+  rail: string
+  symbol: string
+  mint: string
+  wallet: string
+  price: number | null
+  payments: number
+  daysSold: number
+  tokenReceived: number
+  tokenUsdAtSale: number
+  tokenValueNow: number | null
+  stableUsd: number
+  usd24h: number
+  usd7d: number
+  usd30d: number
+  series: { date: string; token: number; usd: number; payments: number }[]
 }
 
-const usd = (cents: number) => `$${((cents || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-const n = (v: number) => (v || 0).toLocaleString("en-US")
+const usd = (n: number | null) =>
+  n == null
+    ? "—"
+    : `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+const num = (n: number, dp = 2) =>
+  n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp })
 
 export default function FinancePage() {
   const [d, setD] = useState<Fin | null>(null)
-  const [err, setErr] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState("")
 
-  useEffect(() => {
-    fetch("/api/admin/finance")
+  const load = () => {
+    setLoading(true)
+    fetch("/api/admin/finance", { cache: "no-store" })
       .then((r) => r.json())
-      .then((j) => (j.error ? setErr(j.error) : setD(j)))
-      .catch((e) => setErr(String(e)))
-  }, [])
+      .then((j) => (j?.error ? setErr(String(j.error)) : setD(j)))
+      .catch(() => setErr("Could not load."))
+      .finally(() => setLoading(false))
+  }
 
-  if (err) return <div className="p-6 text-red-400">Finance failed to load: {err}</div>
-  if (!d) return <div className="p-6 text-gray-400">Loading the books...</div>
+  useEffect(load, [])
 
-  const s = d.reconcile?.spins || {}
-  const u = d.reconcile?.usdc_cents || {}
-  const p = d.pnl || {}
-  const netCash = (Number(u.house) || 0) + (Number(u.treasury_obligation) || 0) - (Number(u.paid_out_total) || 0)
+  if (loading && !d) {
+    return (
+      <div className="flex justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-600" />
+      </div>
+    )
+  }
+  if (err || !d) return <div className="p-10 text-gray-500">{err || "Could not load."}</div>
+
+  const Tile = ({
+    label,
+    value,
+    hint,
+    accent,
+  }: {
+    label: string
+    value: string
+    hint?: string
+    accent?: string
+  }) => (
+    <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
+      <div className="text-xs uppercase tracking-wider text-gray-500">{label}</div>
+      <div className="mt-1 text-2xl font-bold tabular-nums" style={{ color: accent || "#fff" }}>
+        {value}
+      </div>
+      {hint ? <div className="mt-1 text-[11px] text-gray-600">{hint}</div> : null}
+    </div>
+  )
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Finance</h1>
-        <div className="flex gap-3 text-sm">
-          <Link href="/dashboard/revenue" className="text-gray-400 hover:text-white flex items-center gap-1">Revenue <ArrowUpRight className="w-3 h-3" /></Link>
-          <Link href="/dashboard/distribution" className="text-gray-400 hover:text-white flex items-center gap-1">Distribution <ArrowUpRight className="w-3 h-3" /></Link>
-          <Link href="/dashboard/payouts" className="text-gray-400 hover:text-white flex items-center gap-1">Payouts <ArrowUpRight className="w-3 h-3" /></Link>
+    <div className="mx-auto max-w-5xl p-6 lg:p-10">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Finance</h1>
+          <p className="mt-1 text-gray-400">
+            Patients pay in {d.symbol}. Every confirmed payment is counted in the token that
+            arrived and in the dollars it was quoted at.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={load}
+          className="flex items-center gap-2 rounded-lg border border-gray-800 px-3 py-2 text-sm text-gray-300 hover:text-white"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          Refresh
+        </button>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Tile
+          label={`${d.symbol} received`}
+          value={num(d.tokenReceived, 2)}
+          hint="All confirmed payments on the token rail"
+          accent="#c6ff2e"
+        />
+        <Tile
+          label="Worth now"
+          value={usd(d.tokenValueNow)}
+          hint={d.price != null ? `At $${d.price.toPrecision(4)} per ${d.symbol}` : "Live price unavailable"}
+        />
+        <Tile
+          label="Sold for"
+          value={usd(d.tokenUsdAtSale)}
+          hint="The dollar prices those orders were quoted at"
+        />
+        <Tile label="Days sold" value={d.daysSold.toLocaleString("en-US")} hint={`${d.payments} payments`} />
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Tile label="Last 24 hours" value={usd(d.usd24h)} />
+        <Tile label="Last 7 days" value={usd(d.usd7d)} />
+        <Tile label="Last 30 days" value={usd(d.usd30d)} />
+      </div>
+
+      {d.stableUsd > 0 ? (
+        <div className="mt-4 rounded-xl border border-gray-800 bg-gray-900 p-4 text-sm text-gray-400">
+          Before the token rail, {usd(d.stableUsd)} came in on the stable rail. Kept separate on
+          purpose: those were dollars, not {d.symbol}.
+        </div>
+      ) : null}
+
+      <div className="mt-6 rounded-xl border border-gray-800 bg-gray-900 p-5">
+        <div className="text-sm font-semibold text-white">Thirty days</div>
+        <div className="mt-1 text-[11px] text-gray-600">
+          {d.symbol} received per day. Hover for the dollars and the payment count.
+        </div>
+        <div className="mt-4 h-56">
+          {d.series.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-sm text-gray-600">
+              Nothing yet. The first payment shows up here.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={d.series}>
+                <CartesianGrid stroke="#1f2937" vertical={false} />
+                <XAxis dataKey="date" tick={{ fill: "#6b7280", fontSize: 11 }} tickLine={false} />
+                <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} tickLine={false} width={70} />
+                <Tooltip
+                  contentStyle={{ background: "#0b0f14", border: "1px solid #1f2937", borderRadius: 8 }}
+                  labelStyle={{ color: "#9ca3af" }}
+                  formatter={(v: number, name: string) =>
+                    name === "usd" ? [usd(v), "Sold for"] : name === "payments" ? [v, "Payments"] : [num(v, 2), d.symbol]
+                  }
+                />
+                <Area type="monotone" dataKey="token" stroke="#c6ff2e" fill="rgba(198,255,46,.15)" strokeWidth={2} />
+                <Area type="monotone" dataKey="usd" stroke="transparent" fill="transparent" />
+                <Area type="monotone" dataKey="payments" stroke="transparent" fill="transparent" />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 
-      <Card className="bg-gray-900 border-gray-800">
-        <CardHeader><CardTitle className="text-lg text-white">Spins invariant</CardTitle></CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-3 mb-4">
-            {s.ok
-              ? <span className="flex items-center gap-2 text-green-400"><CheckCircle2 className="w-5 h-5" /> Books balance. Ledger net equals balances.</span>
-              : <span className="flex items-center gap-2 text-red-400"><AlertTriangle className="w-5 h-5" /> DRIFT: {n(s.drift)} Spins. Ledger and balances disagree. Stop payouts and investigate.</span>}
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-            <div><p className="text-gray-500">Credits</p><p className="text-white font-mono">{n(s.credits)}</p></div>
-            <div><p className="text-gray-500">Debits</p><p className="text-white font-mono">{n(s.debits)}</p></div>
-            <div><p className="text-gray-500">Outstanding</p><p className="text-white font-mono">{n(s.balances_total)}</p></div>
-            <div><p className="text-gray-500">Locked</p><p className="text-white font-mono">{n(s.locked_total)}</p></div>
-            <div><p className="text-gray-500">Blended value</p><p className="text-white font-mono">{d.blended_cents_per_spin != null ? `${d.blended_cents_per_spin.toFixed(2)}c / Spin` : "n/a"}</p></div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-gray-900 border-gray-800">
-        <CardHeader><CardTitle className="text-lg text-white">USDC position</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div><p className="text-gray-500">Gross in</p><p className="text-white font-mono">{usd(u.gross)}</p></div>
-            <div><p className="text-gray-500">House</p><p className="text-white font-mono">{usd(u.house)}</p></div>
-            <div><p className="text-gray-500">Prize obligation</p><p className="text-white font-mono">{usd(u.treasury_obligation)}</p></div>
-            <div><p className="text-gray-500">Paid out</p><p className="text-white font-mono">{usd(u.paid_out_total)}</p></div>
-            <div><p className="text-gray-500">Partner owed</p><p className="text-white font-mono">{usd(u.partner_owed)}</p></div>
-            <div><p className="text-gray-500">Open Call pot ceilings</p><p className="text-white font-mono">${n(u.conviction_open_pot_ceilings_usd)}</p></div>
-            <div><p className="text-gray-500">Queued Call prizes</p><p className="text-white font-mono">${n(u.conviction_queued_prizes_usd)}</p></div>
-            <div><p className="text-gray-500">Net held (gross minus paid)</p><p className="text-white font-mono">{usd(netCash)}</p></div>
-          </div>
-          <p className="text-xs text-gray-600 mt-3">Open pot ceilings are the max the house could ever owe on live Call contests. The payout wallet float must cover this number.</p>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-gray-900 border-gray-800">
-        <CardHeader><CardTitle className="text-lg text-white">Per feature</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-            <div className="border border-gray-800 rounded-lg p-4">
-              <p className="text-white font-semibold mb-2">Music</p>
-              <p className="text-gray-500">Spins burned on plays</p><p className="text-white font-mono mb-2">{n(p.music?.spins_burned)}</p>
-              <p className="text-gray-500">Free plays served</p><p className="text-white font-mono">{n(p.music?.free_plays_served)}</p>
-            </div>
-            <div className="border border-gray-800 rounded-lg p-4">
-              <p className="text-white font-semibold mb-2">Back</p>
-              <p className="text-gray-500">Rounds settled</p><p className="text-white font-mono mb-2">{n(p.back?.rounds_settled)}</p>
-              <p className="text-gray-500">Pool Spins paid</p><p className="text-white font-mono">{n(p.back?.pool_spins_paid)}</p>
-            </div>
-            <div className="border border-gray-800 rounded-lg p-4">
-              <p className="text-white font-semibold mb-2">Call</p>
-              <p className="text-gray-500">Calls made</p><p className="text-white font-mono mb-2">{n(p.conviction?.calls)}</p>
-              <p className="text-gray-500">Entry Spins collected</p><p className="text-white font-mono">{n(p.conviction?.entry_spins)}</p>
-            </div>
-            <div className="border border-gray-800 rounded-lg p-4">
-              <p className="text-white font-semibold mb-2">Referrals</p>
-              <p className="text-gray-500">Commission Spins paid</p><p className="text-white font-mono mb-2">{n(p.referrals?.commission_spins)}</p>
-              <p className="text-gray-500">All grants total</p><p className="text-white font-mono">{n(p.grants_total_spins)}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="mt-4 rounded-xl border border-gray-800 bg-gray-900 p-5 text-sm text-gray-400">
+        <div className="text-xs uppercase tracking-wider text-gray-500">Where it lands</div>
+        <div className="mt-2 break-all font-mono text-[12px] text-gray-300">{d.wallet || "No wallet set"}</div>
+        <div className="mt-3 text-xs uppercase tracking-wider text-gray-500">Token</div>
+        <div className="mt-1 break-all font-mono text-[12px] text-gray-300">{d.mint || "Not set"}</div>
+      </div>
     </div>
   )
 }
