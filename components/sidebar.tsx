@@ -4,8 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
-  TrendingUp,
-  ScrollText, UserCircle, DollarSign, Coins, Zap, KeyRound, Target } from "lucide-react"
+    ScrollText, UserCircle, DollarSign, Zap, Target } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
@@ -21,17 +20,12 @@ import { useState } from "react"
  */
 const navigation = [
   { name: "Dashboard",       href: "/dashboard",                 icon: LayoutDashboard },
-  { name: "Finance",         href: "/dashboard/finance",         icon: DollarSign      },
   { name: "Tracks",          href: "/dashboard/tracks",          icon: Music           },
   { name: "Artists",         href: "/dashboard/artists",         icon: UserCircle      },
-  { name: "Chart",           href: "/dashboard/chart",           icon: TrendingUp      },
   { name: "The Call (beta)", href: "/dashboard/call-beta",       icon: Target          },
-  { name: "Payouts",         href: "/dashboard/payouts",         icon: DollarSign      },
   { name: "Users",           href: "/dashboard/users",           icon: Users           },
-  { name: "Spins",           href: "/dashboard/ammo",            icon: Zap             },
+  { name: "Passes",           href: "/dashboard/ammo",            icon: Zap             },
   { name: "Revenue",         href: "/dashboard/revenue",         icon: DollarSign     },
-  { name: "Distribution",    href: "/dashboard/distribution",    icon: Coins          },
-  { name: "Partner Access",  href: "/dashboard/partner-access",  icon: KeyRound        },
   { name: "Analytics",       href: "/dashboard/analytics",       icon: BarChart3       },
   { name: "Logs",            href: "/dashboard/logs",            icon: ScrollText      },
   { name: "Settings",        href: "/dashboard/settings",        icon: Settings        },

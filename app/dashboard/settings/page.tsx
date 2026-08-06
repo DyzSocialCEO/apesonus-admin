@@ -171,7 +171,7 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Settings</h1>
-        <p className="text-gray-400">System info and subscription controls.</p>
+        <p className="text-gray-400">System info and payment controls.</p>
       </div>
 
       {/* Banner */}
@@ -188,9 +188,7 @@ export default function SettingsPage() {
       <PayRailCard />
       <PaymentsToggleCard />
 
-      <ConvictionToggleCard />
 
-      <WarToggleCard />
 
       {/* Health snapshot */}
       <Card className="bg-gray-900 border-gray-800">
@@ -316,175 +314,7 @@ function PaymentsToggleCard() {
   )
 }
 
-function ConvictionToggleCard() {
-  const [on, setOn] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true); setErr(null)
-    try {
-      const res = await fetch("/api/admin/war")
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      setOn(data.conviction_enabled === true)
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Load failed")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { load() }, [load])
-
-  const toggle = async () => {
-    const next = !on
-    setSaving(true); setErr(null)
-    try {
-      const res = await fetch("/api/admin/war", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set_conviction", enabled: next }),
-      })
-      const body = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(body.error || `Failed (${res.status})`)
-      setOn(next)
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Save failed")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Card className="bg-gray-900 border-gray-800">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-white">
-          <Gem className="w-4 h-4" /> Conviction (Call tab)
-        </CardTitle>
-        <CardDescription>
-          Season gate for the trading competition. When off, the Call tab is hidden in the
-          PWA and /conviction shows the Season 2 teaser. Data and crons keep their state;
-          nothing is deleted. Off for Season 1 by design.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="flex items-center gap-2 text-gray-400 text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" /> Loading…
-          </div>
-        ) : (
-          <div className="flex items-center gap-4">
-            <button
-              onClick={toggle}
-              disabled={saving}
-              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${on ? "bg-emerald-500" : "bg-gray-700"}`}
-              aria-pressed={on}
-            >
-              <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${on ? "translate-x-6" : "translate-x-1"}`} />
-            </button>
-            <div className="text-sm">
-              <span className={on ? "text-emerald-400 font-semibold" : "text-gray-400 font-semibold"}>
-                {saving ? "Saving…" : on ? "Conviction ON — Call tab live" : "Conviction OFF — hidden for the season"}
-              </span>
-            </div>
-            {err && (
-              <span className="flex items-center gap-1.5 text-xs text-red-400 ml-auto">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {err}
-              </span>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function WarToggleCard() {
-  const [on, setOn] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    setLoading(true); setErr(null)
-    try {
-      const res = await fetch("/api/admin/war")
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      setOn(data.war_enabled === true)
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Load failed")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { load() }, [load])
-
-  const toggle = async () => {
-    const next = !on
-    setSaving(true); setErr(null)
-    try {
-      const res = await fetch("/api/admin/war", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set_war", enabled: next }),
-      })
-      const body = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(body.error || `Failed (${res.status})`)
-      setOn(next)
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Save failed")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Card className="bg-gray-900 border-gray-800">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-white">
-          <Swords className="w-4 h-4" /> Kingdom War (the vault)
-        </CardTitle>
-        <CardDescription>
-          Season gate for the entire war: the War tab, choose-kingdom overlay, and You-tab
-          badge all sleep when this is off. Seasons, allegiances, standings, and the prize
-          vault keep their state; nothing is deleted. Off for the Degen Therapy launch.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="flex items-center gap-2 text-gray-400 text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" /> Loading…
-          </div>
-        ) : (
-          <div className="flex items-center gap-4">
-            <button
-              onClick={toggle}
-              disabled={saving}
-              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${on ? "bg-emerald-500" : "bg-gray-700"}`}
-              aria-pressed={on}
-            >
-              <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${on ? "translate-x-6" : "translate-x-1"}`} />
-            </button>
-            <div className="text-sm">
-              <span className={on ? "text-emerald-400 font-semibold" : "text-gray-400 font-semibold"}>
-                {saving ? "Saving…" : on ? "War ON — the vault is open" : "War OFF — sealed in the vault"}
-              </span>
-            </div>
-            {err && (
-              <span className="flex items-center gap-1.5 text-xs text-red-400 ml-auto">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {err}
-              </span>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
 
 function ReceivingWalletCard() {
   const [current, setCurrent] = useState("")   // last saved value

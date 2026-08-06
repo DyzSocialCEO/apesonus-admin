@@ -45,7 +45,8 @@ export default function CallBetaPage() {
   const [ticking, setTicking] = useState(false)
   const [msg, setMsg] = useState("")
 
-  const [prize, setPrize] = useState("25000")
+  // Blank until the real figure loads, so the desk never flashes an invented number.
+  const [prize, setPrize] = useState("")
   const [enabled, setEnabled] = useState(true)
   const [days, setDays] = useState<Day[]>([])
   const [winners, setWinners] = useState<Record<string, Winner[]>>({})
@@ -75,6 +76,7 @@ export default function CallBetaPage() {
   }, [])
 
   const saveConfig = async () => {
+    if (loading || prize.trim() === "" || !Number.isFinite(Number(prize))) return
     setSaving(true)
     setMsg("")
     try {
