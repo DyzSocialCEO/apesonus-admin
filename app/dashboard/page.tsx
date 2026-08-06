@@ -145,7 +145,7 @@ export default async function DashboardPage() {
     { title: "Active (7d)",    value: formatNumber(stats.activeUsers),   icon: TrendingUp, color: "text-green-400",  bg: "bg-green-400/10" },
     { title: "Total Plays",    value: formatNumber(stats.totalPlays),    icon: Play,       color: "text-purple-400", bg: "bg-purple-400/10" },
     { title: "Tracks",         value: formatNumber(stats.totalTracks),   icon: Music,      color: "text-primary",    bg: "bg-primary/10" },
-    { title: "Spins sold",      value: formatNumber(stats.ammoSold),      icon: Activity,   color: "text-cyan-400",   bg: "bg-cyan-400/10" },
+    { title: "Days sold",      value: formatNumber(stats.ammoSold),      icon: Activity,   color: "text-cyan-400",   bg: "bg-cyan-400/10" },
     { title: "Paying users",   value: formatNumber(stats.payingUsers),   icon: Crown,      color: "text-yellow-400", bg: "bg-yellow-400/10" },
   ]
 
@@ -184,16 +184,11 @@ export default async function DashboardPage() {
                   <th className="text-left  py-3 px-4 text-sm font-medium text-gray-400">User</th>
                   <th className="text-left  py-3 px-4 text-sm font-medium text-gray-400">ID</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Plays</th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Loyalty</th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-400">Spins</th>
                   <th className="text-right  py-3 px-4 text-sm font-medium text-gray-400">Joined</th>
                 </tr>
               </thead>
               <tbody>
                 {stats.recentUsers.map((user) => {
-                  const e = user.embers || 0
-                  const tier = e >= 1000 ? "DIAMOND" : e >= 200 ? "DEGEN" : e >= 50 ? "BELIEVER" : e >= 10 ? "BACKER" : "SCOUT"
-                  const tierColor = e >= 1000 ? "text-cyan-300" : e >= 200 ? "text-pink-400" : e >= 50 ? "text-yellow-400" : e >= 10 ? "text-lime-400" : "text-gray-500"
                   return (
                     <tr key={user.id} className="border-b border-gray-800/50">
                       <td className="py-3 px-4">
@@ -206,8 +201,6 @@ export default async function DashboardPage() {
                       </td>
                       <td className="py-3 px-4 text-xs text-gray-400 font-mono">{shortId(user.id)}</td>
                       <td className="py-3 px-4 text-center text-white text-sm">{user.plays}</td>
-                      <td className={`py-3 px-4 text-center text-xs font-bold ${tierColor}`}>{tier}<span className="text-gray-600 font-normal"> · {e}</span></td>
-                      <td className="py-3 px-4 text-center text-primary text-sm">{(user.ammo || 0).toLocaleString("en-US")}</td>
                       <td className="py-3 px-4 text-right text-gray-400 text-xs">
                         {new Date(user.created_at).toLocaleDateString()}
                       </td>
