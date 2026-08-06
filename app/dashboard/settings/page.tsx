@@ -270,11 +270,11 @@ function PaymentsToggleCard() {
     <Card className="bg-gray-900 border-gray-800">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-white">
-          <Wallet className="w-4 h-4" /> Spin purchases
+          <Wallet className="w-4 h-4" /> Pass purchases
         </CardTitle>
         <CardDescription>
           Master switch for taking money. When off, the app runs fully (music, games, Embers)
-          but no one can buy Spins — used for a soft launch before payments go live.
+          but no one can buy a pass — used for a soft launch before payments go live.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -294,7 +294,7 @@ function PaymentsToggleCard() {
             </button>
             <div className="text-sm">
               <span className={on ? "text-emerald-400 font-semibold" : "text-gray-400 font-semibold"}>
-                {saving ? "Saving…" : on ? "Payments ON — Spins are for sale" : "Payments OFF — purchases blocked"}
+                {saving ? "Saving…" : on ? "Payments ON — passes are for sale" : "Payments OFF — purchases blocked"}
               </span>
               {!on && (
                 <p className="text-[11px] text-gray-500 mt-0.5">
@@ -495,7 +495,7 @@ function ExpirySweepCard() {
 // ─────────────────────────────────────────────────────────────────────
 
 /**
- * Which token Spins are paid in.
+ * Which token passes are paid in.
  *
  * "usdc" is the stable rail and needs nothing set. "onus" is the floating
  * rail: the app quotes each order in tokens at the live price and freezes
@@ -666,7 +666,7 @@ function PayRailCard() {
             </Field>
             <p className="text-xs text-gray-500">
               Live feeds are tried first and this is only used when they all go silent. A stale
-              number here sells Spins at the wrong price, so clear it once the feeds are back.
+              number here sells passes at the wrong price, so clear it once the feeds are back.
             </p>
 
             {rail === "onus" && !canGoOnus && (
