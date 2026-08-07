@@ -231,27 +231,31 @@ export async function POST(request: Request) {
     // chart is counted, the winners are worked out and the seats are paid
     // exactly the way they would be on a Saturday. Nothing is skipped.
     if (action === "settle") {
-      const { data: open } = await supabase
-        .from("call_rounds")
-        .select("id")
-        .eq("status", "open")
-        .lte("opens_at", new Date().toISOString())
-        .order("opens_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      if (!open?.id) return NextResponse.json({ error: "No round is open" }, { status: 409 })
-
-      const { error: upd } = await supabase
-        .from("call_rounds")
-        .update({ freezes_at: new Date(Date.now() - 60_000).toISOString() })
-        .eq("id", open.id)
-      if (upd) return NextResponse.json({ error: upd.message }, { status: 500 })
-
-      const { data, error } = await supabase.rpc("call_round_tick")
+      // Straight to call_settle_round, NOT through the tick. The tick stops
+      // dead when the Call is paused, so this button used to confirm and then
+      // do nothing at all. Pausing stops the automatic machinery; it was never
+      // meant to stop you finishing a round by hand.
+      const { data, error } = await supabase.rpc("call_settle_round")
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      const row = Array.isArray(data) ? data[0] : data
-      await logAdminAction(supabase, request, session.username, "call.settle", { round: open.id })
-      return NextResponse.json({ ok: true, settled: row?.settled ?? open.id, opened: row?.opened ?? null })
+
+      const r = (data ?? {}) as Record<string, any>
+      if (r.ok !== true) {
+        return NextResponse.json({ error: "No round is open to end." }, { status: 409 })
+      }
+
+      const top = r.top?.title ? `${r.top.title} (${r.top.spins} Spins)` : "nothing"
+      const useless = r.useless?.title ? `${r.useless.title} (${r.useless.spins} Spins)` : "nothing qualified"
+      const money =
+        Number(r.paid) > 0
+          ? `${r.paid} paid $${Number(r.each).toFixed(2)} each`
+          : `nobody was right, $${Number(r.pot).toFixed(2)} carried`
+
+      await logAdminAction(supabase, request, session.username, "call.settle", { round: r.round })
+      return NextResponse.json({
+        ok: true,
+        settled: r.round,
+        message: `Round ${r.round} settled. Ran the ward: ${top}. Did nothing: ${useless}. ${r.cards} cards, ${r.correct} correct, ${money}.`,
+      })
     }
 
     // START A FRESH ROUND, beginning NOW rather than on the weekly schedule.

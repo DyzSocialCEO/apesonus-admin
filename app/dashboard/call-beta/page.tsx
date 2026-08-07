@@ -86,6 +86,10 @@ export default function CallDesk() {
   const [saving, setSaving] = useState(false)
   const [flash, setFlash] = useState(false)
   const [err, setErr] = useState("")
+  // What the last button actually did. A confirm dialog followed by silence is
+  // how "End the round now" managed to do nothing for a while without anybody
+  // being able to tell.
+  const [said, setSaid] = useState("")
   const [tx, setTx] = useState<Record<number, string>>({})
 
   const load = useCallback(async () => {
@@ -133,14 +137,22 @@ export default function CallDesk() {
   // place that handles a failure and one place that reloads.
   const act = async (action: string, failMessage: string) => {
     setErr("")
+    setSaid("")
     const res = await fetch("/api/admin/call-beta", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action }),
     })
     const d = await res.json().catch(() => ({}))
-    if (!res.ok) setErr(d?.error || failMessage)
-    else load()
+    if (!res.ok) {
+      setErr(d?.error || failMessage)
+      return
+    }
+    if (d?.message) setSaid(String(d.message))
+    else if (d?.opened) setSaid(`Round ${d.opened} is open.`)
+    else if (d?.settled) setSaid(`Round ${d.settled} settled.`)
+    else setSaid("Nothing to do. Nothing was open or finished.")
+    load()
   }
 
   const saveNumbers = async () => {
@@ -182,6 +194,9 @@ export default function CallDesk() {
 
       {err && (
         <div className="text-xs rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 px-3 py-2">{err}</div>
+      )}
+      {said && (
+        <div className="text-xs rounded-lg border border-green-500/30 bg-green-500/10 text-green-300 px-3 py-2">{said}</div>
       )}
 
       {/* Running / paused. Saves the instant it is pressed. */}
@@ -235,6 +250,7 @@ export default function CallDesk() {
         only when nothing is open. A round opens on the weekly calendar, so asking for one
         mid week gives you one whose calling window has already shut. Start a fresh round begins
         at this moment instead, which is what you want for a test or a restart.
+        Paused only stops the hourly job. End the round now still works while paused.
       </p>
 
       {/* Every figure that decides money */}
