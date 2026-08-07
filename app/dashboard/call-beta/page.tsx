@@ -18,6 +18,8 @@
 import { useCallback, useEffect, useState } from "react"
 import { Loader2, Save, Check, Target, Shuffle, Send, X } from "lucide-react"
 
+type Pot = { seed: number; sales: number; awarded: number; onTable: number }
+
 type Config = {
   prize_onus: number
   enabled: boolean
@@ -60,7 +62,7 @@ type Withdrawal = {
 }
 
 const NUMS: { key: keyof Config; label: string; hint: string }[] = [
-  { key: "prize_onus", label: "Base pot each round ($)", hint: "What a fresh round starts with, before anything carried." },
+  { key: "prize_onus", label: "House seed in the pot ($)", hint: "Money you put up yourself. It sits in the pot alongside the cut of sales and is always shown to patients on its own line, never folded into takings." },
   { key: "entry_spins", label: "Entry cost in Spins", hint: "Charged once per round. Burned, win or lose. A redo before the lock is free." },
   { key: "board_size", label: "Songs on the board", hint: "How many go up when a round opens." },
   { key: "winner_seats", label: "Winning seats", hint: "Correct cards are seated earliest lock first. The rest get nothing." },
@@ -71,6 +73,15 @@ const NUMS: { key: keyof Config; label: string; hint: string }[] = [
 ]
 
 const fmtMoney = (n: number) => `$${Number(n ?? 0).toFixed(2)}`
+
+function PotFig({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div>
+      <div className="text-xs uppercase tracking-wide text-gray-500">{label}</div>
+      <div className={`mt-1 text-xl font-bold ${strong ? "text-primary" : "text-white"}`}>{value}</div>
+    </div>
+  )
+}
 const fmtWhen = (s: string | null) => (s ? String(s).replace("T", " ").slice(0, 16) : "—")
 
 export default function CallDesk() {
@@ -82,6 +93,7 @@ export default function CallDesk() {
   const [openId, setOpenId] = useState<string | null>(null)
   const [queue, setQueue] = useState<Withdrawal[]>([])
   const [note, setNote] = useState("")
+  const [pot, setPot] = useState<Pot | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [flash, setFlash] = useState(false)
@@ -108,6 +120,7 @@ export default function CallDesk() {
       setOpenId(d.openRoundId ?? null)
       setQueue(d.withdrawals ?? [])
       setNote(d.note ?? "")
+      setPot(d.pot ?? null)
       setErr("")
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to load")
@@ -254,7 +267,7 @@ export default function CallDesk() {
           {busy === "fresh" ? "Working" : "Start a fresh round"}
         </button>
         <span className="text-xs text-gray-500">
-          Carried and waiting for the next round: {fmtMoney(cfg?.carry_usd ?? 0)}
+          On the table right now: {fmtMoney(pot?.onTable ?? 0)}
         </span>
       </div>
 
@@ -265,6 +278,27 @@ export default function CallDesk() {
         at this moment instead, which is what you want for a test or a restart.
         Paused only stops the hourly job. End the round now still works while paused.
       </p>
+
+      {/* The pot, off rows, not off a field. */}
+      <div className="rounded-xl bg-gray-900 border border-gray-800 p-6">
+        <h2 className="font-semibold text-white mb-1">The pot</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          Only the seed is a figure you set. The rest is worked out from rows every time this page
+          loads, and the patients see the same four lines on the Till.
+        </p>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <PotFig label="Put up by you" value={fmtMoney(pot?.seed ?? 0)} />
+          <PotFig label="Cut of every sale" value={fmtMoney(pot?.sales ?? 0)} />
+          <PotFig label="Won and taken out" value={`-${fmtMoney(pot?.awarded ?? 0)}`} />
+          <PotFig label="On the table" value={fmtMoney(pot?.onTable ?? 0)} strong />
+        </div>
+        <p className="mt-4 text-xs text-gray-600 max-w-3xl">
+          The share of each dollar that lands here is the treasury figure on the Spins desk, and it
+          is frozen onto an order the moment payment confirms, so moving it later never rewrites a
+          sale that already happened. Nobody calls a round right and nothing comes out, which is
+          how the pot rides. There is no carry figure to lose any more.
+        </p>
+      </div>
 
       {/* Every figure that decides money */}
       <div className="rounded-xl bg-gray-900 border border-gray-800 p-6">

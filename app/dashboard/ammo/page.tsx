@@ -474,7 +474,27 @@ export default function AmmoPage() {
                 <input type="number" step="1" min="1" max="100" value={spinsPerPlay}
                   onChange={e => setSpinsPerPlay(Math.max(1, Math.min(100, Math.round(Number(e.target.value) || 1))))}
                   className="w-24 bg-gray-950 border border-gray-700 rounded-lg px-2.5 py-2 text-sm text-white focus:outline-none focus:border-primary" />
-                <span className="text-xs text-gray-500">Spins per play. Saved with the button below.</span>
+                <span className="text-xs text-gray-500">Spins per play. Saved with the button above.</span>
+              </div>
+
+              {/* The pot share. It was already being taken on every confirmed
+                  payment and had no field anywhere, so the most important dial
+                  in the place could only be changed in the database. */}
+              <div className="mt-5 border-t border-gray-800 pt-4">
+                <h3 className="font-semibold text-white text-sm">What feeds The Call</h3>
+                <p className="text-xs text-gray-500 mt-1 mb-3">
+                  The share of every confirmed dollar that goes into the pot. It is frozen onto the
+                  order the moment payment confirms, so changing it here only affects sales from
+                  now on and can never rewrite one that already happened. The rest is yours.
+                </p>
+                <div className="flex items-center gap-2">
+                  <input type="number" step="1" min="0" max="100" value={treasuryPct}
+                    onChange={e => setTreasuryPct(Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0))))}
+                    className="w-24 bg-gray-950 border border-gray-700 rounded-lg px-2.5 py-2 text-sm text-white focus:outline-none focus:border-primary" />
+                  <span className="text-xs text-gray-500">
+                    percent to the pot, {100 - Number(treasuryPct || 0)} percent to the house.
+                  </span>
+                </div>
               </div>
             </div>
 

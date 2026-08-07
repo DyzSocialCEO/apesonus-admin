@@ -36,7 +36,7 @@ export async function GET() {
 
   try {
     const supabase = await createAdminClient()
-    const [config, rounds, awards, cards, note, queue] = await Promise.all([
+    const [config, rounds, awards, cards, note, queue, pot] = await Promise.all([
       supabase
         .from("call_config")
         .select(
@@ -61,6 +61,12 @@ export async function GET() {
         .select("id, user_id, wallet_address, amount_onus, status, tx_signature, created_at")
         .order("created_at", { ascending: false })
         .limit(100),
+      // The pot, computed in the database. Seed, sales and awards stay apart
+      // all the way to the screen so the seed is never read as takings.
+      supabase
+        .from("call_pot")
+        .select("seed_usd, sales_usd, awarded_usd, on_table_usd")
+        .maybeSingle(),
     ])
 
     const winnersPerRound: Record<string, { seat: number; amount_usd: number }[]> = {}
@@ -91,6 +97,12 @@ export async function GET() {
       board: boardTracks,
       openRoundId: open?.id ?? null,
       withdrawals: queue.data ?? [],
+      pot: {
+        seed: Number((pot.data as any)?.seed_usd ?? 0),
+        sales: Number((pot.data as any)?.sales_usd ?? 0),
+        awarded: Number((pot.data as any)?.awarded_usd ?? 0),
+        onTable: Number((pot.data as any)?.on_table_usd ?? 0),
+      },
       note: note.data?.line ?? "",
     })
   } catch (e) {
@@ -248,7 +260,7 @@ export async function POST(request: Request) {
       const money =
         Number(r.paid) > 0
           ? `${r.paid} paid $${Number(r.each).toFixed(2)} each`
-          : `nobody was right, $${Number(r.pot).toFixed(2)} carried`
+          : `nobody was right, $${Number(r.pot).toFixed(2)} stays on the table`
 
       await logAdminAction(supabase, request, session.username, "call.settle", { round: r.round })
       return NextResponse.json({
@@ -289,7 +301,7 @@ export async function POST(request: Request) {
 
       const { data: cfg } = await supabase
         .from("call_config")
-        .select("prize_onus, board_size, lock_hours, freeze_hours, carry_usd")
+        .select("board_size, lock_hours, freeze_hours")
         .eq("id", 1)
         .maybeSingle()
 
@@ -330,11 +342,12 @@ export async function POST(request: Request) {
         locks_at: hrs(Number(cfg?.lock_hours ?? 120)),
         freezes_at: hrs(Number(cfg?.freeze_hours ?? 162)),
         board,
-        prize_usd: Number(cfg?.prize_onus ?? 0) + Number(cfg?.carry_usd ?? 0),
+        // Zero on purpose. prize_usd means WHAT A ROUND PAID and is stamped
+        // at settlement; the figure on screen while it is open is the live pot.
+        prize_usd: 0,
         status: "open",
       })
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      await supabase.from("call_config").update({ carry_usd: 0 }).eq("id", 1)
 
       await logAdminAction(supabase, request, session.username, "call.fresh", { round: id })
       return NextResponse.json({ ok: true, opened: id })
