@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { Fuel, Gift, Flame, ShoppingCart, Users2, Star, Loader2, CheckCircle2, AlertCircle, Plus, Trash2, Save, Check, TrendingUp } from "lucide-react"
+import { Fuel, Gift, Flame, ShoppingCart, Users2, Star, Loader2, CheckCircle2, AlertCircle, Plus, Trash2, Save, Check, TrendingUp, Search } from "lucide-react"
 
 type Stats = {
   outstanding: number
@@ -25,6 +25,15 @@ type GrantRow = { id: number; user_id: string; amount: number; reason: string | 
 type PurchaseRow = { id: number; user_id: string; ammo_amount: number; usd_cents: number; rail: string; status: string; created_at: string }
 // ammo null = "use the discount ladder"; a filled ammo overrides the ladder.
 // price_usd / ammo are null while a field is blank in the editor.
+type Move = { ts: string; delta: number; reason: string; ref_table: string | null; ref_id: string | null }
+type Ledger = {
+  user: { id: string; email: string | null; display_name: string | null; wallet_address: string | null }
+  inSpins: number
+  outSpins: number
+  balance: number
+  drift: number
+  movements: Move[]
+}
 type Pack = { id: string; price_usd: number | null; ammo: number | null; active: boolean; label?: string }
 type Tier = { id: string; min_usd: number | null; bonus_pct: number | null }
 
@@ -50,6 +59,36 @@ export default function AmmoPage() {
   const [grants, setGrants] = useState<GrantRow[]>([])
   const [purchases, setPurchases] = useState<PurchaseRow[]>([])
   const [loading, setLoading] = useState(true)
+
+  // one patient's ledger
+  const [ledgerQuery, setLedgerQuery] = useState("")
+  const [ledgerReason, setLedgerReason] = useState("")
+  const [ledger, setLedger] = useState<Ledger | null>(null)
+  const [ledgerLoading, setLedgerLoading] = useState(false)
+  const [ledgerError, setLedgerError] = useState("")
+
+  const lookUp = useCallback(async (q: string, reason: string) => {
+    if (!q.trim()) return
+    setLedgerLoading(true)
+    setLedgerError("")
+    try {
+      const params = new URLSearchParams({ q: q.trim() })
+      if (reason) params.set("reason", reason)
+      const r = await fetch(`/api/admin/ammo/ledger?${params.toString()}`, { cache: "no-store" })
+      const d = await r.json()
+      if (!r.ok) {
+        setLedger(null)
+        setLedgerError(String(d?.error || "That did not read."))
+        return
+      }
+      setLedger(d as Ledger)
+    } catch {
+      setLedger(null)
+      setLedgerError("That did not read.")
+    } finally {
+      setLedgerLoading(false)
+    }
+  }, [])
 
   // grant form
   const [identifier, setIdentifier] = useState("")
@@ -515,6 +554,121 @@ export default function AmmoPage() {
                   </tbody>
                 </table>
               </div>
+            )}
+          </div>
+
+          {/* One patient's ledger. The same rows the patient sees on the Till. */}
+          <div className="rounded-xl bg-gray-900 border border-gray-800 overflow-hidden">
+            <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-800">
+              <Search className="w-5 h-5 text-primary" />
+              <h2 className="font-semibold text-white">Where a patient&rsquo;s Spins went</h2>
+            </div>
+
+            <div className="px-6 py-4">
+              <p className="text-sm text-gray-500">
+                Email, wallet, name or user id. This reads the same ledger the patient reads on the
+                Till, so you are both looking at one set of rows.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <input
+                  value={ledgerQuery}
+                  onChange={e => setLedgerQuery(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") lookUp(ledgerQuery, ledgerReason) }}
+                  placeholder="patient@email.com"
+                  className="flex-1 min-w-[220px] rounded-lg bg-gray-950 border border-gray-800 px-3 py-2 text-sm text-white"
+                />
+                <select
+                  value={ledgerReason}
+                  onChange={e => { setLedgerReason(e.target.value); if (ledger) lookUp(ledgerQuery, e.target.value) }}
+                  className="rounded-lg bg-gray-950 border border-gray-800 px-3 py-2 text-sm text-white"
+                >
+                  <option value="">Everything</option>
+                  <option value="purchase">Bought</option>
+                  <option value="play">Plays</option>
+                  <option value="call_entry">Call entries</option>
+                </select>
+                <button
+                  onClick={() => lookUp(ledgerQuery, ledgerReason)}
+                  disabled={ledgerLoading || !ledgerQuery.trim()}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
+                >
+                  {ledgerLoading ? "Reading" : "Read the ledger"}
+                </button>
+              </div>
+
+              {ledgerError && (
+                <div className="mt-3 flex items-center gap-2 text-sm text-red-400">
+                  <AlertCircle className="w-4 h-4" />
+                  {ledgerError}
+                </div>
+              )}
+
+              {ledger && (
+                <div className="mt-4">
+                  <div className="text-sm text-white">
+                    {ledger.user.display_name || ledger.user.email || ledger.user.id}
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-gray-500">Came in</div>
+                      <div className="text-xl font-bold text-white">{fmt(ledger.inSpins)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-gray-500">Went out</div>
+                      <div className="text-xl font-bold text-white">{fmt(ledger.outSpins)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-gray-500">Balance</div>
+                      <div className="text-xl font-bold text-white">{fmt(ledger.balance)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-gray-500">Drift</div>
+                      <div className={`text-xl font-bold ${ledger.drift === 0 ? "text-white" : "text-red-400"}`}>
+                        {fmt(ledger.drift)}
+                      </div>
+                    </div>
+                  </div>
+                  {ledger.drift !== 0 && (
+                    <div className="mt-2 text-sm text-red-400">
+                      In minus out does not match the balance. Something moved a balance without
+                      writing a row.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {ledger && (
+              ledger.movements.length === 0 ? (
+                <div className="px-6 py-8 text-sm text-gray-600">Nothing under that filter.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-gray-500 text-xs uppercase">
+                      <tr className="border-b border-gray-800">
+                        <th className="text-left px-6 py-3 font-medium">When</th>
+                        <th className="text-left px-6 py-3 font-medium">Reason</th>
+                        <th className="text-left px-6 py-3 font-medium">Row</th>
+                        <th className="text-right px-6 py-3 font-medium">Spins</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ledger.movements.map((m, i) => (
+                        <tr key={i} className="border-b border-gray-800/60">
+                          <td className="px-6 py-3 text-gray-400">{new Date(m.ts).toLocaleString()}</td>
+                          <td className="px-6 py-3 text-white">{m.reason}</td>
+                          <td className="px-6 py-3 text-gray-600 font-mono text-xs">
+                            {m.ref_table || ""}{m.ref_id ? ` ${m.ref_id.slice(0, 12)}` : ""}
+                          </td>
+                          <td className={`px-6 py-3 text-right font-semibold ${m.delta >= 0 ? "text-green-400" : "text-red-400"}`}>
+                            {m.delta >= 0 ? "+" : ""}{fmt(m.delta)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
             )}
           </div>
 
