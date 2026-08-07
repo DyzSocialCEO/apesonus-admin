@@ -307,11 +307,22 @@ export async function POST(request: Request) {
 
       const now = Date.now()
       const hrs = (n: number) => new Date(now + n * 3600_000).toISOString()
-      const id = new Date(now).toISOString().slice(0, 10)
+      const day = new Date(now).toISOString().slice(0, 10)
 
-      // A same-day id can already exist from the scheduled round. Settle it out
-      // of the way rather than colliding.
-      await supabase.from("call_rounds").update({ status: "settled", settled_at: new Date().toISOString() }).eq("id", id)
+      // A round for today may already exist, settled, from earlier. Marking it
+      // settled does not free the id, which is what "duplicate key value
+      // violates call_rounds_pkey" was. Take the next free id instead:
+      // 2026-08-07, then 2026-08-07-2, and so on.
+      const { data: sameDay } = await supabase
+        .from("call_rounds")
+        .select("id")
+        .like("id", `${day}%`)
+      const taken = new Set(((sameDay ?? []) as { id: string }[]).map((r) => r.id))
+      let id = day
+      for (let n = 2; taken.has(id) && n < 100; n++) id = `${day}-${n}`
+      if (taken.has(id)) {
+        return NextResponse.json({ error: "Too many rounds already started today." }, { status: 409 })
+      }
 
       const { error } = await supabase.from("call_rounds").insert({
         id,
