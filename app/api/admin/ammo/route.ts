@@ -132,10 +132,14 @@ export async function GET() {
 /**
  * POST /api/admin/ammo
  *
- * Grant free Ammo to a user. Identify by userId (UUID) or email.
- * Rate limited and hard-capped, same posture as the $ONUS mint route.
- * Ammo is non-refundable by design, so a grant is the only way to issue
- * credit outside a purchase — every grant is ledgered and audited.
+ * REPAIR a payment that landed on chain and failed to credit. This used to be
+ * a free-form grant tool, and free Spins are gone: the only reason a Spin can
+ * exist without a sale is that a sale happened and the credit did not.
+ *
+ * So a reference is REQUIRED, and the reason is written as `repair:<ref>`.
+ * The public books read that prefix and give repairs their own line, apart
+ * from bought, forever. A repair we could hide would undo the only argument
+ * the books page makes.
  */
 export async function POST(request: Request) {
   try {
@@ -151,10 +155,21 @@ export async function POST(request: Request) {
       )
     }
 
-    const { userId, email, amount, reason } = await request.json()
+    const { userId, email, amount, reason, reference } = await request.json()
     if ((!userId && !email) || !amount || !reason) {
       return NextResponse.json(
         { error: "amount, reason, and one of userId/email are required" },
+        { status: 400 }
+      )
+    }
+
+    // The reference is what makes this a repair rather than a handout: the
+    // order reference or the transaction signature of the payment that did
+    // not credit. Without one there is nothing to check the repair against.
+    const ref = String(reference || "").trim()
+    if (ref.length < 6 || ref.length > 120) {
+      return NextResponse.json(
+        { error: "A payment reference or transaction signature is required, and it must be a real one." },
         { status: 400 }
       )
     }
@@ -189,18 +204,19 @@ export async function POST(request: Request) {
     const { data: newBalance, error: grantErr } = await supabase.rpc("pit_grant_ammo", {
       p_user_id: targetId,
       p_amount: parsed,
-      p_reason: reason,
+      p_reason: `repair:${ref} ${String(reason).slice(0, 160)}`,
       p_actor: actor,
     })
 
     if (grantErr) {
-      console.error("[admin/ammo] grant failed:", grantErr)
-      return NextResponse.json({ error: "Grant failed" }, { status: 500 })
+      console.error("[admin/ammo] repair failed:", grantErr)
+      return NextResponse.json({ error: "Repair failed" }, { status: 500 })
     }
 
-    await logAdminAction(supabase, request, actor, "ammo.grant", {
+    await logAdminAction(supabase, request, actor, "ammo.repair", {
       target_user_id: targetId,
       amount: parsed,
+      reference: ref,
       reason,
     })
 

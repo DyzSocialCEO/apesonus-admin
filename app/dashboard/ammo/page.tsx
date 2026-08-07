@@ -94,6 +94,7 @@ export default function AmmoPage() {
   const [identifier, setIdentifier] = useState("")
   const [amount, setAmount] = useState("")
   const [reason, setReason] = useState("")
+  const [reference, setReference] = useState("")
   const [granting, setGranting] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
@@ -173,7 +174,7 @@ export default function AmmoPage() {
   const submitGrant = async () => {
     setMsg(null)
     const isEmail = identifier.includes("@")
-    const body: any = { amount, reason }
+    const body: any = { amount, reason, reference }
     if (isEmail) body.email = identifier.trim()
     else body.userId = identifier.trim()
 
@@ -186,10 +187,10 @@ export default function AmmoPage() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setMsg({ ok: false, text: data.error || "Grant failed" })
+        setMsg({ ok: false, text: data.error || "Repair failed" })
       } else {
-        setMsg({ ok: true, text: `Granted ${fmt(data.amountGranted)} Spins. New balance ${fmt(data.newBalance)}.` })
-        setIdentifier(""); setAmount(""); setReason("")
+        setMsg({ ok: true, text: `Repaired ${fmt(data.amountGranted)} Spins. New balance ${fmt(data.newBalance)}. It shows on the public books as its own line.` })
+        setIdentifier(""); setAmount(""); setReason(""); setReference("")
         load()
       }
     } catch {
@@ -319,7 +320,7 @@ export default function AmmoPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard icon={Fuel} label="Outstanding" value={fmt(stats?.outstanding || 0)} sub={`${fmt(stats?.holders || 0)} holders`} />
             <StatCard icon={ShoppingCart} label="Sold" value={fmt(stats?.ammoSold || 0)} sub={`$${fmt(stats?.usdGross || 0)} gross`} />
-            <StatCard icon={Gift} label="Granted" value={fmt(stats?.ammoGranted || 0)} />
+            <StatCard icon={Gift} label="Repaired and hand credit" value={fmt(stats?.ammoGranted || 0)} />
             <StatCard icon={Flame} label="Spent" value={fmt(stats?.ammoSpent || 0)} />
           </div>
 
@@ -498,14 +499,17 @@ export default function AmmoPage() {
               </div>
             </div>
 
-            {/* Grant form */}
+            {/* Repair form. Free Spins are gone; this is the only way a Spin
+                can exist without a sale, and it is loud about it. */}
             <div className="rounded-xl bg-gray-900 border border-gray-800 p-6">
               <div className="flex items-center gap-2 mb-1">
                 <Gift className="w-5 h-5 text-primary" />
-                <h2 className="font-semibold text-white">Grant Spins</h2>
+                <h2 className="font-semibold text-white">Repair a payment</h2>
               </div>
               <p className="text-xs text-amber-500/80 mb-4">
-                Granted Spins are non-refundable and non-transferable. A grant is permanent free credit, so log a clear reason.
+                For a payment that landed on chain and failed to credit. Nothing else. Every repair
+                appears on the public books on its own line, apart from Spins that were bought, so
+                use it for that and nothing else.
               </p>
               <div className="space-y-3">
                 <input
@@ -522,18 +526,24 @@ export default function AmmoPage() {
                   className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary"
                 />
                 <input
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                  placeholder="Payment reference or transaction signature"
+                  className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary"
+                />
+                <input
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
-                  placeholder="Reason (devnet test, support comp, …)"
+                  placeholder="What went wrong"
                   className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary"
                 />
                 <button
                   onClick={submitGrant}
-                  disabled={granting || !identifier || !amount || !reason}
+                  disabled={granting || !identifier || !amount || !reason || reference.trim().length < 6}
                   className="w-full flex items-center justify-center gap-2 bg-primary text-black font-semibold rounded-lg px-4 py-2 text-sm disabled:opacity-40 transition-opacity"
                 >
                   {granting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Gift className="w-4 h-4" />}
-                  Grant
+                  Put it right
                 </button>
                 {msg && (
                   <div className={`flex items-center gap-2 text-sm ${msg.ok ? "text-emerald-400" : "text-red-400"}`}>
@@ -692,11 +702,11 @@ export default function AmmoPage() {
             )}
           </div>
 
-          {/* Recent grants */}
+          {/* Recent repairs and any older hand credit */}
           <div className="rounded-xl bg-gray-900 border border-gray-800 overflow-hidden">
             <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-800">
               <Gift className="w-5 h-5 text-primary" />
-              <h2 className="font-semibold text-white">Recent grants</h2>
+              <h2 className="font-semibold text-white">Repairs and older hand credit</h2>
             </div>
             {grants.length === 0 ? (
               <div className="px-6 py-8 text-sm text-gray-600">No grants yet.</div>
