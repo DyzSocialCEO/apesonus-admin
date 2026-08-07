@@ -65,6 +65,7 @@ export default function AmmoPage() {
   const [packs, setPacks] = useState<Pack[]>([])
   const [tiers, setTiers] = useState<Tier[]>([])
   const [treasuryPct, setTreasuryPct] = useState<number>(70)
+  const [spinsPerPlay, setSpinsPerPlay] = useState<number>(1)
   const [savingCfg, setSavingCfg] = useState(false)
   const [savedFlash, setSavedFlash] = useState(false)
   const [cfgMsg, setCfgMsg] = useState<{ ok: boolean; text: string } | null>(null)
@@ -100,6 +101,7 @@ export default function AmmoPage() {
       setPacks(Array.isArray(c.packs) ? c.packs.map((p: any) => ({ ...p, id: p.id || rid("pack") })) : [])
       setTiers(Array.isArray(c.discountTiers) ? c.discountTiers.map((t: any) => ({ ...t, id: rid("tier") })) : [])
       setTreasuryPct(Number.isFinite(c.treasuryPct) ? c.treasuryPct : 70)
+      setSpinsPerPlay(Number.isInteger(c.spinsPerPlay) && c.spinsPerPlay >= 1 ? c.spinsPerPlay : 1)
     } catch (e) {
       problems.push(e instanceof Error ? e.message : "config failed")
     }
@@ -221,7 +223,7 @@ export default function AmmoPage() {
       const res = await fetch("/api/admin/ammo/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packs: v.cleanPacks, discountTiers: v.cleanTiers, treasuryPct: Number(treasuryPct) }),
+        body: JSON.stringify({ packs: v.cleanPacks, discountTiers: v.cleanTiers, treasuryPct: Number(treasuryPct), spinsPerPlay: Number(spinsPerPlay) }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -232,6 +234,7 @@ export default function AmmoPage() {
       setPacks((data.packs || v.cleanPacks).map((p: any) => ({ ...p, id: p.id || rid("pack") })))
       setTiers((data.discountTiers || v.cleanTiers).map((t: any) => ({ ...t, id: rid("tier") })))
       setTreasuryPct(data.treasuryPct ?? treasuryPct)
+      setSpinsPerPlay(data.spinsPerPlay ?? spinsPerPlay)
       setPackErrs({}); setTierErrs({}); setCfgMsg(null)
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 2500)
@@ -243,7 +246,7 @@ export default function AmmoPage() {
   }
 
   // Rate shown in the header — derived from the live $1 pack (or the cheapest
-  // active pack), never hardcoded, so the label always matches what players buy.
+  // active pack), never hardcoded, so the label always matches what patients buy.
   const ratePack = packs.find((p) => p.active && p.price_usd === 1 && p.ammo)
     || packs.filter((p) => p.active && p.price_usd && p.ammo).sort((a, b) => (a.price_usd! - b.price_usd!))[0]
   const ammoPerUsd = ratePack && ratePack.price_usd ? Math.round((ratePack.ammo || 0) / ratePack.price_usd) : 100
@@ -255,8 +258,11 @@ export default function AmmoPage() {
           <Fuel className="w-6 h-6 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-white">Passes</h1>
-          <p className="text-sm text-gray-500">What players buy to keep the music going. $1 = {ammoPerUsd.toLocaleString("en-US")} Spins, 1 Spin = 1 play.</p>
+          <h1 className="text-2xl font-bold text-white">Spins</h1>
+          <p className="text-sm text-gray-500">
+            What patients buy to keep the music going. $1 = {ammoPerUsd.toLocaleString("en-US")} Spins,
+            and {spinsPerPlay === 1 ? "1 Spin plays 1 song" : `${spinsPerPlay} Spins play 1 song`}. Every play costs, replays included.
+          </p>
         </div>
       </div>
 
@@ -275,7 +281,7 @@ export default function AmmoPage() {
             <StatCard icon={Fuel} label="Outstanding" value={fmt(stats?.outstanding || 0)} sub={`${fmt(stats?.holders || 0)} holders`} />
             <StatCard icon={ShoppingCart} label="Sold" value={fmt(stats?.ammoSold || 0)} sub={`$${fmt(stats?.usdGross || 0)} gross`} />
             <StatCard icon={Gift} label="Granted" value={fmt(stats?.ammoGranted || 0)} />
-            <StatCard icon={Flame} label="Spent" value={fmt(stats?.ammoSpent || 0)} sub={`${fmt(stats?.freeServed || 0)} free plays served`} />
+            <StatCard icon={Flame} label="Spent" value={fmt(stats?.ammoSpent || 0)} />
           </div>
 
           {/* Packs, money split, discount ladder — one Save */}
@@ -286,7 +292,7 @@ export default function AmmoPage() {
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <ShoppingCart className="w-5 h-5 text-primary" />
-                    <h2 className="font-semibold text-white">Pass packs</h2>
+                    <h2 className="font-semibold text-white">Spin packs</h2>
                   </div>
                   <button onClick={addPack}
                     className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80">
@@ -294,7 +300,7 @@ export default function AmmoPage() {
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 mb-4">
-                  What players can buy. Price is whole dollars only. Set a pack&apos;s own Spins to fix exactly what it gives, or leave Spins blank to let the discount ladder set it. Inactive packs stay saved but hide from players.
+                  What patients can buy. Price is whole dollars only. Set a pack&apos;s own Spins to fix exactly what it gives, or leave Spins blank to let the discount ladder set it. Inactive packs stay saved but hide from the app.
                 </p>
 
                 <div className="space-y-2">
@@ -353,7 +359,7 @@ export default function AmmoPage() {
                 </button>
               </div>
               <p className="text-xs text-gray-500 mb-4">
-                Bonus days by how much a player spends in one go (spend $5 or more, get 10%, and so on). Whole numbers only. A pack with its own Spins ignores the ladder — leave a pack&apos;s Spins blank to let the ladder set it.
+                Bonus Spins by how much a patient spends in one go (spend $5 or more, get 10%, and so on). Whole numbers only. A pack with its own Spins takes the bonus on top of that figure.
               </p>
 
               <div className="space-y-2 max-w-xl">
@@ -413,22 +419,31 @@ export default function AmmoPage() {
           </div>
 
           <div className="grid lg:grid-cols-2 gap-6">
-            {/* Free plays — model explainer (no per-track setting anymore) */}
+            {/* What a song costs */}
             <div className="rounded-xl bg-gray-900 border border-gray-800 p-6">
               <div className="flex items-center gap-2 mb-1">
                 <Star className="w-5 h-5 text-primary" />
-                <h2 className="font-semibold text-white">Free plays</h2>
+                <h2 className="font-semibold text-white">What a song costs</h2>
               </div>
-              <p className="text-xs text-gray-500">
-                Every account gets 2 free plays a day (free_daily_plays in pit_config), on any track. Once those are used, each play spends 1 Spin, and every paid play mints exactly one Ember. With no Spins and no free plays left, the next play is blocked until they buy Spins or the daily reset comes around.
+              <p className="text-xs text-gray-500 mb-3">
+                Spins taken from the balance for one completed play. There is no free allowance:
+                with nothing in the balance the next play is refused and the app shows the buy
+                screen. Replays cost again, which is what makes a big number on the chart mean
+                somebody paid for it.
               </p>
+              <div className="flex items-center gap-2">
+                <input type="number" step="1" min="1" max="100" value={spinsPerPlay}
+                  onChange={e => setSpinsPerPlay(Math.max(1, Math.min(100, Math.round(Number(e.target.value) || 1))))}
+                  className="w-24 bg-gray-950 border border-gray-700 rounded-lg px-2.5 py-2 text-sm text-white focus:outline-none focus:border-primary" />
+                <span className="text-xs text-gray-500">Spins per play. Saved with the button below.</span>
+              </div>
             </div>
 
             {/* Grant form */}
             <div className="rounded-xl bg-gray-900 border border-gray-800 p-6">
               <div className="flex items-center gap-2 mb-1">
                 <Gift className="w-5 h-5 text-primary" />
-                <h2 className="font-semibold text-white">Grant days</h2>
+                <h2 className="font-semibold text-white">Grant Spins</h2>
               </div>
               <p className="text-xs text-amber-500/80 mb-4">
                 A granted day is non-refundable and non-transferable. A grant is permanent free credit — log a clear reason.

@@ -23,6 +23,9 @@ const MAX_TIERS = 8
  *                  ammo null means "compute from the ladder"; a filled ammo
  *                  overrides the ladder for that pack.
  *   treasury_pct:  number (0..100), default 70
+ *   spins_per_play: number (>= 1), default 1. What one play-through costs.
+ *                  Read by pit_spend_for_play, so changing it here changes
+ *                  the price of a song with no deploy.
  *   discount_tiers:[{ min_usd (int >= 1), bonus_pct (int 1..100) }] sorted by min_usd
  */
 
@@ -114,8 +117,11 @@ export async function GET() {
     const packs: Pack[] = Array.isArray(cfg.ammo_packs) ? cfg.ammo_packs : []
     const discountTiers: Tier[] = Array.isArray(cfg.discount_tiers) ? cfg.discount_tiers : []
     const treasuryPct = Number.isFinite(Number(cfg.treasury_pct)) ? Number(cfg.treasury_pct) : 70
+    const spinsPerPlay = Number.isInteger(Number(cfg.spins_per_play)) && Number(cfg.spins_per_play) >= 1
+      ? Number(cfg.spins_per_play)
+      : 1
 
-    return NextResponse.json({ packs, discountTiers, treasuryPct, housePct: 100 - treasuryPct })
+    return NextResponse.json({ packs, discountTiers, treasuryPct, housePct: 100 - treasuryPct, spinsPerPlay })
   } catch (error) {
     console.error("[admin/ammo/config] GET error:", error)
     return NextResponse.json({ error: "Failed" }, { status: 500 })
@@ -140,6 +146,7 @@ export async function POST(request: Request) {
       packs: cfg.ammo_packs ?? null,
       treasury_pct: cfg.treasury_pct ?? null,
       discount_tiers: cfg.discount_tiers ?? null,
+      spins_per_play: cfg.spins_per_play ?? null,
     }
 
     if (body.packs !== undefined) {
@@ -156,6 +163,14 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Some discount tiers are invalid", details: errors }, { status: 400 })
       }
       cfg.discount_tiers = tiers
+    }
+
+    if (body.spinsPerPlay !== undefined) {
+      const n = Number(body.spinsPerPlay)
+      if (!Number.isInteger(n) || n < 1 || n > 100) {
+        return NextResponse.json({ error: "Spins per play must be a whole number between 1 and 100" }, { status: 400 })
+      }
+      cfg.spins_per_play = n
     }
 
     if (body.treasuryPct !== undefined) {
@@ -177,7 +192,7 @@ export async function POST(request: Request) {
 
     await logAdminAction(supabase, request, session.username || "unknown", "ammo.config.set", {
       before,
-      after: { packs: cfg.ammo_packs, treasury_pct: cfg.treasury_pct, discount_tiers: cfg.discount_tiers },
+      after: { packs: cfg.ammo_packs, treasury_pct: cfg.treasury_pct, discount_tiers: cfg.discount_tiers, spins_per_play: cfg.spins_per_play },
     })
 
     const treasuryPct = Number.isFinite(Number(cfg.treasury_pct)) ? Number(cfg.treasury_pct) : 70
