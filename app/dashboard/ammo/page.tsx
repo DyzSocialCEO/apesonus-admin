@@ -149,7 +149,7 @@ export default function AmmoPage() {
       if (!res.ok) {
         setMsg({ ok: false, text: data.error || "Grant failed" })
       } else {
-        setMsg({ ok: true, text: `Granted ${fmt(data.amountGranted)} days. New balance ${fmt(data.newBalance)}.` })
+        setMsg({ ok: true, text: `Granted ${fmt(data.amountGranted)} Spins. New balance ${fmt(data.newBalance)}.` })
         setIdentifier(""); setAmount(""); setReason("")
         load()
       }
@@ -186,7 +186,7 @@ export default function AmmoPage() {
           pErr[p.id] = "Price must be a whole dollar, 1 or more."; return false
         }
         if (p.ammo !== null && (!isInt(p.ammo) || (p.ammo as number) < 1)) {
-          pErr[p.id] = "Days must be a whole number 1 or more, or blank to use the ladder."; return false
+          pErr[p.id] = "Spins must be a whole number 1 or more, or blank to use the ladder."; return false
         }
         return true
       })
@@ -305,7 +305,7 @@ export default function AmmoPage() {
 
                 <div className="space-y-2">
                   <div className="grid grid-cols-[1fr_1fr_1.2fr_auto_auto] gap-2 px-1 text-[10px] uppercase tracking-wider text-gray-600">
-                    <span>Price $</span><span>Days</span><span>Label (optional)</span><span>Live</span><span></span>
+                    <span>Price $</span><span>Spins</span><span>Label (optional)</span><span>Live</span><span></span>
                   </div>
                   {packs.length === 0 && (
                     <div className="text-xs text-gray-500 py-3">No packs yet. Add one to start selling.</div>
@@ -446,7 +446,7 @@ export default function AmmoPage() {
                 <h2 className="font-semibold text-white">Grant Spins</h2>
               </div>
               <p className="text-xs text-amber-500/80 mb-4">
-                A granted day is non-refundable and non-transferable. A grant is permanent free credit — log a clear reason.
+                Granted Spins are non-refundable and non-transferable. A grant is permanent free credit, so log a clear reason.
               </p>
               <div className="space-y-3">
                 <input
@@ -501,7 +501,7 @@ export default function AmmoPage() {
                     <tr className="border-b border-gray-800">
                       <th className="text-left px-6 py-3 font-medium">User</th>
                       <th className="text-left px-6 py-3 font-medium">ID</th>
-                      <th className="text-right px-6 py-3 font-medium">Days</th>
+                      <th className="text-right px-6 py-3 font-medium">Spins</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -570,7 +570,7 @@ export default function AmmoPage() {
               </button>
             </div>
             {purchases.length === 0 ? (
-              <div className="px-6 py-8 text-sm text-gray-600">No purchases yet — the on-chain buy rail ships in Phase 1B.</div>
+              <div className="px-6 py-8 text-sm text-gray-600">No purchases yet.</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -578,7 +578,7 @@ export default function AmmoPage() {
                     <tr className="border-b border-gray-800">
                       <th className="text-left px-6 py-3 font-medium">When</th>
                       <th className="text-left px-6 py-3 font-medium">User</th>
-                      <th className="text-right px-6 py-3 font-medium">Days</th>
+                      <th className="text-right px-6 py-3 font-medium">Spins</th>
                       <th className="text-right px-6 py-3 font-medium">USD</th>
                       <th className="text-left px-6 py-3 font-medium">Rail</th>
                       <th className="text-left px-6 py-3 font-medium">Status</th>
