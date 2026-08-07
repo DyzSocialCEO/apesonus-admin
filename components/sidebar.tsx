@@ -4,26 +4,27 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
-    ScrollText, UserCircle, DollarSign, Zap, Target } from "lucide-react"
+    ScrollText, UserCircle, DollarSign, Target } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
 /**
- * Only desks that do a job at launch.
+ * Only desks that do a job.
  *
- * Removed from the menu, deliberately: Referrals (the commission was killed, so
- * the desk sets a rate nothing reads), Banners, and Airdrops (sponsor token
- * drops to Ember holders). The pages still exist and nothing imports them, so
- * any of them can be put back by restoring one line here.
+ * Every row here points at a page that exists and is linked. Nothing sits in
+ * the repo unlinked any more: the old cash Call desk, Ward Check, Chart,
+ * Distribution, Partner Access, Payouts and Revenue were all removed rather
+ * than left hidden.
  *
- * Partner Access and Distribution stay. They work, and partners are coming.
+ * Ward Check is gone because the Ward itself was stripped out of the app, and
+ * its row here never worked anyway. The href carried trailing spaces, so the
+ * active-state check never matched and the link resolved wrong.
  */
 const navigation = [
   { name: "Dashboard",       href: "/dashboard",                 icon: LayoutDashboard },
   { name: "Tracks",          href: "/dashboard/tracks",          icon: Music           },
   { name: "Artists",         href: "/dashboard/artists",         icon: UserCircle      },
   { name: "The Call (beta)", href: "/dashboard/call-beta",       icon: Target          },
-  { name: "Ward Check"     , href: "/dashboard/ward     ",       icon: Target          },
   { name: "Users",           href: "/dashboard/users",           icon: Users           },
   { name: "Finance",         href: "/dashboard/finance",         icon: DollarSign     },
   { name: "Analytics",       href: "/dashboard/analytics",       icon: BarChart3       },
