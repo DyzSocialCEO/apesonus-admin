@@ -1,28 +1,55 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Loader2, Play, Save } from "lucide-react"
+/**
+ * /dashboard/call-beta — THE CALL desk.
+ *
+ * Weekly. Two calls a card. Counted in Spins.
+ *
+ * Every figure that decides money is a field here, not a number in a file:
+ * what a card costs, how many songs are on the board, how many seats pay, how
+ * few Spins a song can take and still be called useless, and the four points
+ * of the week clock.
+ *
+ * THE COUNTS ARE NOT ON THIS PAGE while a round is open, on purpose. The
+ * chart appears only after a round settles. An operator who can see who is
+ * winning mid week is a leak with a login.
+ */
 
-interface Day {
+import { useCallback, useEffect, useState } from "react"
+import { Loader2, Save, Check, Target, Shuffle, Send, X } from "lucide-react"
+
+type Config = {
+  prize_onus: number
+  enabled: boolean
+  entry_spins: number
+  board_size: number
+  winner_seats: number
+  useless_min_spins: number
+  lock_hours: number
+  freeze_hours: number
+  round_hours: number
+  carry_usd: number
+}
+
+type Song = { track_id: number; title: string; artist: string; spins: number | null }
+
+type Round = {
   id: string
   opens_at: string
-  closes_at: string
-  prize_onus: number
+  locks_at: string
+  freezes_at: string
+  prize_usd: number
   status: string
-  top5: { track_id: number; title: string; artist: string; listeners: number }[] | null
+  board: number[]
+  top_song: Song | null
+  useless_song: Song | null
+  chart: Song[] | null
+  lock_hash: string | null
+  lock_tx: string | null
   settled_at: string | null
 }
 
-interface Winner {
-  rank: number
-  points: number
-  amount_onus: number
-}
-
-interface Withdrawal {
+type Withdrawal = {
   id: number
   user_id: string
   wallet_address: string
@@ -32,337 +59,369 @@ interface Withdrawal {
   created_at: string
 }
 
-/**
- * THE CALL (beta) — the free daily call.
- *
- * Scoring lives in call_week_tick() in the database, so this desk only sets
- * the knobs and shows what happened. The chart of an OPEN week is deliberately
- * absent here too: it does not exist until the week settles.
- */
-export default function CallBetaPage() {
+const NUMS: { key: keyof Config; label: string; hint: string }[] = [
+  { key: "prize_onus", label: "Base pot each round ($)", hint: "What a fresh round starts with, before anything carried." },
+  { key: "entry_spins", label: "Entry cost in Spins", hint: "Charged once per round. Burned, win or lose. A redo before the lock is free." },
+  { key: "board_size", label: "Songs on the board", hint: "How many go up when a round opens." },
+  { key: "winner_seats", label: "Winning seats", hint: "Correct cards are seated earliest lock first. The rest get nothing." },
+  { key: "useless_min_spins", label: "Min Spins to be called useless", hint: "Below this a song cannot win Most Useless, so an untouched track cannot walk it every week." },
+  { key: "lock_hours", label: "Calling shuts after (hours)", hint: "Measured from the moment the round opens. 120 is end of Thursday." },
+  { key: "freeze_hours", label: "Counting stops after (hours)", hint: "162 is Saturday evening." },
+  { key: "round_hours", label: "Round length (hours)", hint: "168 is a week." },
+]
+
+const fmtMoney = (n: number) => `$${Number(n ?? 0).toFixed(2)}`
+const fmtWhen = (s: string | null) => (s ? String(s).replace("T", " ").slice(0, 16) : "—")
+
+export default function CallDesk() {
+  const [cfg, setCfg] = useState<Config | null>(null)
+  const [rounds, setRounds] = useState<Round[]>([])
+  const [winners, setWinners] = useState<Record<string, { seat: number; amount_usd: number }[]>>({})
+  const [cards, setCards] = useState<Record<string, number>>({})
+  const [board, setBoard] = useState<{ id: number; title: string; artist: string }[]>([])
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [queue, setQueue] = useState<Withdrawal[]>([])
+  const [note, setNote] = useState("")
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [ticking, setTicking] = useState(false)
-  const [msg, setMsg] = useState("")
-
-  // Blank until the real figure loads, so the desk never flashes an invented number.
-  const [prize, setPrize] = useState("")
-  const [enabled, setEnabled] = useState(true)
-  const [days, setDays] = useState<Day[]>([])
-  const [winners, setWinners] = useState<Record<string, Winner[]>>({})
-  const [cards, setCards] = useState<Record<string, number>>({})
-  const [queue, setQueue] = useState<Withdrawal[]>([])
-  const [noteDraft, setNoteDraft] = useState("")
+  const [flash, setFlash] = useState(false)
+  const [err, setErr] = useState("")
   const [tx, setTx] = useState<Record<number, string>>({})
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/call-beta", { cache: "no-store" })
-      if (!res.ok) return
       const d = await res.json()
-      setPrize(String(d.config?.prize_onus ?? 5000))
-      setEnabled(d.config?.enabled !== false)
-      setDays(d.days ?? [])
-      setWinners(d.winnersPerDay ?? {})
-      setCards(d.cardsPerDay ?? {})
+      if (!res.ok) throw new Error(d?.error || "Failed to load")
+      setCfg(d.config)
+      setRounds(d.rounds ?? [])
+      setWinners(d.winnersPerRound ?? {})
+      setCards(d.cardsPerRound ?? {})
+      setBoard(d.board ?? [])
+      setOpenId(d.openRoundId ?? null)
       setQueue(d.withdrawals ?? [])
-      setNoteDraft(d.note ?? "")
+      setNote(d.note ?? "")
+      setErr("")
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to load")
     } finally {
       setLoading(false)
     }
-  }
-  useEffect(() => {
-    load()
   }, [])
 
-  const saveConfig = async () => {
-    if (loading || prize.trim() === "" || !Number.isFinite(Number(prize))) return
-    setSaving(true)
-    setMsg("")
-    try {
-      const res = await fetch("/api/admin/call-beta", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prize_onus: Number(prize), enabled }),
-      })
-      const d = await res.json()
-      setMsg(res.ok ? "Saved. It applies to the next week that opens." : d.error || "Save failed")
-      if (res.ok) load()
-    } finally {
-      setSaving(false)
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const patch = async (body: Record<string, unknown>, after?: () => void) => {
+    setErr("")
+    const res = await fetch("/api/admin/call-beta", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    const d = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setErr(d?.error || "That did not save")
+      return false
     }
+    after?.()
+    return true
   }
 
-  const runTick = async () => {
-    setTicking(true)
-    setMsg("")
-    try {
-      const res = await fetch("/api/admin/call-beta", { method: "POST" })
-      const d = await res.json()
-      setMsg(
-        res.ok
-          ? `Opened ${d.opened || "nothing"}, settled ${d.settled || "nothing"}.`
-          : d.error || "Tick failed",
-      )
-      if (res.ok) load()
-    } finally {
-      setTicking(false)
+  const saveNumbers = async () => {
+    if (!cfg || saving) return
+    setSaving(true)
+    const body: Record<string, unknown> = {}
+    for (const n of NUMS) body[n.key] = Number(cfg[n.key])
+    const ok = await patch(body)
+    setSaving(false)
+    if (ok) {
+      setFlash(true)
+      setTimeout(() => setFlash(false), 1600)
+      load()
     }
   }
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 p-6 text-gray-400">
-        <Loader2 className="h-4 w-4 animate-spin" /> Loading the desk
+      <div className="flex items-center gap-2 text-gray-500">
+        <Loader2 className="w-4 h-4 animate-spin" /> Loading…
       </div>
     )
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">The Call (beta)</h1>
-        <p className="mt-1 text-sm text-gray-400">
-          Free and daily. A card calls TOMORROW: the board shuts the moment that day begins, and
-          the chart counts LISTENERS, so one patient moves a song by exactly one however many
-          times they replay it. Only a perfect card is paid, all five songs in all five seats, and
-          perfect cards split the pot evenly. Nobody perfect and the whole pot rides to the next
-          day.
+    <div className="space-y-8 max-w-5xl">
+      <div className="flex items-center gap-3">
+        <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center">
+          <Target className="w-6 h-6 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-white">The Call</h1>
+          <p className="text-sm text-gray-500">
+            Weekly. Two calls a card, off a board of {cfg?.board_size ?? 10}. Counted in Spins spent, so
+            replays count and every count traces to money.
+          </p>
+        </div>
+      </div>
+
+      {err && (
+        <div className="text-xs rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 px-3 py-2">{err}</div>
+      )}
+
+      {/* Running / paused. Saves the instant it is pressed. */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={async () => {
+            const next = !cfg?.enabled
+            setCfg((c) => (c ? { ...c, enabled: next } : c))
+            const ok = await patch({ enabled: next })
+            if (!ok) setCfg((c) => (c ? { ...c, enabled: !next } : c))
+          }}
+          className={`rounded-lg border px-4 py-2 text-sm font-medium ${
+            cfg?.enabled ? "border-green-700 text-green-400" : "border-gray-700 text-gray-400"
+          }`}
+        >
+          {cfg?.enabled ? "RUNNING" : "PAUSED"}
+        </button>
+        <button
+          onClick={async () => {
+            const res = await fetch("/api/admin/call-beta", { method: "POST" })
+            const d = await res.json().catch(() => ({}))
+            if (!res.ok) setErr(d?.error || "Tick failed")
+            else load()
+          }}
+          className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300"
+        >
+          Run the tick now
+        </button>
+        <span className="text-xs text-gray-500">
+          Carried and waiting for the next round: {fmtMoney(cfg?.carry_usd ?? 0)}
+        </span>
+      </div>
+
+      {/* Every figure that decides money */}
+      <div className="rounded-xl bg-gray-900 border border-gray-800 p-6">
+        <h2 className="font-semibold text-white mb-1">The numbers</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          Nothing about the Call is written into the code. Change it here and it applies from the next
+          round, with no deploy.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-4">
+          {NUMS.map((n) => (
+            <div key={n.key}>
+              <label className="mb-1 block text-sm font-medium text-gray-300">{n.label}</label>
+              <input
+                type="number"
+                min={0}
+                value={String(cfg?.[n.key] ?? 0)}
+                onChange={(e) =>
+                  setCfg((c) => (c ? { ...c, [n.key]: Math.max(0, Math.round(Number(e.target.value) || 0)) } : c))
+                }
+                className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+              />
+              <p className="mt-1 text-[11px] text-gray-600">{n.hint}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 flex justify-end">
+          <button
+            onClick={saveNumbers}
+            disabled={saving}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-black disabled:opacity-60"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : flash ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+            Save the numbers
+          </button>
+        </div>
+      </div>
+
+      {/* This week's board */}
+      <div className="rounded-xl bg-gray-900 border border-gray-800 p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-semibold text-white">This round&apos;s board</h2>
+          <button
+            onClick={async () => {
+              if (await patch({ reshuffle: true })) load()
+            }}
+            className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80"
+          >
+            <Shuffle className="w-4 h-4" /> Reshuffle
+          </button>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          {openId ? `Round ${openId}.` : "No round open."} The board can only be changed while nobody has
+          called on it. Once one card is in, changing it would be changing the question after the answers
+          are in, and the desk refuses.
+        </p>
+        {board.length === 0 ? (
+          <div className="text-xs text-gray-600">Nothing on the board yet.</div>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-1.5">
+            {board.map((t, i) => (
+              <div key={t.id} className="flex items-center gap-3 rounded-lg bg-gray-950 border border-gray-800 px-3 py-2">
+                <span className="font-mono text-[11px] text-gray-600">{String(i + 1).padStart(2, "0")}</span>
+                <span className="flex-1 truncate text-sm text-white">{t.title}</span>
+                <span className="truncate text-xs text-gray-500">{t.artist}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="mt-3 text-[11px] text-gray-600">
+          Cards on this board: {openId ? (cards[openId] ?? 0) : 0}. What each song has taken is not shown
+          until the round settles, including here.
         </p>
       </div>
 
-      {msg ? <div className="text-sm text-yellow-500">{msg}</div> : null}
-
-      <Card className="border-gray-800 bg-gray-900/60">
-        <CardContent className="space-y-4 p-5">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-300">
-              Daily prize in dollars
-            </label>
-            <Input
-              value={prize}
-              onChange={(e) => setPrize(e.target.value.replace(/[^0-9]/g, ""))}
-              className="max-w-sm border-gray-700 bg-gray-800 text-white"
-            />
-            <p className="mt-1 text-[11px] text-gray-500">
-              Paid out in $PUMP, worked out at the price when it lands. Applies to days that open
-              from now on, so today keeps its number.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={async () => {
-                // The switch saves itself the moment it is pressed. A pause
-                // that waits for a second button is a pause that never happens.
-                const next = !enabled
-                setEnabled(next)
-                const res = await fetch("/api/admin/call-beta", {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ enabled: next }),
-                })
-                if (!res.ok) {
-                  setEnabled(!next)
-                  setMsg("The switch did not save. Try again.")
-                } else {
-                  setMsg(next ? "Running. The next tick opens a day." : "Paused. No day opens, nothing settles.")
-                }
-              }}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
-                enabled ? "border-green-700 text-green-400" : "border-gray-700 text-gray-400"
-              }`}
-            >
-              {enabled ? "RUNNING" : "PAUSED"}
-            </button>
-            <span className="text-[11px] text-gray-500">
-              Saves the moment you press it. Paused means no new day opens and nothing settles.
-            </span>
-          </div>
-
-          <div className="flex gap-2">
-            <Button
-              onClick={saveConfig}
-              disabled={saving}
-              className="bg-yellow-600 font-semibold text-black hover:bg-yellow-500"
-            >
-              {saving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
-              Save
-            </Button>
-            <Button onClick={runTick} disabled={ticking} variant="outline" className="border-gray-700 text-gray-300">
-              {ticking ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Play className="mr-1.5 h-4 w-4" />}
-              Run the tick now
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-gray-800 bg-gray-900/60">
-        <CardContent className="space-y-3 p-5">
-          <div>
-            <p className="text-sm font-medium text-gray-300">The doctor&apos;s line today</p>
-            <p className="mt-1 text-[11px] text-gray-500">
-              The tick writes one a day by itself. Type over it to say something of your own, or
-              empty it to take the wall down. Same words work as the day&apos;s post, so copy it out.
-            </p>
-          </div>
-          <Input
-            value={noteDraft}
-            onChange={(e) => setNoteDraft(e.target.value)}
-            placeholder="Nothing on the wall yet"
-            className="border-gray-700 bg-gray-800 text-white"
-          />
-          <div className="flex flex-wrap gap-2">
-            <Button
-              onClick={async () => {
-                const res = await fetch("/api/admin/call-beta", {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ note: { line: noteDraft } }),
-                })
-                const d = await res.json()
-                setMsg(res.ok ? "On the wall." : d.error || "Failed")
-                if (res.ok) load()
-              }}
-              className="bg-yellow-600 font-semibold text-black hover:bg-yellow-500"
-            >
-              Put it on the wall
-            </Button>
-            <Button
-              variant="outline"
-              className="border-gray-700 text-gray-300"
-              onClick={() => {
-                navigator.clipboard?.writeText(noteDraft)
-                setMsg("Copied.")
-              }}
-            >
-              Copy for X
-            </Button>
-            <Button
-              variant="outline"
-              className="border-gray-700 text-gray-300"
-              onClick={async () => {
-                await fetch("/api/admin/call-beta", {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ note: { line: "" } }),
-                })
-                setNoteDraft("")
-                setMsg("Cleared. The next tick writes a fresh one.")
-                load()
-              }}
-            >
-              Clear and rewrite
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="space-y-3">
-        <p className="text-xs uppercase tracking-widest text-gray-500">The desk: withdrawals</p>
-        {queue.filter((q) => q.status === "requested").length === 0 ? (
-          <p className="text-sm text-gray-500">Nothing waiting.</p>
-        ) : null}
-        {queue.filter((q) => q.status === "requested").map((q) => (
-          <Card key={q.id} className="border-yellow-900/60 bg-gray-900/60">
-            <CardContent className="space-y-2 p-4">
-              <div className="flex flex-wrap items-center gap-3 text-sm">
-                <span className="text-yellow-500">${Number(q.amount_onus).toFixed(2)} of $PUMP</span>
-                <span className="font-mono text-xs text-gray-300">{q.wallet_address}</span>
-                <span className="text-[11px] text-gray-500">{new Date(q.created_at).toLocaleString()}</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Input
-                  value={tx[q.id] ?? ""}
-                  onChange={(e) => setTx({ ...tx, [q.id]: e.target.value })}
-                  placeholder="Payout signature after you send the tokens"
-                  className="max-w-md border-gray-700 bg-gray-800 text-white"
-                />
-                <Button
-                  onClick={async () => {
-                    const res = await fetch("/api/admin/call-beta", {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ withdrawal: { id: q.id, action: "sent", tx: tx[q.id] ?? "" } }),
-                    })
-                    const d = await res.json()
-                    setMsg(res.ok ? "Marked sent." : d.error || "Failed")
-                    if (res.ok) load()
-                  }}
-                  className="bg-yellow-600 font-semibold text-black hover:bg-yellow-500"
-                >
-                  Mark sent
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={async () => {
-                    const res = await fetch("/api/admin/call-beta", {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ withdrawal: { id: q.id, action: "rejected" } }),
-                    })
-                    const d = await res.json()
-                    setMsg(res.ok ? "Rejected. The amount frees up for a new request." : d.error || "Failed")
-                    if (res.ok) load()
-                  }}
-                  className="border-gray-700 text-gray-300"
-                >
-                  Reject
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-
-        <p className="pt-2 text-xs uppercase tracking-widest text-gray-500">Days</p>
-        {days.length === 0 ? (
-          <p className="text-sm text-gray-500">
-            No days yet. Run the tick once and today opens.
-          </p>
-        ) : null}
-        {days.map((w) => (
-          <Card key={w.id} className="border-gray-800 bg-gray-900/60">
-            <CardContent className="p-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="font-mono text-sm text-white">{w.id}</span>
-                <span
-                  className={`rounded px-2 py-0.5 text-[10px] font-bold tracking-widest ${
-                    w.status === "open" ? "bg-green-900/40 text-green-400" : "bg-gray-800 text-gray-400"
-                  }`}
-                >
-                  {w.status.toUpperCase()}
-                </span>
-                <span className="text-sm text-yellow-500">
-                  ${Number(w.prize_onus).toFixed(2)}
-                </span>
-                <span className="text-[11px] text-gray-500">
-                  {cards[w.id] ?? 0} cards · {(winners[w.id] ?? []).length} paid
-                </span>
-              </div>
-
-              {w.status === "settled" && w.top5?.length ? (
-                <div className="mt-3 space-y-1">
-                  {w.top5.map((t, i) => (
-                    <div key={t.track_id} className="flex items-center gap-3 text-[12px]">
-                      <span className="w-5 text-gray-500">{String(i + 1).padStart(2, "0")}</span>
-                      <span className="flex-1 truncate text-gray-200">{t.title}</span>
-                      <span className="truncate text-gray-500">{t.artist}</span>
-                      <span className="w-14 text-right text-gray-400">{t.listeners}</span>
-                    </div>
-                  ))}
-                  {(winners[w.id] ?? []).map((win) => (
-                    <div key={win.rank} className="flex items-center gap-3 text-[11px] text-gray-400">
-                      <span className="w-5" />
-                      <span>Rank {win.rank}</span>
-                      <span>{win.points}/10</span>
-                      <span className="ml-auto text-yellow-600">${Number(win.amount_onus).toFixed(2)}</span>
-                    </div>
-                  ))}
+      {/* Withdrawals */}
+      <div className="rounded-xl bg-gray-900 border border-gray-800 p-6">
+        <h2 className="font-semibold text-white mb-4">Withdrawal queue</h2>
+        {queue.filter((w) => w.status === "requested").length === 0 ? (
+          <div className="text-xs text-gray-600">Nothing waiting.</div>
+        ) : (
+          <div className="space-y-2">
+            {queue
+              .filter((w) => w.status === "requested")
+              .map((w) => (
+                <div key={w.id} className="rounded-lg bg-gray-950 border border-gray-800 p-3">
+                  <div className="flex flex-wrap items-center gap-3 text-sm">
+                    <span className="font-medium text-white">{fmtMoney(w.amount_onus)}</span>
+                    <span className="font-mono text-[11px] text-gray-500 break-all">{w.wallet_address}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <input
+                      value={tx[w.id] ?? ""}
+                      onChange={(e) => setTx((m) => ({ ...m, [w.id]: e.target.value }))}
+                      placeholder="Payout signature"
+                      className="flex-1 min-w-[220px] bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                    />
+                    <button
+                      onClick={async () => {
+                        if (await patch({ withdrawal: { id: w.id, action: "sent", tx: tx[w.id] ?? "" } })) load()
+                      }}
+                      className="flex items-center gap-1.5 rounded-lg border border-green-700 px-3 py-1.5 text-xs text-green-400"
+                    >
+                      <Send className="w-3.5 h-3.5" /> Mark sent
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (await patch({ withdrawal: { id: w.id, action: "rejected" } })) load()
+                      }}
+                      className="flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-400"
+                    >
+                      <X className="w-3.5 h-3.5" /> Reject
+                    </button>
+                  </div>
                 </div>
-              ) : null}
-            </CardContent>
-          </Card>
-        ))}
+              ))}
+          </div>
+        )}
+      </div>
+
+      {/* The doctor's wall */}
+      <div className="rounded-xl bg-gray-900 border border-gray-800 p-6">
+        <h2 className="font-semibold text-white mb-1">The wall</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          The hourly tick writes one line a day by itself. Typing over it here replaces today&apos;s line.
+        </p>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={2}
+          className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+        />
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            onClick={async () => {
+              if (await patch({ note: { line: note } })) load()
+            }}
+            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-black"
+          >
+            Put it on the wall
+          </button>
+          <button
+            onClick={() => navigator.clipboard.writeText(note)}
+            className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300"
+          >
+            Copy for X
+          </button>
+          <button
+            onClick={async () => {
+              setNote("")
+              if (await patch({ note: { line: "" } })) load()
+            }}
+            className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-400"
+          >
+            Clear and rewrite
+          </button>
+        </div>
+      </div>
+
+      {/* Rounds */}
+      <div className="rounded-xl bg-gray-900 border border-gray-800 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-800">
+          <h2 className="font-semibold text-white">Rounds</h2>
+        </div>
+        {rounds.length === 0 ? (
+          <div className="px-6 py-8 text-sm text-gray-600">No rounds yet.</div>
+        ) : (
+          <div className="divide-y divide-gray-800">
+            {rounds.map((r) => (
+              <div key={r.id} className="px-6 py-4">
+                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                  <span className="font-mono text-sm text-white">{r.id}</span>
+                  <span className="text-[11px] uppercase tracking-wider text-gray-500">{r.status}</span>
+                  <span className="text-xs text-gray-400">{fmtMoney(r.prize_usd)}</span>
+                  <span className="text-xs text-gray-500">{cards[r.id] ?? 0} cards</span>
+                  <span className="text-xs text-gray-600">
+                    calls shut {fmtWhen(r.locks_at)} · counting stopped {fmtWhen(r.freezes_at)}
+                  </span>
+                </div>
+
+                {r.status === "settled" ? (
+                  <div className="mt-2 grid sm:grid-cols-2 gap-2">
+                    <div className="rounded-lg bg-gray-950 border border-gray-800 px-3 py-2">
+                      <div className="text-[10px] uppercase tracking-wider text-gray-600">Ran the ward</div>
+                      <div className="text-sm text-white">
+                        {r.top_song ? `${r.top_song.title} · ${r.top_song.spins ?? 0} Spins` : "no chart"}
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-gray-950 border border-gray-800 px-3 py-2">
+                      <div className="text-[10px] uppercase tracking-wider text-gray-600">Did nothing</div>
+                      <div className="text-sm text-white">
+                        {r.useless_song ? `${r.useless_song.title} · ${r.useless_song.spins ?? 0} Spins` : "nothing qualified"}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2 text-[11px] text-gray-600">
+                    Counts stay hidden until this round settles.
+                  </div>
+                )}
+
+                {(winners[r.id] ?? []).length > 0 ? (
+                  <div className="mt-2 text-xs text-gray-400">
+                    Paid:{" "}
+                    {(winners[r.id] ?? [])
+                      .sort((a, b) => a.seat - b.seat)
+                      .map((w) => `seat ${w.seat} ${fmtMoney(w.amount_usd)}`)
+                      .join(" · ")}
+                  </div>
+                ) : r.status === "settled" ? (
+                  <div className="mt-2 text-xs text-gray-500">Nobody got both. The pot rode on.</div>
+                ) : null}
+
+                {r.lock_hash ? (
+                  <div className="mt-2 break-all font-mono text-[10px] text-gray-600">
+                    fingerprint {r.lock_hash}
+                    {r.lock_tx ? ` · stamp ${r.lock_tx}` : " · not stamped yet"}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
