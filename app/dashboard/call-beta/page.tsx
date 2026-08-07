@@ -90,6 +90,9 @@ export default function CallDesk() {
   // how "End the round now" managed to do nothing for a while without anybody
   // being able to tell.
   const [said, setSaid] = useState("")
+  // Which button is mid-flight. Without this a press looks identical to a
+  // dead button, which is exactly how these read.
+  const [busy, setBusy] = useState<string | null>(null)
   const [tx, setTx] = useState<Record<number, string>>({})
 
   const load = useCallback(async () => {
@@ -136,6 +139,8 @@ export default function CallDesk() {
   // The three buttons all hit the same route with an action, so there is one
   // place that handles a failure and one place that reloads.
   const act = async (action: string, failMessage: string) => {
+    if (busy) return
+    setBusy(action)
     setErr("")
     setSaid("")
     const res = await fetch("/api/admin/call-beta", {
@@ -146,8 +151,10 @@ export default function CallDesk() {
     const d = await res.json().catch(() => ({}))
     if (!res.ok) {
       setErr(d?.error || failMessage)
+      setBusy(null)
       return
     }
+    setBusy(null)
     if (d?.message) setSaid(String(d.message))
     else if (d?.opened) setSaid(`Round ${d.opened} is open.`)
     else if (d?.settled) setSaid(`Round ${d.settled} settled.`)
@@ -216,9 +223,11 @@ export default function CallDesk() {
         </button>
         <button
           onClick={() => act("tick", "Tick failed")}
-          className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300"
+          disabled={busy !== null}
+          className="flex items-center gap-2 rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 disabled:opacity-50"
         >
-          Run the tick now
+          {busy === "tick" ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          {busy === "tick" ? "Working" : "Run the tick now"}
         </button>
         <button
           onClick={() => {
@@ -226,9 +235,11 @@ export default function CallDesk() {
               act("settle", "Could not end the round")
             }
           }}
-          className="rounded-lg border border-yellow-700 px-4 py-2 text-sm text-yellow-400"
+          disabled={busy !== null}
+          className="flex items-center gap-2 rounded-lg border border-yellow-700 px-4 py-2 text-sm text-yellow-400 disabled:opacity-50"
         >
-          End the round now
+          {busy === "settle" ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          {busy === "settle" ? "Working" : "End the round now"}
         </button>
         <button
           onClick={() => {
@@ -236,9 +247,11 @@ export default function CallDesk() {
               act("fresh", "Could not start a fresh round")
             }
           }}
-          className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300"
+          disabled={busy !== null}
+          className="flex items-center gap-2 rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 disabled:opacity-50"
         >
-          Start a fresh round
+          {busy === "fresh" ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          {busy === "fresh" ? "Working" : "Start a fresh round"}
         </button>
         <span className="text-xs text-gray-500">
           Carried and waiting for the next round: {fmtMoney(cfg?.carry_usd ?? 0)}
