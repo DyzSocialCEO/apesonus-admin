@@ -33,7 +33,7 @@ interface Withdrawal {
 }
 
 /**
- * THE CALL (beta) — the free weekly game.
+ * THE CALL (beta) — the free daily call.
  *
  * Scoring lives in call_week_tick() in the database, so this desk only sets
  * the knobs and shows what happened. The chart of an OPEN week is deliberately
@@ -123,10 +123,11 @@ export default function CallBetaPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">The Call (beta)</h1>
         <p className="mt-1 text-sm text-gray-400">
-          Free daily game. The chart counts LISTENERS, so one patient moves a song by exactly one
-          however many times they replay it. Points: 2 for the exact seat, 1 for a top-five song in
-          the wrong seat. The day&apos;s five best scores split the prize 40/25/15/12/8, and a share
-          with nobody to claim it carries to tomorrow.
+          Free and daily. A card calls TOMORROW: the board shuts the moment that day begins, and
+          the chart counts LISTENERS, so one patient moves a song by exactly one however many
+          times they replay it. Only a perfect card is paid, all five songs in all five seats, and
+          perfect cards split the pot evenly. Nobody perfect and the whole pot rides to the next
+          day.
         </p>
       </div>
 
