@@ -223,7 +223,108 @@ export async function POST(request: Request) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   try {
+    const body = (await request.json().catch(() => ({}))) as { action?: string }
+    const action = String(body.action ?? "tick")
     const supabase = await createAdminClient()
+
+    // END THE ROUND NOW. Pulls the freeze into the past and settles it, so the
+    // chart is counted, the winners are worked out and the seats are paid
+    // exactly the way they would be on a Saturday. Nothing is skipped.
+    if (action === "settle") {
+      const { data: open } = await supabase
+        .from("call_rounds")
+        .select("id")
+        .eq("status", "open")
+        .lte("opens_at", new Date().toISOString())
+        .order("opens_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (!open?.id) return NextResponse.json({ error: "No round is open" }, { status: 409 })
+
+      const { error: upd } = await supabase
+        .from("call_rounds")
+        .update({ freezes_at: new Date(Date.now() - 60_000).toISOString() })
+        .eq("id", open.id)
+      if (upd) return NextResponse.json({ error: upd.message }, { status: 500 })
+
+      const { data, error } = await supabase.rpc("call_round_tick")
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      const row = Array.isArray(data) ? data[0] : data
+      await logAdminAction(supabase, request, session.username, "call.settle", { round: open.id })
+      return NextResponse.json({ ok: true, settled: row?.settled ?? open.id, opened: row?.opened ?? null })
+    }
+
+    // START A FRESH ROUND, beginning NOW rather than on the weekly schedule.
+    //
+    // The normal tick puts a round on the calendar: it opens on Sunday and
+    // calling shuts 120 hours later. Ask for a round on a Thursday afternoon
+    // and the calendar hands you one whose calling window closed last night,
+    // which is correct and completely useless for testing or for restarting
+    // after a pause. This one starts at this moment and runs the configured
+    // hours from here.
+    if (action === "fresh") {
+      const { count } = await supabase
+        .from("call_round_cards")
+        .select("user_id", { count: "exact", head: true })
+        .in(
+          "round_id",
+          (
+            ((await supabase.from("call_rounds").select("id").eq("status", "open")).data ?? []) as {
+              id: string
+            }[]
+          ).map((r) => r.id),
+        )
+      if ((count ?? 0) > 0) {
+        return NextResponse.json(
+          { error: `${count} cards are on the open round. End it instead of replacing it.` },
+          { status: 409 },
+        )
+      }
+
+      await supabase.from("call_rounds").delete().eq("status", "open")
+
+      const { data: cfg } = await supabase
+        .from("call_config")
+        .select("prize_onus, board_size, lock_hours, freeze_hours, carry_usd")
+        .eq("id", 1)
+        .maybeSingle()
+
+      const size = Math.max(2, Number(cfg?.board_size ?? 10))
+      const { data: tracks } = await supabase.from("tracks").select("id").eq("is_active", true).limit(1000)
+      const ids = ((tracks ?? []) as { id: number }[]).map((t) => t.id)
+      for (let i = ids.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[ids[i], ids[j]] = [ids[j], ids[i]]
+      }
+      const board = ids.slice(0, size)
+      if (board.length < 2) {
+        return NextResponse.json({ error: "Not enough active songs for a board" }, { status: 409 })
+      }
+
+      const now = Date.now()
+      const hrs = (n: number) => new Date(now + n * 3600_000).toISOString()
+      const id = new Date(now).toISOString().slice(0, 10)
+
+      // A same-day id can already exist from the scheduled round. Settle it out
+      // of the way rather than colliding.
+      await supabase.from("call_rounds").update({ status: "settled", settled_at: new Date().toISOString() }).eq("id", id)
+
+      const { error } = await supabase.from("call_rounds").insert({
+        id,
+        opens_at: new Date(now).toISOString(),
+        locks_at: hrs(Number(cfg?.lock_hours ?? 120)),
+        freezes_at: hrs(Number(cfg?.freeze_hours ?? 162)),
+        board,
+        prize_usd: Number(cfg?.prize_onus ?? 0) + Number(cfg?.carry_usd ?? 0),
+        status: "open",
+      })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      await supabase.from("call_config").update({ carry_usd: 0 }).eq("id", 1)
+
+      await logAdminAction(supabase, request, session.username, "call.fresh", { round: id })
+      return NextResponse.json({ ok: true, opened: id })
+    }
+
     // This used to call call_week_tick, a function left over from the very
     // first version of the Call. The button ran and nothing happened.
     const { data, error } = await supabase.rpc("call_round_tick")

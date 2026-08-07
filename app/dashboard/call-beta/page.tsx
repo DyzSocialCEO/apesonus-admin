@@ -129,6 +129,20 @@ export default function CallDesk() {
     return true
   }
 
+  // The three buttons all hit the same route with an action, so there is one
+  // place that handles a failure and one place that reloads.
+  const act = async (action: string, failMessage: string) => {
+    setErr("")
+    const res = await fetch("/api/admin/call-beta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    })
+    const d = await res.json().catch(() => ({}))
+    if (!res.ok) setErr(d?.error || failMessage)
+    else load()
+  }
+
   const saveNumbers = async () => {
     if (!cfg || saving) return
     setSaving(true)
@@ -186,20 +200,42 @@ export default function CallDesk() {
           {cfg?.enabled ? "RUNNING" : "PAUSED"}
         </button>
         <button
-          onClick={async () => {
-            const res = await fetch("/api/admin/call-beta", { method: "POST" })
-            const d = await res.json().catch(() => ({}))
-            if (!res.ok) setErr(d?.error || "Tick failed")
-            else load()
-          }}
+          onClick={() => act("tick", "Tick failed")}
           className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300"
         >
           Run the tick now
+        </button>
+        <button
+          onClick={() => {
+            if (confirm("End this round now? It counts the chart, works out both winners and pays the seats.")) {
+              act("settle", "Could not end the round")
+            }
+          }}
+          className="rounded-lg border border-yellow-700 px-4 py-2 text-sm text-yellow-400"
+        >
+          End the round now
+        </button>
+        <button
+          onClick={() => {
+            if (confirm("Start a fresh round beginning right now? The current one is thrown away.")) {
+              act("fresh", "Could not start a fresh round")
+            }
+          }}
+          className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300"
+        >
+          Start a fresh round
         </button>
         <span className="text-xs text-gray-500">
           Carried and waiting for the next round: {fmtMoney(cfg?.carry_usd ?? 0)}
         </span>
       </div>
+
+      <p className="-mt-4 text-xs text-gray-600 max-w-3xl">
+        Run the tick is the hourly job by hand: it settles anything finished and opens a round
+        only when nothing is open. A round opens on the weekly calendar, so asking for one
+        mid week gives you one whose calling window has already shut. Start a fresh round begins
+        at this moment instead, which is what you want for a test or a restart.
+      </p>
 
       {/* Every figure that decides money */}
       <div className="rounded-xl bg-gray-900 border border-gray-800 p-6">
