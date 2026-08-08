@@ -15,6 +15,7 @@ import { Loader2, Save, Check, AlertCircle, Activity, Music } from "lucide-react
  */
 
 interface WardConfig {
+  buy_url: string
   track_id: number | null
   track_title: string
   mission_target: number
@@ -55,6 +56,7 @@ export default function WardPage() {
   const [votesB, setVotesB] = useState(0)
   const [day, setDay] = useState("")
   const [busy, setBusy] = useState("")
+  const [mint, setMint] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -70,6 +72,7 @@ export default function WardPage() {
         setCheck(d.check ?? { question: "", optionA: "", optionB: "" })
         setVotesA(Number(d.votesA ?? 0))
         setVotesB(Number(d.votesB ?? 0))
+        setMint(d.mint ?? null)
         setError("")
       })
       .catch((e) => setError(e instanceof Error ? e.message : "something went wrong"))
@@ -219,6 +222,20 @@ export default function WardPage() {
                 />
                 <p className="text-[11px] text-gray-500 mt-1">
                   100 is a dollar. This is what the pay sheet charges.
+                </p>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-400 mb-1">BUY $PUMP link</label>
+                <Input
+                  value={config.buy_url}
+                  placeholder="Leave blank to use pump.fun for the mint below"
+                  onChange={(e) => set("buy_url", e.target.value)}
+                />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  The contract address shown in the app is the mint the payment rail
+                  already uses{mint ? `: ${mint}` : ", which is not set yet"}. It is never typed
+                  into the app, so the address people copy is always the one payments accept.
+                  Change it on the payments card in Settings.
                 </p>
               </div>
               <div>

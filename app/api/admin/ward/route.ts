@@ -19,6 +19,7 @@ export const runtime = "nodejs"
  */
 
 interface WardConfig {
+  buy_url: string
   track_id: number | null
   track_title: string
   mission_target: number
@@ -27,6 +28,7 @@ interface WardConfig {
 }
 
 const FALLBACK: WardConfig = {
+  buy_url: "",
   track_id: null,
   track_title: "100X",
   mission_target: 100000,
@@ -42,6 +44,7 @@ function readConfig(raw: unknown): WardConfig {
     const hours = Number(v.admission_hours)
     const cents = Number(v.admission_usd_cents)
     return {
+      buy_url: String(v.buy_url || ""),
       track_id: Number.isFinite(id) && id > 0 ? Math.floor(id) : null,
       track_title: String(v.track_title || FALLBACK.track_title),
       mission_target: Number.isFinite(target) && target > 0 ? Math.floor(target) : FALLBACK.mission_target,
@@ -64,7 +67,7 @@ export async function GET() {
   try {
     const supabase = await createAdminClient()
     const day = today()
-    const [cfgRow, counts, tracks, admitted, clip, check, votes] = await Promise.all([
+    const [cfgRow, counts, tracks, admitted, clip, check, votes, mintRow] = await Promise.all([
       supabase.from("app_settings").select("value").eq("key", "ward_config").maybeSingle(),
       supabase.rpc("ward_counts", { p_user: null }),
       supabase
@@ -80,6 +83,7 @@ export async function GET() {
       supabase.from("ward_morning_dose").select("url, caption").eq("day", day).maybeSingle(),
       supabase.from("ward_checks").select("question, option_a, option_b").eq("day", day).maybeSingle(),
       supabase.from("ward_check_votes").select("choice").eq("day", day).limit(20000),
+      supabase.from("app_settings").select("value").eq("key", "onus_mint").maybeSingle(),
     ])
 
     const config = readConfig(cfgRow.data?.value)
@@ -105,6 +109,7 @@ export async function GET() {
         : null,
       votesA,
       votesB,
+      mint: String(mintRow.data?.value ?? "").trim() || null,
     })
   } catch (e: any) {
     console.error("[admin/ward] GET failed:", e)
@@ -128,6 +133,13 @@ export async function PATCH(request: Request) {
     if ("track_id" in body) {
       const id = Number(body.track_id)
       next.track_id = Number.isFinite(id) && id > 0 ? Math.floor(id) : null
+    }
+    if ("buy_url" in body) {
+      const url = String(body.buy_url || "").trim()
+      if (url && !/^https:\/\//i.test(url)) {
+        return NextResponse.json({ error: "The buy link needs a full https address." }, { status: 400 })
+      }
+      next.buy_url = url
     }
     if ("track_title" in body) {
       const t = String(body.track_title || "").trim()
