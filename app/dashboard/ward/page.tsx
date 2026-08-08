@@ -28,6 +28,17 @@ interface TrackRow {
   artist: string
 }
 
+interface Clip {
+  url: string
+  caption: string
+}
+
+interface Check {
+  question: string
+  optionA: string
+  optionB: string
+}
+
 export default function WardPage() {
   const [config, setConfig] = useState<WardConfig | null>(null)
   const [tracks, setTracks] = useState<TrackRow[]>([])
@@ -38,6 +49,13 @@ export default function WardPage() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState("")
 
+  const [clip, setClip] = useState<Clip>({ url: "", caption: "" })
+  const [check, setCheck] = useState<Check>({ question: "", optionA: "", optionB: "" })
+  const [votesA, setVotesA] = useState(0)
+  const [votesB, setVotesB] = useState(0)
+  const [day, setDay] = useState("")
+  const [busy, setBusy] = useState("")
+
   const load = useCallback(() => {
     setLoading(true)
     fetch("/api/admin/ward", { cache: "no-store" })
@@ -47,6 +65,11 @@ export default function WardPage() {
         setTracks(Array.isArray(d.tracks) ? d.tracks : [])
         setWardDoses(Number(d.wardDoses ?? 0))
         setAdmittedNow(Number(d.admittedNow ?? 0))
+        setDay(String(d.day ?? ""))
+        setClip(d.morningDose ? { url: d.morningDose.url, caption: d.morningDose.caption ?? "" } : { url: "", caption: "" })
+        setCheck(d.check ?? { question: "", optionA: "", optionB: "" })
+        setVotesA(Number(d.votesA ?? 0))
+        setVotesB(Number(d.votesB ?? 0))
         setError("")
       })
       .catch((e) => setError(e instanceof Error ? e.message : "something went wrong"))
@@ -79,6 +102,26 @@ export default function WardPage() {
 
   const set = <K extends keyof WardConfig>(key: K, value: WardConfig[K]) =>
     setConfig((c) => (c ? { ...c, [key]: value } : c))
+
+  const post = async (what: "clip" | "check", payload: Clip | Check) => {
+    if (busy) return
+    setBusy(what)
+    setError("")
+    try {
+      const r = await fetch("/api/admin/ward", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ what, ...payload }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d?.error || "could not save")
+      load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "could not save")
+    } finally {
+      setBusy("")
+    }
+  }
 
   if (loading) {
     return (
@@ -206,6 +249,84 @@ export default function WardPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Today&rsquo;s Morning Dose</CardTitle>
+          <CardDescription>
+            The clip for {day || "today"}. Upload the file to Bunny like a cover, then paste the
+            link here. Clearing the link takes the card off the ward. Tomorrow starts empty.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Clip link</label>
+            <Input
+              value={clip.url}
+              placeholder="https://..."
+              onChange={(e) => setClip({ ...clip, url: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Caption, optional</label>
+            <Input
+              value={clip.caption}
+              onChange={(e) => setClip({ ...clip, caption: e.target.value })}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => post("clip", clip)}
+            disabled={busy === "clip"}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-black disabled:opacity-60"
+          >
+            {busy === "clip" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Save the clip
+          </button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Today&rsquo;s Ward Check</CardTitle>
+          <CardDescription>
+            One question for {day || "today"}, two answers, one vote per patient. Clearing the
+            question takes the panel off the ward. Votes already cast stay against the day, so the
+            split below is live while you edit.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">The question</label>
+            <Input
+              value={check.question}
+              placeholder="If this drops another 50%, are you buying?"
+              onChange={(e) => setCheck({ ...check, question: e.target.value })}
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Answer A</label>
+              <Input value={check.optionA} onChange={(e) => setCheck({ ...check, optionA: e.target.value })} />
+              <p className="text-[11px] text-gray-500 mt-1">{votesA.toLocaleString("en-US")} votes</p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Answer B</label>
+              <Input value={check.optionB} onChange={(e) => setCheck({ ...check, optionB: e.target.value })} />
+              <p className="text-[11px] text-gray-500 mt-1">{votesB.toLocaleString("en-US")} votes</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => post("check", check)}
+            disabled={busy === "check"}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-black disabled:opacity-60"
+          >
+            {busy === "check" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Save the question
+          </button>
+        </CardContent>
+      </Card>
     </div>
   )
 }
