@@ -8,7 +8,7 @@ import { Loader2, Save, Check, AlertCircle, Activity, Users, Plus, Trash2, Lock,
 /**
  * /dashboard/ward, THE WARD desk.
  *
- * The staff, their prescriptions and dose targets, the admission plans, the
+ * The staff, their prescriptions and dose targets, the Spin packs, the
  * buy link, and today's clip. Nothing here is written into the app: changing
  * any of it changes the app on the next page load, with no deploy.
  *
@@ -16,13 +16,22 @@ import { Loader2, Save, Check, AlertCircle, Activity, Users, Plus, Trash2, Lock,
  * moment they are pressed. Text fields save behind their own button.
  */
 
-interface Plan {
+interface Pack {
   key: string
   name: string
   cents: number
-  hours: number
+  spins: number
+  bonus: number
   line: string
   best: boolean
+}
+
+interface SpinSettings {
+  spins_per_play: number
+  starter_spins: number
+  dose_pct: number
+  refill_every: number
+  refill_spins: number
 }
 
 interface Rx {
@@ -69,11 +78,19 @@ const EMPTY_RX: NewRx = { track_id: "", seq: "", target: "", line: "" }
 
 export default function WardPage() {
   const [therapists, setTherapists] = useState<Therapist[]>([])
-  const [plans, setPlans] = useState<Plan[]>([])
+  const [packs, setPacks] = useState<Pack[]>([])
+  const [spinCfg, setSpinCfg] = useState<SpinSettings>({
+    spins_per_play: 1,
+    starter_spins: 2,
+    dose_pct: 80,
+    refill_every: 25,
+    refill_spins: 5,
+  })
+  const [grant, setGrant] = useState({ email: "", spins: "", reason: "" })
   const [buyUrl, setBuyUrl] = useState("")
   const [tracks, setTracks] = useState<TrackRow[]>([])
   const [census, setCensus] = useState(0)
-  const [admittedNow, setAdmittedNow] = useState(0)
+  const [holders, setHolders] = useState(0)
   const [mint, setMint] = useState<string | null>(null)
   const [clip, setClip] = useState<Clip>({ url: "", caption: "" })
   const [day, setDay] = useState("")
@@ -91,11 +108,18 @@ export default function WardPage() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("could not read the ward"))))
       .then((d) => {
         setTherapists(Array.isArray(d.therapists) ? d.therapists : [])
-        setPlans(Array.isArray(d.config?.plans) ? d.config.plans : [])
+        setPacks(Array.isArray(d.config?.packs) ? d.config.packs : [])
+        setSpinCfg({
+          spins_per_play: Number(d.config?.spins_per_play ?? 1),
+          starter_spins: Number(d.config?.starter_spins ?? 2),
+          dose_pct: Number(d.config?.dose_pct ?? 80),
+          refill_every: Number(d.config?.refill_every ?? 25),
+          refill_spins: Number(d.config?.refill_spins ?? 5),
+        })
         setBuyUrl(String(d.config?.buy_url ?? ""))
         setTracks(Array.isArray(d.tracks) ? d.tracks : [])
         setCensus(Number(d.census ?? 0))
-        setAdmittedNow(Number(d.admittedNow ?? 0))
+        setHolders(Number(d.holders ?? 0))
         setMint(d.mint ?? null)
         setDay(String(d.day ?? ""))
         setClip(d.morningDose ? { url: d.morningDose.url, caption: d.morningDose.caption ?? "" } : { url: "", caption: "" })
@@ -168,8 +192,8 @@ export default function WardPage() {
       ),
     )
 
-  const setPlan = (key: string, part: Partial<Plan>) =>
-    setPlans((list) => list.map((p) => (p.key === key ? { ...p, ...part } : p)))
+  const setPack = (key: string, part: Partial<Pack>) =>
+    setPacks((list) => list.map((p) => (p.key === key ? { ...p, ...part } : p)))
 
   const trackName = (id: number) => {
     const t = tracks.find((x) => x.id === id)
@@ -189,7 +213,7 @@ export default function WardPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">The Ward</h1>
         <p className="text-sm text-gray-500">
-          The staff, their prescriptions, the plans, the door. Nothing here is written into the app.
+          The staff, their prescriptions, the packs, the door. Nothing here is written into the app.
         </p>
       </div>
 
@@ -208,19 +232,19 @@ export default function WardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-white">{census.toLocaleString("en-US")}</div>
-            <p className="text-xs text-gray-500 mt-1">accounts that have ever been admitted. The app shows this number.</p>
+            <p className="text-xs text-gray-500 mt-1">accounts the clinic has seen. The app shows this number.</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-gray-400 flex items-center gap-2">
-              <Activity className="w-4 h-4" /> Admitted right now
+              <Activity className="w-4 h-4" /> Holding Spins
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-white">{admittedNow.toLocaleString("en-US")}</div>
-            <p className="text-xs text-gray-500 mt-1">accounts inside a live admission</p>
+            <div className="text-3xl font-bold text-white">{holders.toLocaleString("en-US")}</div>
+            <p className="text-xs text-gray-500 mt-1">accounts with at least one Spin left</p>
           </CardContent>
         </Card>
       </div>
@@ -540,35 +564,40 @@ export default function WardPage() {
         </CardContent>
       </Card>
 
-      {/* ── ADMISSION PLANS ───────────────────────────────────────── */}
+      {/* ── SPIN PACKS ───────────────────────────────────────────── */}
       <Card>
         <CardHeader>
-          <CardTitle>Admission plans</CardTitle>
+          <CardTitle>Spin packs</CardTitle>
           <CardDescription>
-            The three doors. Prices are in cents, stays in hours (24 = a day, 168 = a week, 720 = a month).
-            MOST PRESCRIBED marks one plan with the badge in the app.
+            The three refills. Prices are in cents, Spins are what actually gets credited when the
+            payment lands, so a pack always pays exactly the number typed here. The bonus percent is
+            only the badge on the card. MOST PRESCRIBED marks one pack in the app.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {plans.map((p) => (
+          {packs.map((p) => (
             <div key={p.key} className="rounded-lg border border-gray-800 p-3 space-y-2">
-              <div className="grid gap-2 sm:grid-cols-4">
+              <div className="grid gap-2 sm:grid-cols-5">
                 <div>
                   <label className="block text-[11px] text-gray-500 mb-1">Name</label>
-                  <Input value={p.name} onChange={(e) => setPlan(p.key, { name: e.target.value })} />
+                  <Input value={p.name} onChange={(e) => setPack(p.key, { name: e.target.value })} />
                 </div>
                 <div>
                   <label className="block text-[11px] text-gray-500 mb-1">Price, cents</label>
-                  <Input type="number" value={p.cents} onChange={(e) => setPlan(p.key, { cents: Number(e.target.value) })} />
+                  <Input type="number" value={p.cents} onChange={(e) => setPack(p.key, { cents: Number(e.target.value) })} />
                 </div>
                 <div>
-                  <label className="block text-[11px] text-gray-500 mb-1">Stay, hours</label>
-                  <Input type="number" value={p.hours} onChange={(e) => setPlan(p.key, { hours: Number(e.target.value) })} />
+                  <label className="block text-[11px] text-gray-500 mb-1">Spins credited</label>
+                  <Input type="number" value={p.spins} onChange={(e) => setPack(p.key, { spins: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">Bonus badge, %</label>
+                  <Input type="number" value={p.bonus} onChange={(e) => setPack(p.key, { bonus: Number(e.target.value) })} />
                 </div>
                 <div className="flex items-end">
                   <button
                     type="button"
-                    onClick={() => setPlans((list) => list.map((x) => ({ ...x, best: x.key === p.key ? !p.best : false })))}
+                    onClick={() => setPacks((list) => list.map((x) => ({ ...x, best: x.key === p.key ? !p.best : false })))}
                     className={`w-full rounded-lg border px-2 py-2 text-xs font-semibold ${
                       p.best ? "border-yellow-600 bg-yellow-950/40 text-yellow-400" : "border-gray-700 text-gray-400"
                     }`}
@@ -579,18 +608,155 @@ export default function WardPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-gray-500 mb-1">One line under the price</label>
-                <Input value={p.line} onChange={(e) => setPlan(p.key, { line: e.target.value })} />
+                <Input value={p.line} onChange={(e) => setPack(p.key, { line: e.target.value })} />
               </div>
+              <p className="text-[11px] text-gray-600">
+                {p.cents > 0 ? `${(p.spins / (p.cents / 100)).toFixed(0)} Spins per dollar` : "Set a price"}
+              </p>
             </div>
           ))}
           <button
             type="button"
-            onClick={() => patch("plans", { plans })}
-            disabled={busy === "plans"}
+            onClick={() => patch("packs", { packs })}
+            disabled={busy === "packs"}
             className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
           >
-            {busy === "plans" ? <Loader2 className="w-4 h-4 animate-spin" /> : saved === "plans" ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            Save the plans
+            {busy === "packs" ? <Loader2 className="w-4 h-4 animate-spin" /> : saved === "packs" ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+            Save the packs
+          </button>
+        </CardContent>
+      </Card>
+
+      {/* ── THE SPIN RULES ───────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Spins, doses and the refill</CardTitle>
+          <CardDescription>
+            Every number the economy runs on. Changing the dose threshold or the refill interval
+            takes effect on the next treatment, and the refill can never pay a patient twice for a
+            threshold they already passed.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Spins per treatment</label>
+              <Input
+                type="number"
+                value={spinCfg.spins_per_play}
+                onChange={(e) => setSpinCfg({ ...spinCfg, spins_per_play: Number(e.target.value) })}
+              />
+              <p className="text-[11px] text-gray-600 mt-1">What one play costs.</p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Starter Spins</label>
+              <Input
+                type="number"
+                value={spinCfg.starter_spins}
+                onChange={(e) => setSpinCfg({ ...spinCfg, starter_spins: Number(e.target.value) })}
+              />
+              <p className="text-[11px] text-gray-600 mt-1">
+                Handed to an account once, the first time it opens the ward.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Dose threshold, %</label>
+              <Input
+                type="number"
+                value={spinCfg.dose_pct}
+                onChange={(e) => setSpinCfg({ ...spinCfg, dose_pct: Number(e.target.value) })}
+              />
+              <p className="text-[11px] text-gray-600 mt-1">
+                How much of a track has to play before it counts.
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Refill every N doses</label>
+              <Input
+                type="number"
+                value={spinCfg.refill_every}
+                onChange={(e) => setSpinCfg({ ...spinCfg, refill_every: Number(e.target.value) })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Refill pays, Spins</label>
+              <Input
+                type="number"
+                value={spinCfg.refill_spins}
+                onChange={(e) => setSpinCfg({ ...spinCfg, refill_spins: Number(e.target.value) })}
+              />
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-600">
+            At these numbers a patient gets back{" "}
+            {spinCfg.refill_every > 0
+              ? `${((spinCfg.refill_spins / (spinCfg.refill_every * Math.max(1, spinCfg.spins_per_play))) * 100).toFixed(0)}%`
+              : "0%"}{" "}
+            of what they spend on treatments.
+          </p>
+          <button
+            type="button"
+            onClick={() => patch("spins", { ...spinCfg })}
+            disabled={busy === "spins"}
+            className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
+          >
+            {busy === "spins" ? <Loader2 className="w-4 h-4 animate-spin" /> : saved === "spins" ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+            Save the numbers
+          </button>
+        </CardContent>
+      </Card>
+
+      {/* ── HAND SPINS TO SOMEBODY ───────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Give an account Spins</CardTitle>
+          <CardDescription>
+            For when a payment lands and something breaks. A negative number takes Spins away. The
+            reason is written into the admin log beside your name, so this is never a quiet change.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-gray-400 mb-1">Account email</label>
+              <Input value={grant.email} onChange={(e) => setGrant({ ...grant, email: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Spins</label>
+              <Input
+                type="number"
+                value={grant.spins}
+                placeholder="100"
+                onChange={(e) => setGrant({ ...grant, spins: e.target.value })}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Reason</label>
+            <Input
+              value={grant.reason}
+              placeholder="paid, webhook missed it, reference abc123"
+              onChange={(e) => setGrant({ ...grant, reason: e.target.value })}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              const ok = await post("grant", {
+                what: "grant_spins",
+                email: grant.email,
+                spins: Number(grant.spins),
+                reason: grant.reason,
+              })
+              if (ok) setGrant({ email: "", spins: "", reason: "" })
+            }}
+            disabled={busy === "grant"}
+            className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
+          >
+            {busy === "grant" ? <Loader2 className="w-4 h-4 animate-spin" /> : saved === "grant" ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+            Apply
           </button>
         </CardContent>
       </Card>

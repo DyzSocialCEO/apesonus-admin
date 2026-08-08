@@ -10,8 +10,9 @@ export const runtime = "nodejs"
  * THE WARD desk.
  *
  * GET   the staff with every prescription (locked ones included, this is the
- *       desk), the census, the track list, the admission plans, today's clip
- * PATCH the buy link and the admission plans
+ *       desk), the census, the track list, the Spin packs and settings, the
+ *       clip
+ * PATCH the buy link, the packs and the Spin numbers
  * POST  everything else, by `what`: the clip, a therapist, a prescription,
  *       the featured switch, an unlock
  *
@@ -19,43 +20,61 @@ export const runtime = "nodejs"
  * read from here, so none of it is written into the player's code.
  */
 
-interface Plan {
+interface Pack {
   key: string
   name: string
   cents: number
-  hours: number
+  spins: number
+  bonus: number
   line: string
   best: boolean
 }
 
-const PLAN_FALLBACK: Plan[] = [
-  { key: "walk", name: "WALK-IN", cents: 100, hours: 24, line: "Enough time to confirm the diagnosis.", best: false },
+const PACK_FALLBACK: Pack[] = [
+  { key: "quick", name: "QUICK FIX", cents: 100, spins: 100, bonus: 0, line: "One dollar. One hundred treatments.", best: false },
 ]
 
 interface WardConfig {
   buy_url: string
-  plans: Plan[]
+  packs: Pack[]
+  /** What one treatment session costs. */
+  spins_per_play: number
+  /** Handed to an account the first time the clinic sees it. */
+  starter_spins: number
+  /** How much of a track has to play before it becomes a Dose. */
+  dose_pct: number
+  /** Doses between refills, and what a refill pays. */
+  refill_every: number
+  refill_spins: number
 }
 
-function toPlans(raw: unknown): Plan[] {
+function toPacks(raw: unknown): Pack[] {
   if (!Array.isArray(raw)) return []
-  const out: Plan[] = []
+  const out: Pack[] = []
   for (const p of raw) {
     const v = (p ?? {}) as Record<string, unknown>
     const key = String(v.key || "").trim()
     const cents = Math.floor(Number(v.cents))
-    const hours = Math.floor(Number(v.hours))
-    if (!key || !Number.isFinite(cents) || cents < 1 || !Number.isFinite(hours) || hours < 1) continue
+    const spins = Math.floor(Number(v.spins))
+    if (!key || !Number.isFinite(cents) || cents < 1 || !Number.isFinite(spins) || spins < 1) continue
+    const bonus = Math.floor(Number(v.bonus))
     out.push({
       key,
       name: String(v.name || key).trim() || key,
       cents,
-      hours,
+      spins,
+      bonus: Number.isFinite(bonus) && bonus > 0 ? bonus : 0,
       line: String(v.line || ""),
       best: v.best === true,
     })
   }
   return out
+}
+
+function num(raw: unknown, fallback: number, min: number, max: number): number {
+  const n = Math.floor(Number(raw))
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(max, Math.max(min, n))
 }
 
 function readConfig(raw: unknown): WardConfig {
@@ -65,13 +84,26 @@ function readConfig(raw: unknown): WardConfig {
     // which throws and silently drops the saved config.
     const v =
       raw && typeof raw === "object" ? (raw as Record<string, unknown>) : JSON.parse(String(raw ?? "{}"))
-    const plans = toPlans(v.plans)
+    const packs = toPacks(v.packs)
     return {
       buy_url: String(v.buy_url || ""),
-      plans: plans.length > 0 ? plans : PLAN_FALLBACK,
+      packs: packs.length > 0 ? packs : PACK_FALLBACK,
+      spins_per_play: num(v.spins_per_play, 1, 1, 100),
+      starter_spins: num(v.starter_spins, 2, 0, 1000),
+      dose_pct: num(v.dose_pct, 80, 10, 100),
+      refill_every: num(v.refill_every, 25, 1, 100000),
+      refill_spins: num(v.refill_spins, 5, 0, 10000),
     }
   } catch {
-    return { buy_url: "", plans: PLAN_FALLBACK }
+    return {
+      buy_url: "",
+      packs: PACK_FALLBACK,
+      spins_per_play: 1,
+      starter_spins: 2,
+      dose_pct: 80,
+      refill_every: 25,
+      refill_spins: 5,
+    }
   }
 }
 
@@ -86,7 +118,7 @@ export async function GET() {
   try {
     const supabase = await createAdminClient()
     const day = today()
-    const [cfgRow, tracks, census, admitted, therapists, rx, doses, clip, mintRow] = await Promise.all([
+    const [cfgRow, tracks, census, holders, therapists, rx, clip, mintRow] = await Promise.all([
       supabase.from("app_settings").select("value").eq("key", "ward_config").maybeSingle(),
       supabase
         .from("tracks")
@@ -94,27 +126,36 @@ export async function GET() {
         .eq("is_active", true)
         .order("title", { ascending: true })
         .limit(500),
-      supabase.from("pit_clinic_pass").select("user_id", { count: "exact", head: true }),
+      supabase.from("ward_spin_state").select("user_id", { count: "exact", head: true }),
       supabase
-        .from("pit_clinic_pass")
+        .from("pit_ammo_balances")
         .select("user_id", { count: "exact", head: true })
-        .gt("expires_at", new Date().toISOString()),
+        .gt("balance", 0),
       supabase.from("ward_therapists").select("*").order("sort", { ascending: true }).order("id", { ascending: true }),
       supabase.from("ward_prescriptions").select("*").order("seq", { ascending: true }),
-      supabase.from("ward_doses").select("track_id"),
       supabase.from("ward_morning_dose").select("url, caption").eq("day", day).maybeSingle(),
       supabase.from("app_settings").select("value").eq("key", "onus_mint").maybeSingle(),
     ])
 
     const config = readConfig(cfgRow.data?.value)
 
-    // Dose totals per track, counted once here rather than per row.
-    const perTrack = new Map<number, number>()
-    for (const d of (doses.data ?? []) as { track_id: number }[]) {
-      perTrack.set(d.track_id, (perTrack.get(d.track_id) ?? 0) + 1)
-    }
-
     const rxRows = (rx.data ?? []) as any[]
+
+    // Dose totals per track, counted BY THE DATABASE. Pulling every dose row
+    // and counting them here worked until the ward passed a thousand doses,
+    // because a response is capped at a thousand rows and every number on this
+    // page then quietly stopped moving while the app stayed correct.
+    const trackIds = Array.from(new Set(rxRows.map((r) => Number(r.track_id)).filter((n) => n > 0)))
+    const perTrack = new Map<number, number>()
+    await Promise.all(
+      trackIds.map(async (id) => {
+        const { count } = await supabase
+          .from("ward_doses")
+          .select("id", { count: "exact", head: true })
+          .eq("track_id", id)
+        perTrack.set(id, Number(count ?? 0))
+      }),
+    )
     const staff = ((therapists.data ?? []) as any[]).map((t) => {
       const own = rxRows.filter((r) => Number(r.therapist_id) === Number(t.id))
       return {
@@ -141,7 +182,7 @@ export async function GET() {
     return NextResponse.json({
       config,
       census: Number(census.count ?? 0),
-      admittedNow: Number(admitted.count ?? 0),
+      holders: Number(holders.count ?? 0),
       tracks: tracks.data ?? [],
       therapists: staff,
       day,
@@ -174,17 +215,22 @@ export async function PATCH(request: Request) {
       }
       next.buy_url = url
     }
-    if ("plans" in body) {
-      const plans = toPlans(body.plans)
-      if (plans.length < 1) {
-        return NextResponse.json({ error: "At least one plan with a key, a price and hours is required." }, { status: 400 })
+    if ("packs" in body) {
+      const packs = toPacks(body.packs)
+      if (packs.length < 1) {
+        return NextResponse.json({ error: "At least one pack with a key, a price and a Spin count is required." }, { status: 400 })
       }
-      const keys = new Set(plans.map((p) => p.key))
-      if (keys.size !== plans.length) {
-        return NextResponse.json({ error: "Plan keys must be unique." }, { status: 400 })
+      const keys = new Set(packs.map((p) => p.key))
+      if (keys.size !== packs.length) {
+        return NextResponse.json({ error: "Pack keys must be unique." }, { status: 400 })
       }
-      next.plans = plans
+      next.packs = packs
     }
+    if ("spins_per_play" in body) next.spins_per_play = num(body.spins_per_play, next.spins_per_play, 1, 100)
+    if ("starter_spins" in body) next.starter_spins = num(body.starter_spins, next.starter_spins, 0, 1000)
+    if ("dose_pct" in body) next.dose_pct = num(body.dose_pct, next.dose_pct, 10, 100)
+    if ("refill_every" in body) next.refill_every = num(body.refill_every, next.refill_every, 1, 100000)
+    if ("refill_spins" in body) next.refill_spins = num(body.refill_spins, next.refill_spins, 0, 10000)
 
     const { error } = await supabase
       .from("app_settings")
@@ -368,6 +414,46 @@ export async function POST(request: Request) {
       if (error) throw error
       await logAdminAction(supabase, request, session.username, "ward.rx.delete", { id })
       return NextResponse.json({ saved: true })
+    }
+
+    // ── Handing Spins to an account by hand. ──
+    // When a payment lands and something breaks, the fix has to be possible
+    // from here rather than from a SQL editor at midnight. Every grant is
+    // audited with the reason typed beside it.
+    if (body.what === "grant_spins") {
+      const email = String(body.email || "").trim().toLowerCase()
+      const spins = Math.floor(Number(body.spins))
+      const reason = String(body.reason || "").trim()
+      if (!email) return NextResponse.json({ error: "Which account?" }, { status: 400 })
+      if (!Number.isFinite(spins) || spins === 0) {
+        return NextResponse.json({ error: "How many Spins?" }, { status: 400 })
+      }
+      if (!reason) return NextResponse.json({ error: "Say why. It goes in the log." }, { status: 400 })
+
+      const { data: user } = await supabase
+        .from("users")
+        .select("id, email")
+        .ilike("email", email)
+        .maybeSingle()
+      if (!user?.id) return NextResponse.json({ error: "No account with that email." }, { status: 404 })
+
+      const { data: row } = await supabase
+        .from("pit_ammo_balances")
+        .select("balance")
+        .eq("user_id", user.id)
+        .maybeSingle()
+      const before = Number(row?.balance ?? 0)
+      const after = Math.max(0, before + spins)
+
+      const { error } = await supabase
+        .from("pit_ammo_balances")
+        .upsert({ user_id: user.id, balance: after, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
+      if (error) throw error
+
+      await logAdminAction(supabase, request, session.username, "ward.grant_spins", {
+        email, spins, reason, before, after,
+      })
+      return NextResponse.json({ saved: true, before, after })
     }
 
     return NextResponse.json({ error: "Nothing to save." }, { status: 400 })

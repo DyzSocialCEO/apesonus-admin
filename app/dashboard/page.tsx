@@ -56,7 +56,9 @@ async function getStats() {
       .select("*", { count: "exact", head: true })
       .eq("is_active", true)
 
-    // Ammo sold (confirmed purchases) + paying users — the real money signals.
+    // Spins sold (confirmed purchases) + paying users, the real money signals.
+    // ammo_amount is the Spin count on the order; the column kept its old name
+    // because the whole payment rail rides on it.
     const { data: purchases } = await supabase
       .from("pit_ammo_purchases")
       .select("user_id, ammo_amount, status")
@@ -145,7 +147,7 @@ export default async function DashboardPage() {
     { title: "Active (7d)",    value: formatNumber(stats.activeUsers),   icon: TrendingUp, color: "text-green-400",  bg: "bg-green-400/10" },
     { title: "Total Plays",    value: formatNumber(stats.totalPlays),    icon: Play,       color: "text-purple-400", bg: "bg-purple-400/10" },
     { title: "Tracks",         value: formatNumber(stats.totalTracks),   icon: Music,      color: "text-primary",    bg: "bg-primary/10" },
-    { title: "Days sold",      value: formatNumber(stats.ammoSold),      icon: Activity,   color: "text-cyan-400",   bg: "bg-cyan-400/10" },
+    { title: "Spins sold",     value: formatNumber(stats.ammoSold),      icon: Activity,   color: "text-cyan-400",   bg: "bg-cyan-400/10" },
     { title: "Paying users",   value: formatNumber(stats.payingUsers),   icon: Crown,      color: "text-yellow-400", bg: "bg-yellow-400/10" },
   ]
 
