@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
-    ScrollText, UserCircle, DollarSign, Zap, Target } from "lucide-react"
+    ScrollText, UserCircle, DollarSign, Activity } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
@@ -20,16 +20,16 @@ import { useState } from "react"
  * whole Spins desk, sitting unlinked under the old name, so it was linked
  * instead of rebuilt.
  *
- * Ward Check is gone because the Ward itself was stripped out of the app, and
- * its row here never worked anyway. The href carried trailing spaces, so the
- * active-state check never matched and the link resolved wrong.
+ * AUG 8: the app became one song, one admission and one mission, so the Spins
+ * desk and the Call desk stopped describing anything the app reads. Both are
+ * unlinked rather than deleted, and The Ward takes their place: it holds the
+ * song, the target, the price and the length of an admission.
  */
 const navigation = [
   { name: "Dashboard",       href: "/dashboard",                 icon: LayoutDashboard },
   { name: "Tracks",          href: "/dashboard/tracks",          icon: Music           },
   { name: "Artists",         href: "/dashboard/artists",         icon: UserCircle      },
-  { name: "Spins",           href: "/dashboard/ammo",            icon: Zap             },
-  { name: "The Call (beta)", href: "/dashboard/call-beta",       icon: Target          },
+  { name: "The Ward",        href: "/dashboard/ward",            icon: Activity        },
   { name: "Users",           href: "/dashboard/users",           icon: Users           },
   { name: "Finance",         href: "/dashboard/finance",         icon: DollarSign     },
   { name: "Analytics",       href: "/dashboard/analytics",       icon: BarChart3       },
