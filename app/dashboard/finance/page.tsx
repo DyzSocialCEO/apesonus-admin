@@ -28,6 +28,18 @@ type Fin = {
   usd7d: number
   usd30d: number
   series: { date: string; token: number; usd: number; payments: number }[]
+  economy: {
+    accounts: number
+    spinsSold: number
+    spinsHeld: number
+    givenStarter: number
+    givenRefills: number
+    dosesTaken: number
+    refilledAccounts: number
+    courtesyTreatments: number
+    spinsPerDollar: number
+    givenPct: number
+  } | null
 }
 
 const usd = (n: number | null) =>
@@ -174,6 +186,68 @@ export default function FinancePage() {
         <div className="mt-3 text-xs uppercase tracking-wider text-gray-500">Token</div>
         <div className="mt-1 break-all font-mono text-[12px] text-gray-300">{d.mint || "Not set"}</div>
       </div>
+
+      {/* ── THE ECONOMY ──
+          What was sold against what was handed over. These are counted in the
+          database, not by pulling rows into this page: a response is capped at
+          a thousand rows, which is how a number on a desk quietly stops moving
+          while the app stays correct. */}
+      {d.economy ? (
+        <div className="mt-10">
+          <h2 className="text-lg font-bold text-white">The economy</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Spins sold against Spins given away, and what patients are still holding.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Tile
+              label="Spins sold"
+              value={d.economy.spinsSold.toLocaleString("en-US")}
+              hint={
+                d.economy.spinsPerDollar > 0
+                  ? `${Math.round(d.economy.spinsPerDollar).toLocaleString("en-US")} Spins per dollar taken`
+                  : "nothing sold yet"
+              }
+            />
+            <Tile
+              label="Spins held"
+              value={d.economy.spinsHeld.toLocaleString("en-US")}
+              hint="paid for and not yet taken. This is the liability."
+              accent="#facc15"
+            />
+            <Tile
+              label="Given away"
+              value={(d.economy.givenStarter + d.economy.givenRefills).toLocaleString("en-US")}
+              hint={`${d.economy.givenStarter.toLocaleString("en-US")} starter, ${d.economy.givenRefills.toLocaleString(
+                "en-US",
+              )} refills`}
+            />
+            <Tile
+              label="Cost of the economy"
+              value={`${d.economy.givenPct.toFixed(1)}%`}
+              hint="Spins handed over against Spins sold"
+              accent={d.economy.givenPct > 30 ? "#f87171" : "#4ade80"}
+            />
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Tile label="Accounts" value={d.economy.accounts.toLocaleString("en-US")} hint="the ward census" />
+            <Tile
+              label="Doses taken"
+              value={d.economy.dosesTaken.toLocaleString("en-US")}
+              hint="qualified listens, everybody, all time"
+            />
+            <Tile
+              label="Courtesy treatments"
+              value={d.economy.courtesyTreatments.toLocaleString("en-US")}
+              hint="free daily treatments started"
+            />
+            <Tile
+              label="Accounts refilled"
+              value={d.economy.refilledAccounts.toLocaleString("en-US")}
+              hint="patients who have crossed a refill threshold"
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

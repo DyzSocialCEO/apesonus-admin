@@ -46,6 +46,10 @@ interface WardConfig {
   /** Doses between refills, and what a refill pays. */
   refill_every: number
   refill_spins: number
+  /** Free treatments a patient gets each clinic day. */
+  courtesy_per_day: number
+  /** The shared target a new prescription is published with. */
+  dose_target: number
 }
 
 function toPacks(raw: unknown): Pack[] {
@@ -93,6 +97,8 @@ function readConfig(raw: unknown): WardConfig {
       dose_pct: num(v.dose_pct, 80, 10, 100),
       refill_every: num(v.refill_every, 25, 1, 100000),
       refill_spins: num(v.refill_spins, 5, 0, 10000),
+      courtesy_per_day: num(v.courtesy_per_day, 1, 0, 24),
+      dose_target: num(v.dose_target, 10000, 1, 100000000),
     }
   } catch {
     return {
@@ -103,6 +109,8 @@ function readConfig(raw: unknown): WardConfig {
       dose_pct: 80,
       refill_every: 25,
       refill_spins: 5,
+      courtesy_per_day: 1,
+      dose_target: 10000,
     }
   }
 }
@@ -182,6 +190,14 @@ export async function GET() {
           target: r.target == null ? null : Number(r.target),
           line: String(r.line || ""),
           unlocked: r.unlocked_at != null,
+          // The launch model. status is the only thing that decides what is on
+          // the ward; dose_total is the shared counter kept on the row.
+          status: String(r.status || "classified"),
+          dose_total: Number(r.dose_total ?? 0),
+          dose_target: Number(r.dose_target ?? 0),
+          qualified_pct: r.qualified_pct == null ? null : Number(r.qualified_pct),
+          // Counted from ward_doses as a cross check. If this and dose_total
+          // ever disagree, the counter drifted and the desk says so.
           doses: perTrack.get(Number(r.track_id)) ?? 0,
         })),
       }
@@ -211,7 +227,52 @@ export async function GET() {
     }))
     const unmatched = allTracks.filter((t) => !byName.has(norm(t.artist)))
 
+    // What is on the ward right now, said plainly, so the desk never has to
+    // work it out from a list of everything.
+    const liveRow = rxRows.find((r) => r.status === "current" || r.status === "breached") ?? null
+    const nameOf = (id: number) =>
+      String(((therapists.data ?? []) as any[]).find((t) => Number(t.id) === Number(id))?.name || "")
+    const titleOf = (id: number) => allTracks.find((t) => t.id === Number(id))?.title || ""
+    const live = liveRow
+      ? {
+          id: Number(liveRow.id),
+          seq: Number(liveRow.seq),
+          status: String(liveRow.status),
+          therapist: nameOf(liveRow.therapist_id),
+          title: titleOf(liveRow.track_id),
+          track_id: Number(liveRow.track_id),
+          line: String(liveRow.line || ""),
+          dose_total: Number(liveRow.dose_total ?? 0),
+          dose_target: Number(liveRow.dose_target ?? 0),
+          counted: perTrack.get(Number(liveRow.track_id)) ?? 0,
+          qualified_pct: liveRow.qualified_pct == null ? null : Number(liveRow.qualified_pct),
+          breached_at: liveRow.breached_at ?? null,
+        }
+      : null
+    const queue = rxRows
+      .filter((r) => r.status === "classified")
+      .map((r) => ({
+        id: Number(r.id),
+        seq: Number(r.seq),
+        therapist: nameOf(r.therapist_id),
+        title: titleOf(r.track_id),
+        dose_target: Number(r.dose_target ?? 0),
+      }))
+    const retired = rxRows
+      .filter((r) => r.status === "archived")
+      .map((r) => ({
+        id: Number(r.id),
+        seq: Number(r.seq),
+        therapist: nameOf(r.therapist_id),
+        title: titleOf(r.track_id),
+        dose_total: Number(r.dose_total ?? 0),
+        archived_at: r.archived_at ?? null,
+      }))
+
     return NextResponse.json({
+      live,
+      queue,
+      retired,
       config,
       census: Number(census.count ?? 0),
       holders: Number(holders.count ?? 0),
@@ -272,6 +333,8 @@ export async function PATCH(request: Request) {
     if ("dose_pct" in body) next.dose_pct = num(body.dose_pct, next.dose_pct, 10, 100)
     if ("refill_every" in body) next.refill_every = num(body.refill_every, next.refill_every, 1, 100000)
     if ("refill_spins" in body) next.refill_spins = num(body.refill_spins, next.refill_spins, 0, 10000)
+    if ("courtesy_per_day" in body) next.courtesy_per_day = num(body.courtesy_per_day, next.courtesy_per_day, 0, 24)
+    if ("dose_target" in body) next.dose_target = num(body.dose_target, next.dose_target, 1, 100000000)
 
     const { error } = await supabase
       .from("app_settings")
@@ -398,6 +461,12 @@ export async function POST(request: Request) {
       const { data: track } = await supabase.from("tracks").select("id").eq("id", trackId).maybeSingle()
       if (!track) return NextResponse.json({ error: "That track does not exist." }, { status: 400 })
 
+      const { count: liveCount } = await supabase
+        .from("ward_prescriptions")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["current", "breached"])
+      const rxRowsExist = Number(liveCount ?? 0) > 0
+
       // The next free number for this therapist, so nobody has to think about
       // sequence numbers to put a song up.
       const { data: mine } = await supabase
@@ -514,6 +583,12 @@ export async function POST(request: Request) {
       const { data: track } = await supabase.from("tracks").select("id").eq("id", trackId).maybeSingle()
       if (!track) return NextResponse.json({ error: "That track does not exist." }, { status: 400 })
 
+      const { count: liveCount } = await supabase
+        .from("ward_prescriptions")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["current", "breached"])
+      const rxRowsExist = Number(liveCount ?? 0) > 0
+
       if (Number.isFinite(id) && id > 0) {
         const { error } = await supabase
           .from("ward_prescriptions")
@@ -531,8 +606,14 @@ export async function POST(request: Request) {
           seq,
           target,
           line,
-          // The first prescription is on the ward the moment it exists.
-          unlocked_at: seq === 1 ? new Date().toISOString() : null,
+          // Every prescription is born CLASSIFIED. It reaches the ward by
+          // being published, never by existing, which is what stops an
+          // unreleased title appearing the moment somebody saves a draft.
+          // The one exception is an empty ward: there is nothing to reveal.
+          status: rxRowsExist ? "classified" : "current",
+          published_at: rxRowsExist ? null : new Date().toISOString(),
+          dose_target: Math.max(1, Number(body.dose_target) || 10000),
+          unlocked_at: rxRowsExist ? null : new Date().toISOString(),
         })
         .select("id")
         .single()
@@ -548,16 +629,80 @@ export async function POST(request: Request) {
       return NextResponse.json({ saved: true, id: data?.id })
     }
 
-    if (body.what === "rx_unlock") {
+    // ── PUBLISHING. The only way the ward changes. ──
+    // Nothing swaps itself at the target: the record holds at DOSAGE LIMIT
+    // BREACHED and waits for this button, so the reveal can be lined up with
+    // the artwork, the video and the post instead of happening at 3am to
+    // nobody. The database does the archive and the promotion in one
+    // transaction so there can never be two live prescriptions.
+    if (body.what === "rx_publish") {
+      const id = body.id == null || String(body.id).trim() === "" ? null : Number(body.id)
+      if (id != null && (!Number.isFinite(id) || id < 1)) {
+        return NextResponse.json({ error: "id required" }, { status: 400 })
+      }
+      const { data, error } = await supabase.rpc("ward_publish_next", { p_prescription: id })
+      if (error) throw error
+      if (data?.published !== true) {
+        const reason = String(data?.reason || "")
+        return NextResponse.json(
+          {
+            error:
+              reason === "nothing_classified"
+                ? "Nothing is prepared. Add a prescription first and leave it classified."
+                : "That prescription is not classified, so it cannot be published.",
+          },
+          { status: 400 },
+        )
+      }
+      await logAdminAction(supabase, request, session.username, "ward.rx.publish", { id, result: data })
+      return NextResponse.json({ saved: true, published: data })
+    }
+
+    // ── Choosing what sits on the ward before launch. ──
+    // Whatever is live goes back to CLASSIFIED rather than to the archive,
+    // because nothing was released. This is setup, not a release moment.
+    if (body.what === "rx_set_current") {
       const id = Number(body.id)
       if (!Number.isFinite(id) || id < 1) return NextResponse.json({ error: "id required" }, { status: 400 })
-      const { error } = await supabase
-        .from("ward_prescriptions")
-        .update({ unlocked_at: new Date().toISOString() })
-        .eq("id", id)
-        .is("unlocked_at", null)
+      const { data, error } = await supabase.rpc("ward_set_current", { p_prescription: id })
       if (error) throw error
-      await logAdminAction(supabase, request, session.username, "ward.rx.unlock", { id })
+      if (data?.ok !== true) {
+        return NextResponse.json({ error: "That prescription does not exist." }, { status: 400 })
+      }
+      await logAdminAction(supabase, request, session.username, "ward.rx.current", { id })
+      return NextResponse.json({ saved: true })
+    }
+
+    // ── The shared target and the qualifying percentage, per prescription. ──
+    if (body.what === "rx_tune") {
+      const id = Number(body.id)
+      if (!Number.isFinite(id) || id < 1) return NextResponse.json({ error: "id required" }, { status: 400 })
+      const patch: Record<string, unknown> = {}
+      if ("dose_target" in body) {
+        const target = Math.floor(Number(body.dose_target))
+        if (!Number.isFinite(target) || target < 1) {
+          return NextResponse.json({ error: "The target has to be at least 1." }, { status: 400 })
+        }
+        patch.dose_target = target
+      }
+      if ("qualified_pct" in body) {
+        const raw = String(body.qualified_pct ?? "").trim()
+        if (raw === "") {
+          patch.qualified_pct = null
+        } else {
+          const pct = Math.floor(Number(raw))
+          if (!Number.isFinite(pct) || pct < 10 || pct > 100) {
+            return NextResponse.json({ error: "The qualifying percent must be between 10 and 100." }, { status: 400 })
+          }
+          patch.qualified_pct = pct
+        }
+      }
+      if (Object.keys(patch).length === 0) {
+        return NextResponse.json({ error: "Nothing to change." }, { status: 400 })
+      }
+      const { error } = await supabase.from("ward_prescriptions").update(patch).eq("id", id)
+      if (error) throw error
+      await logAdminAction(supabase, request, session.username, "ward.rx.tune", { id, ...patch })
       return NextResponse.json({ saved: true })
     }
 

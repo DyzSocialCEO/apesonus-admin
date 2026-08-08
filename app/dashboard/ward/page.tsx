@@ -32,10 +32,18 @@ interface SpinSettings {
   dose_pct: number
   refill_every: number
   refill_spins: number
+  /** Free treatments a patient gets each clinic day. */
+  courtesy_per_day: number
+  /** The shared target a newly published prescription starts with. */
+  dose_target: number
 }
 
 interface Rx {
   id: number
+  status: string
+  dose_total: number
+  dose_target: number
+  qualified_pct: number | null
   track_id: number
   seq: number
   target: number | null
@@ -80,6 +88,38 @@ interface Clip {
   seconds: string
 }
 
+interface LiveRx {
+  id: number
+  seq: number
+  status: string
+  therapist: string
+  title: string
+  track_id: number
+  line: string
+  dose_total: number
+  dose_target: number
+  counted: number
+  qualified_pct: number | null
+  breached_at: string | null
+}
+
+interface QueueRx {
+  id: number
+  seq: number
+  therapist: string
+  title: string
+  dose_target: number
+}
+
+interface RetiredRx {
+  id: number
+  seq: number
+  therapist: string
+  title: string
+  dose_total: number
+  archived_at: string | null
+}
+
 interface NewRx {
   track_id: string
   seq: string
@@ -98,7 +138,13 @@ export default function WardPage() {
     dose_pct: 80,
     refill_every: 25,
     refill_spins: 5,
+    courtesy_per_day: 1,
+    dose_target: 10000,
   })
+  const [live, setLive] = useState<LiveRx | null>(null)
+  const [queue, setQueue] = useState<QueueRx[]>([])
+  const [retired, setRetired] = useState<RetiredRx[]>([])
+  const [tune, setTune] = useState({ target: "", pct: "" })
   const [grant, setGrant] = useState({ email: "", spins: "", reason: "" })
   const [buyUrl, setBuyUrl] = useState("")
   const [tracks, setTracks] = useState<TrackRow[]>([])
@@ -131,6 +177,15 @@ export default function WardPage() {
           dose_pct: Number(d.config?.dose_pct ?? 80),
           refill_every: Number(d.config?.refill_every ?? 25),
           refill_spins: Number(d.config?.refill_spins ?? 5),
+          courtesy_per_day: Number(d.config?.courtesy_per_day ?? 1),
+          dose_target: Number(d.config?.dose_target ?? 10000),
+        })
+        setLive(d.live ?? null)
+        setQueue(Array.isArray(d.queue) ? d.queue : [])
+        setRetired(Array.isArray(d.retired) ? d.retired : [])
+        setTune({
+          target: d.live?.dose_target ? String(d.live.dose_target) : "",
+          pct: d.live?.qualified_pct ? String(d.live.qualified_pct) : "",
         })
         setBuyUrl(String(d.config?.buy_url ?? ""))
         setTracks(Array.isArray(d.tracks) ? d.tracks : [])
@@ -249,6 +304,161 @@ export default function WardPage() {
           <AlertCircle className="w-4 h-4" /> {error}
         </div>
       ) : null}
+
+      {/* ── WHAT IS ON THE WARD RIGHT NOW ──
+          One prescription at a time. Nothing swaps itself at the target: the
+          record holds at DOSAGE LIMIT BREACHED and waits for the button here,
+          so a release happens when the post and the artwork are ready and not
+          at three in the morning to nobody. */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm text-gray-400 flex items-center gap-2">
+            <Activity className="w-4 h-4" /> On the ward right now
+          </CardTitle>
+          <CardDescription>
+            One active prescription. Everything else is classified until you publish it.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!live ? (
+            <p className="text-sm text-gray-500">
+              Nothing is on the ward. Add a prescription below, then put it on the ward.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-3">
+                <span
+                  className={`rounded px-2 py-1 text-xs font-semibold ${
+                    live.status === "breached"
+                      ? "bg-yellow-950/50 text-yellow-400"
+                      : "bg-green-950/50 text-green-400"
+                  }`}
+                >
+                  {live.status === "breached" ? "DOSAGE LIMIT BREACHED" : "ACTIVE"}
+                </span>
+                <span className="text-lg font-bold text-white">{live.title || `Track ${live.track_id}`}</span>
+                <span className="text-sm text-gray-500">{live.therapist}</span>
+                <span className="text-xs text-gray-600">PRESCRIPTION {String(live.seq).padStart(3, "0")}</span>
+              </div>
+
+              <div>
+                <div className="flex items-baseline justify-between text-sm">
+                  <span className="font-mono text-white">
+                    {live.dose_total.toLocaleString("en-US")} / {live.dose_target.toLocaleString("en-US")} doses
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    {Math.max(0, live.dose_target - live.dose_total).toLocaleString("en-US")} to go
+                  </span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded bg-gray-800">
+                  <div
+                    className="h-full bg-green-500"
+                    style={{
+                      width: `${Math.min(100, live.dose_target > 0 ? (live.dose_total / live.dose_target) * 100 : 0)}%`,
+                    }}
+                  />
+                </div>
+                {live.counted !== live.dose_total ? (
+                  <p className="mt-2 text-xs text-yellow-500">
+                    The counter says {live.dose_total.toLocaleString("en-US")} but {live.counted.toLocaleString("en-US")}{" "}
+                    doses are on the ledger for this track. They should match.
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">Shared dose target</label>
+                  <Input
+                    value={tune.target}
+                    inputMode="numeric"
+                    onChange={(e) => setTune({ ...tune, target: e.target.value.replace(/[^0-9]/g, "") })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">Qualifying percent, this one only</label>
+                  <Input
+                    value={tune.pct}
+                    inputMode="numeric"
+                    placeholder={String(spinCfg.dose_pct)}
+                    onChange={(e) => setTune({ ...tune, pct: e.target.value.replace(/[^0-9]/g, "") })}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      post("tune", {
+                        what: "rx_tune",
+                        id: live.id,
+                        dose_target: Number(tune.target || live.dose_target),
+                        qualified_pct: tune.pct,
+                      })
+                    }
+                    disabled={busy === "tune"}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gray-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    {busy === "tune" ? <Loader2 className="w-4 h-4 animate-spin" /> : saved === "tune" ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                    Save
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="rounded-lg border border-gray-800 p-3">
+            <div className="text-xs font-semibold tracking-wider text-gray-400">NEXT UP</div>
+            {queue.length === 0 ? (
+              <p className="mt-1 text-sm text-gray-500">
+                Nothing is prepared. The app tells patients nothing has been prepared for release.
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-1 text-sm text-gray-300">
+                {queue.map((q) => (
+                  <li key={q.id} className="flex items-center gap-2">
+                    <Lock className="w-3 h-3 text-gray-600" />
+                    <span className="font-semibold">{q.title || `Track ${q.id}`}</span>
+                    <span className="text-gray-500">{q.therapist}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (queue.length === 0) return
+                if (
+                  window.confirm(
+                    "Publish the next prescription? The one on the ward moves to the archive and the new title becomes public immediately.",
+                  )
+                ) {
+                  post("publish", { what: "rx_publish", id: queue[0]?.id })
+                }
+              }}
+              disabled={busy === "publish" || queue.length === 0}
+              className="mt-3 inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-black disabled:opacity-40"
+            >
+              {busy === "publish" ? <Loader2 className="w-4 h-4 animate-spin" /> : saved === "publish" ? <Check className="w-4 h-4" /> : <Star className="w-4 h-4" />}
+              Publish the next prescription
+            </button>
+          </div>
+
+          {retired.length > 0 ? (
+            <div className="rounded-lg border border-gray-800 p-3">
+              <div className="text-xs font-semibold tracking-wider text-gray-400">PREVIOUS PRESCRIPTIONS</div>
+              <ul className="mt-2 space-y-1 text-sm text-gray-400">
+                {retired.map((r) => (
+                  <li key={r.id} className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-300">{r.title || `Track ${r.id}`}</span>
+                    <span className="text-gray-500">{r.therapist}</span>
+                    <span className="ml-auto font-mono text-xs">{r.dose_total.toLocaleString("en-US")} doses</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Card>
@@ -385,18 +595,35 @@ export default function WardPage() {
                 {t.prescriptions.map((r) => (
                   <div key={r.id} className="rounded-lg border border-gray-800 p-3 space-y-2">
                     <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className={`inline-flex items-center gap-1 rounded px-2 py-1 font-semibold ${r.unlocked ? "bg-green-950/50 text-green-400" : "bg-gray-900 text-gray-400"}`}>
-                        {r.unlocked ? <Unlock className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
-                        {r.unlocked ? "ON THE WARD" : "LOCKED"}
+                      <span
+                        className={`inline-flex items-center gap-1 rounded px-2 py-1 font-semibold ${
+                          r.status === "current"
+                            ? "bg-green-950/50 text-green-400"
+                            : r.status === "breached"
+                              ? "bg-yellow-950/50 text-yellow-400"
+                              : r.status === "archived"
+                                ? "bg-gray-900 text-gray-500"
+                                : "bg-gray-900 text-gray-400"
+                        }`}
+                      >
+                        {r.status === "classified" ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                        {r.status === "current"
+                          ? "ON THE WARD"
+                          : r.status === "breached"
+                            ? "LIMIT REACHED"
+                            : r.status === "archived"
+                              ? "RETIRED"
+                              : "CLASSIFIED"}
                       </span>
                       <span className="text-gray-500">{r.doses.toLocaleString("en-US")} doses</span>
-                      {!r.unlocked ? (
+                      {r.status === "classified" ? (
                         <button
                           type="button"
-                          onClick={() => post(`unlock-${r.id}`, { what: "rx_unlock", id: r.id })}
+                          onClick={() => post(`cur-${r.id}`, { what: "rx_set_current", id: r.id })}
                           className="rounded border border-gray-700 px-2 py-1 font-semibold text-gray-300 hover:border-green-800 hover:text-green-400"
+                          title="Put this on the ward now. Use PUBLISH for a real release."
                         >
-                          UNLOCK NOW
+                          PUT ON THE WARD
                         </button>
                       ) : null}
                       <button
@@ -813,6 +1040,30 @@ export default function WardPage() {
                 value={spinCfg.refill_spins}
                 onChange={(e) => setSpinCfg({ ...spinCfg, refill_spins: Number(e.target.value) })}
               />
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Courtesy treatments a day</label>
+              <Input
+                type="number"
+                value={spinCfg.courtesy_per_day}
+                onChange={(e) => setSpinCfg({ ...spinCfg, courtesy_per_day: Number(e.target.value) })}
+              />
+              <p className="text-[11px] text-gray-600 mt-1">
+                Free treatments every patient gets. Zero turns the courtesy off entirely.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Default shared target</label>
+              <Input
+                type="number"
+                value={spinCfg.dose_target}
+                onChange={(e) => setSpinCfg({ ...spinCfg, dose_target: Number(e.target.value) })}
+              />
+              <p className="text-[11px] text-gray-600 mt-1">
+                What a newly published prescription starts with. The one on the ward is set above.
+              </p>
             </div>
           </div>
           <p className="text-[11px] text-gray-600">

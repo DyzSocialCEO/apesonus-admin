@@ -61,7 +61,10 @@ export async function GET() {
   try {
     const supabase = await createAdminClient()
 
-    const [{ data: settings }, { data: rows }] = await Promise.all([
+    // The economy, counted BY THE DATABASE. Pulling rows and counting them
+    // here breaks silently the moment a table passes a thousand rows, because
+    // a response is capped there and every number quietly stops moving.
+    const [{ data: settings }, { data: rows }, held, granted, doses, refills, courtesy, accounts] = await Promise.all([
       supabase
         .from("app_settings")
         .select("key, value")
@@ -72,6 +75,15 @@ export async function GET() {
         .eq("status", "confirmed")
         .order("created_at", { ascending: false })
         .limit(50000),
+      // Spins sitting in patients' hands, unspent. This is the liability.
+      supabase.rpc("ward_spins_held"),
+      // Spins handed out rather than sold: the starter grant, the refills and
+      // anything given by hand at the desk.
+      supabase.rpc("ward_spins_given"),
+      supabase.from("ward_doses").select("id", { count: "exact", head: true }),
+      supabase.from("ward_spin_state").select("refill_high", { count: "exact", head: true }).gt("refill_high", 0),
+      supabase.from("ward_sessions").select("id", { count: "exact", head: true }).eq("source", "courtesy"),
+      supabase.from("ward_spin_state").select("user_id", { count: "exact", head: true }),
     ])
 
     const s = new Map((settings ?? []).map((r: { key: string; value: string }) => [r.key, String(r.value ?? "")]))
@@ -85,7 +97,7 @@ export async function GET() {
     const unit = 10 ** decimals
 
     // Token rail (what the clinic sells in now) and the stable rail
-    // (anything taken before the switch) are kept apart on purpose —
+    // (anything taken before the switch) are kept apart on purpose:
     // adding them would invent a number that never existed.
     const token = all.filter((r) => (r.rail || "").toLowerCase() === "onus")
     const stable = all.filter((r) => (r.rail || "").toLowerCase() !== "onus")
@@ -118,7 +130,30 @@ export async function GET() {
       all.filter((r) => Date.now() - new Date(r.created_at).getTime() <= ms)
     const usdIn = (list: Row[]) => list.reduce((a, r) => a + Number(r.usd_cents || 0), 0) / 100
 
+    // What the packs cost against what they give, so the price list can be
+    // read as a rate rather than as three numbers.
+    const spinsSold = all.reduce((a, r) => a + Number(r.ammo_amount || 0), 0)
+    const usdTotal = all.reduce((a, r) => a + Number(r.usd_cents || 0), 0) / 100
+    const spinsPerDollar = usdTotal > 0 ? spinsSold / usdTotal : 0
+
     return NextResponse.json({
+      economy: {
+        accounts: Number((accounts as any)?.count ?? 0),
+        spinsSold,
+        spinsHeld: Number((held as any)?.data ?? 0),
+        givenStarter: Number((granted as any)?.data?.starter ?? 0),
+        givenRefills: Number((granted as any)?.data?.refills ?? 0),
+        dosesTaken: Number((doses as any)?.count ?? 0),
+        refilledAccounts: Number((refills as any)?.count ?? 0),
+        courtesyTreatments: Number((courtesy as any)?.count ?? 0),
+        spinsPerDollar,
+        // What the clinic hands over for nothing, against what it sells. A
+        // rate, so it can be read without doing the sum in your head.
+        givenPct: (() => {
+          const given = Number((granted as any)?.data?.starter ?? 0) + Number((granted as any)?.data?.refills ?? 0)
+          return spinsSold > 0 ? (given / spinsSold) * 100 : 0
+        })(),
+      },
       rail: railName,
       symbol,
       mint,
