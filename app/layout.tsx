@@ -1,8 +1,9 @@
 import type { Metadata } from "next"
-import { Inter } from "next/font/google"
 import "./globals.css"
 
-const inter = Inter({ subsets: ["latin"] })
+// Inter is a file in public/fonts, declared in globals.css. next/font fetches
+// from Google AT BUILD TIME, so one failed fetch fails the whole build and the
+// previous image keeps serving with nothing to show for the push.
 
 export const metadata: Metadata = {
   title: "APESONUS Admin",
@@ -16,7 +17,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={inter.className}>{children}</body>
+      <body className="font-sans">{children}</body>
     </html>
   )
 }

@@ -74,6 +74,10 @@ interface RosterArtist {
 interface Clip {
   url: string
   caption: string
+  /** What the round is called. The archive drawer lists it. */
+  title: string
+  /** How long it runs, in seconds. Printed beside the title. */
+  seconds: string
 }
 
 interface NewRx {
@@ -101,7 +105,7 @@ export default function WardPage() {
   const [census, setCensus] = useState(0)
   const [holders, setHolders] = useState(0)
   const [mint, setMint] = useState<string | null>(null)
-  const [clip, setClip] = useState<Clip>({ url: "", caption: "" })
+  const [clip, setClip] = useState<Clip>({ url: "", caption: "", title: "", seconds: "" })
   const [day, setDay] = useState("")
 
   const [loading, setLoading] = useState(true)
@@ -136,7 +140,16 @@ export default function WardPage() {
         setHolders(Number(d.holders ?? 0))
         setMint(d.mint ?? null)
         setDay(String(d.day ?? ""))
-        setClip(d.morningDose ? { url: d.morningDose.url, caption: d.morningDose.caption ?? "" } : { url: "", caption: "" })
+        setClip(
+          d.morningDose
+            ? {
+                url: d.morningDose.url,
+                caption: d.morningDose.caption ?? "",
+                title: d.morningDose.title ?? "",
+                seconds: d.morningDose.seconds ? String(d.morningDose.seconds) : "",
+              }
+            : { url: "", caption: "", title: "", seconds: "" },
+        )
         setError("")
       })
       .catch((e) => setError(e instanceof Error ? e.message : "something went wrong"))
@@ -880,7 +893,8 @@ export default function WardPage() {
           <CardTitle>Today&rsquo;s Morning Dose</CardTitle>
           <CardDescription>
             The clip for {day}. Upload the file to Bunny like a cover, then paste the link here.
-            Clearing the link takes the card off the ward. Tomorrow starts empty.
+            Clearing the link takes the card off the ward. Tomorrow starts empty. Every round you save
+            stays in the Morning Dose Archive, which is why the title and the length matter.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -888,13 +902,34 @@ export default function WardPage() {
             <label className="block text-xs font-medium text-gray-400 mb-1">Clip link</label>
             <Input value={clip.url} placeholder="https://..." onChange={(e) => setClip({ ...clip, url: e.target.value })} />
           </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Title</label>
+              <Input
+                value={clip.title}
+                placeholder="Before You Open the Chart"
+                onChange={(e) => setClip({ ...clip, title: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Length in seconds</label>
+              <Input
+                value={clip.seconds}
+                inputMode="numeric"
+                placeholder="30"
+                onChange={(e) => setClip({ ...clip, seconds: e.target.value.replace(/[^0-9]/g, "") })}
+              />
+            </div>
+          </div>
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Caption, optional</label>
+            <label className="block text-xs font-medium text-gray-400 mb-1">
+              What Dr. Onus says, shown beside the clip
+            </label>
             <Input value={clip.caption} onChange={(e) => setClip({ ...clip, caption: e.target.value })} />
           </div>
           <button
             type="button"
-            onClick={() => post("clip", { what: "clip", ...clip })}
+            onClick={() => post("clip", { what: "clip", ...clip, seconds: Number(clip.seconds || 0) })}
             disabled={busy === "clip"}
             className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
           >

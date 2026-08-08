@@ -133,7 +133,7 @@ export async function GET() {
         .gt("balance", 0),
       supabase.from("ward_therapists").select("*").order("sort", { ascending: true }).order("id", { ascending: true }),
       supabase.from("ward_prescriptions").select("*").order("seq", { ascending: true }),
-      supabase.from("ward_morning_dose").select("url, caption").eq("day", day).maybeSingle(),
+      supabase.from("ward_morning_dose").select("url, caption, title, seconds").eq("day", day).maybeSingle(),
       supabase.from("app_settings").select("value").eq("key", "onus_mint").maybeSingle(),
       // The roster and the catalogue, so the desk never asks anyone to type a
       // name or paste a picture. Both already exist; the ward just points at
@@ -220,7 +220,14 @@ export async function GET() {
       unmatched,
       therapists: staff,
       day,
-      morningDose: clip.data ? { url: String(clip.data.url), caption: clip.data.caption ?? "" } : null,
+      morningDose: clip.data
+        ? {
+            url: String(clip.data.url),
+            caption: clip.data.caption ?? "",
+            title: clip.data.title ?? "",
+            seconds: Number(clip.data.seconds ?? 0) || 0,
+          }
+        : null,
       mint: String(mintRow.data?.value ?? "").trim() || null,
     })
   } catch (e: any) {
@@ -293,6 +300,10 @@ export async function POST(request: Request) {
       const day = today()
       const url = String(body.url || "").trim()
       const caption = String(body.caption || "").trim()
+      // The title and the length are what the archive drawer lists. Without
+      // them every past round reads as the same untitled row.
+      const title = String(body.title || "").trim().slice(0, 80)
+      const seconds = Math.max(0, Math.min(3600, Math.floor(Number(body.seconds ?? 0)) || 0))
       if (!url) {
         const { error } = await supabase.from("ward_morning_dose").delete().eq("day", day)
         if (error) throw error
@@ -304,10 +315,20 @@ export async function POST(request: Request) {
       }
       const { error } = await supabase
         .from("ward_morning_dose")
-        .upsert({ day, url, caption: caption || null, updated_at: new Date().toISOString() }, { onConflict: "day" })
+        .upsert(
+          {
+            day,
+            url,
+            caption: caption || null,
+            title: title || null,
+            seconds: seconds || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "day" },
+        )
       if (error) throw error
-      await logAdminAction(supabase, request, session.username, "ward.clip", { day, url })
-      return NextResponse.json({ saved: true, morningDose: { url, caption } })
+      await logAdminAction(supabase, request, session.username, "ward.clip", { day, url, title })
+      return NextResponse.json({ saved: true, morningDose: { url, caption, title, seconds } })
     }
 
     // ── Hire straight off the roster. ──
