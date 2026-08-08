@@ -118,11 +118,11 @@ export async function GET() {
   try {
     const supabase = await createAdminClient()
     const day = today()
-    const [cfgRow, tracks, census, holders, therapists, rx, clip, mintRow] = await Promise.all([
+    const [cfgRow, tracks, census, holders, therapists, rx, clip, mintRow, artists] = await Promise.all([
       supabase.from("app_settings").select("value").eq("key", "ward_config").maybeSingle(),
       supabase
         .from("tracks")
-        .select("id, title, artist")
+        .select("id, title, artist, cover")
         .eq("is_active", true)
         .order("title", { ascending: true })
         .limit(500),
@@ -135,6 +135,14 @@ export async function GET() {
       supabase.from("ward_prescriptions").select("*").order("seq", { ascending: true }),
       supabase.from("ward_morning_dose").select("url, caption").eq("day", day).maybeSingle(),
       supabase.from("app_settings").select("value").eq("key", "onus_mint").maybeSingle(),
+      // The roster and the catalogue, so the desk never asks anyone to type a
+      // name or paste a picture. Both already exist; the ward just points at
+      // them.
+      supabase
+        .from("artists")
+        .select("id, name, image, is_active")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true }),
     ])
 
     const config = readConfig(cfgRow.data?.value)
@@ -179,11 +187,37 @@ export async function GET() {
       }
     })
 
+    // Which songs are already spoken for, so the desk can grey them out rather
+    // than letting a save fail on the unique constraint.
+    const takenTracks = new Set(rxRows.map((r) => Number(r.track_id)))
+
+    // Songs are matched to an artist BY NAME, because tracks.artist is free
+    // text and not a link to the artist row. A mistyped or trailing-space name
+    // must never make a song vanish, so anything that matches nobody is listed
+    // separately instead of being dropped.
+    const roster = ((artists.data ?? []) as any[]).map((a) => ({
+      id: String(a.id),
+      name: String(a.name || ""),
+      image: String(a.image || ""),
+    }))
+    const norm = (v: string) => v.trim().toLowerCase().replace(/\s+/g, " ")
+    const byName = new Map(roster.map((a) => [norm(a.name), a]))
+    const allTracks = ((tracks.data ?? []) as any[]).map((t) => ({
+      id: Number(t.id),
+      title: String(t.title || "").trim(),
+      artist: String(t.artist || "").trim(),
+      cover: String(t.cover || ""),
+      taken: takenTracks.has(Number(t.id)),
+    }))
+    const unmatched = allTracks.filter((t) => !byName.has(norm(t.artist)))
+
     return NextResponse.json({
       config,
       census: Number(census.count ?? 0),
       holders: Number(holders.count ?? 0),
-      tracks: tracks.data ?? [],
+      tracks: allTracks,
+      artists: roster,
+      unmatched,
       therapists: staff,
       day,
       morningDose: clip.data ? { url: String(clip.data.url), caption: clip.data.caption ?? "" } : null,
@@ -276,19 +310,118 @@ export async function POST(request: Request) {
       return NextResponse.json({ saved: true, morningDose: { url, caption } })
     }
 
+    // ── Hire straight off the roster. ──
+    // The name and the picture come from the artist row, so the ward can never
+    // hold a different spelling or a pasted link that points somewhere odd.
+    if (body.what === "hire_artist") {
+      const artistId = String(body.artist_id || "").trim()
+      if (!artistId) return NextResponse.json({ error: "Pick an artist." }, { status: 400 })
+
+      const { data: artist } = await supabase
+        .from("artists")
+        .select("id, name, image, backstory, tagline")
+        .eq("id", artistId)
+        .maybeSingle()
+      if (!artist?.name) return NextResponse.json({ error: "That artist does not exist." }, { status: 404 })
+
+      const { data: already } = await supabase
+        .from("ward_therapists")
+        .select("id")
+        .ilike("name", String(artist.name).trim())
+        .maybeSingle()
+      if (already?.id) {
+        return NextResponse.json({ error: "That artist is already on staff." }, { status: 400 })
+      }
+
+      const bio = String(body.bio || artist.tagline || "").trim()
+      const { data, error } = await supabase
+        .from("ward_therapists")
+        .insert({
+          name: String(artist.name).trim(),
+          bio,
+          image: String(artist.image || "").trim(),
+          sort: 100,
+        })
+        .select("id")
+        .single()
+      if (error) throw error
+
+      await logAdminAction(supabase, request, session.username, "ward.hire_artist", {
+        artistId, name: artist.name, therapist: data?.id,
+      })
+      return NextResponse.json({ saved: true, id: data?.id })
+    }
+
+    // ── Put a song on the ward, or take it off. ──
+    // One call for both, because the desk is a list of tick boxes and a tick
+    // that has to be confirmed with a second button is a tick people forget.
+    if (body.what === "song_toggle") {
+      const therapistId = Number(body.therapist_id)
+      const trackId = Number(body.track_id)
+      const on = body.on === true
+      if (!Number.isFinite(therapistId) || therapistId < 1 || !Number.isFinite(trackId) || trackId < 1) {
+        return NextResponse.json({ error: "therapist and track required" }, { status: 400 })
+      }
+
+      if (!on) {
+        const { error } = await supabase
+          .from("ward_prescriptions")
+          .delete()
+          .eq("therapist_id", therapistId)
+          .eq("track_id", trackId)
+        if (error) throw error
+        await logAdminAction(supabase, request, session.username, "ward.song_off", { therapistId, trackId })
+        return NextResponse.json({ saved: true })
+      }
+
+      const { data: track } = await supabase.from("tracks").select("id").eq("id", trackId).maybeSingle()
+      if (!track) return NextResponse.json({ error: "That track does not exist." }, { status: 400 })
+
+      // The next free number for this therapist, so nobody has to think about
+      // sequence numbers to put a song up.
+      const { data: mine } = await supabase
+        .from("ward_prescriptions")
+        .select("seq")
+        .eq("therapist_id", therapistId)
+        .order("seq", { ascending: false })
+        .limit(1)
+      const seq = Math.max(1, Number(mine?.[0]?.seq ?? 0) + 1)
+      const target = body.target == null || String(body.target).trim() === "" ? null : Math.floor(Number(body.target))
+
+      const { error } = await supabase.from("ward_prescriptions").insert({
+        therapist_id: therapistId,
+        track_id: trackId,
+        seq,
+        line: String(body.line || "").trim(),
+        target: seq === 1 ? null : target,
+        // Number one is on the ward as soon as it is ticked. A later one only
+        // opens when its dose target is reached, unless it is put up as normal
+        // with no target, which unlocks it now.
+        unlocked_at: seq === 1 || target == null ? new Date().toISOString() : null,
+      })
+      if (error) {
+        const msg = String(error.message || "")
+        if (msg.includes("ward_prescriptions_track_id_key")) {
+          return NextResponse.json({ error: "That song is already on another therapist." }, { status: 400 })
+        }
+        throw error
+      }
+
+      await logAdminAction(supabase, request, session.username, "ward.song_on", { therapistId, trackId, seq, target })
+      return NextResponse.json({ saved: true, seq })
+    }
+
     // ── A therapist. No id = a new hire. ──
     if (body.what === "therapist_save") {
       const name = String(body.name || "").trim()
       if (!name) return NextResponse.json({ error: "A therapist needs a name." }, { status: 400 })
-      const image = String(body.image || "").trim()
-      if (image && !/^(https:\/\/|\/)/i.test(image)) {
-        return NextResponse.json({ error: "The image needs a full https link or a /path." }, { status: 400 })
-      }
       const sortN = Math.floor(Number(body.sort))
-      const rowData = {
+      // No image field. The picture belongs to the artist record, and the ward
+      // reads it from there, so this desk cannot introduce a second version of
+      // it or a link that points off the pull zone.
+      const rowData: Record<string, unknown> = {
         name,
         bio: String(body.bio || "").trim(),
-        image,
         sort: Number.isFinite(sortN) ? sortN : 100,
       }
       const id = Number(body.id)

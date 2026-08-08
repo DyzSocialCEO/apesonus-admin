@@ -60,6 +60,15 @@ interface TrackRow {
   id: number
   title: string
   artist: string
+  cover?: string
+  /** Already a prescription somewhere, so it cannot be used twice. */
+  taken?: boolean
+}
+
+interface RosterArtist {
+  id: string
+  name: string
+  image: string
 }
 
 interface Clip {
@@ -100,7 +109,10 @@ export default function WardPage() {
   const [saved, setSaved] = useState("")
   const [error, setError] = useState("")
 
-  const [hire, setHire] = useState({ name: "", bio: "", image: "", sort: "100" })
+  const [hire, setHire] = useState({ artist_id: "", bio: "" })
+  const [songTarget, setSongTarget] = useState<Record<number, string>>({})
+  const [artists, setArtists] = useState<RosterArtist[]>([])
+  const [unmatched, setUnmatched] = useState<TrackRow[]>([])
   const [newRx, setNewRx] = useState<Record<number, NewRx>>({})
 
   const load = useCallback(() => {
@@ -118,6 +130,8 @@ export default function WardPage() {
         })
         setBuyUrl(String(d.config?.buy_url ?? ""))
         setTracks(Array.isArray(d.tracks) ? d.tracks : [])
+        setArtists(Array.isArray(d.artists) ? d.artists : [])
+        setUnmatched(Array.isArray(d.unmatched) ? d.unmatched : [])
         setCensus(Number(d.census ?? 0))
         setHolders(Number(d.holders ?? 0))
         setMint(d.mint ?? null)
@@ -324,15 +338,15 @@ export default function WardPage() {
                   className="w-full rounded-lg bg-gray-900 border border-gray-800 px-3 py-2 text-sm text-white"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
-                  Character image link (Bunny, like the covers). Empty = the app shows the current cover art.
-                </label>
-                <Input
-                  value={t.image}
-                  placeholder="https://..."
-                  onChange={(e) => setT(t.id, { image: e.target.value })}
-                />
+              <div className="rounded-lg border border-gray-800 bg-gray-950 px-3 py-2">
+                <div className="text-[11px] text-gray-500">
+                  Picture, taken from this artist&rsquo;s record. Change it on the Artists page and the ward
+                  follows. There is no link to paste here, which is how a wrong or unsigned image used to
+                  get in.
+                </div>
+                <div className="mt-1 break-all font-mono text-[10px] text-gray-400">
+                  {t.image || "using the cover art"}
+                </div>
               </div>
               <button
                 type="button"
@@ -342,7 +356,6 @@ export default function WardPage() {
                     id: t.id,
                     name: t.name,
                     bio: t.bio,
-                    image: t.image,
                     sort: t.sort,
                   })
                 }
@@ -516,51 +529,151 @@ export default function WardPage() {
             </div>
           ))}
 
-          {/* hire a therapist */}
+          {/* HIRE STRAIGHT OFF THE ROSTER */}
           <div className="rounded-xl border border-dashed border-gray-800 p-4 space-y-3">
-            <div className="text-xs font-semibold tracking-wider text-gray-400">HIRE A THERAPIST</div>
+            <div className="text-xs font-semibold tracking-wider text-gray-400">PUT AN ARTIST ON STAFF</div>
+            <p className="text-[11px] text-gray-600">
+              Pick from the artists you already have. The name and the picture come from their artist
+              record, so there is nothing to type and no link to paste.
+            </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Name</label>
-                <Input value={hire.name} placeholder="SHIM LIQUIDATION" onChange={(e) => setHire({ ...hire, name: e.target.value })} />
+                <label className="block text-xs font-medium text-gray-400 mb-1">Artist</label>
+                <select
+                  value={hire.artist_id}
+                  onChange={(e) => setHire({ ...hire, artist_id: e.target.value })}
+                  className="w-full rounded-lg bg-gray-900 border border-gray-800 px-3 py-2 text-sm text-white"
+                >
+                  <option value="">Pick an artist</option>
+                  {artists
+                    .filter((a) => !therapists.some((t) => t.name.trim().toLowerCase() === a.name.trim().toLowerCase()))
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Sort</label>
-                <Input type="number" value={hire.sort} onChange={(e) => setHire({ ...hire, sort: e.target.value })} />
+                <label className="block text-xs font-medium text-gray-400 mb-1">Bio, optional</label>
+                <Input value={hire.bio} onChange={(e) => setHire({ ...hire, bio: e.target.value })} />
               </div>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Bio</label>
-              <textarea
-                value={hire.bio}
-                onChange={(e) => setHire({ ...hire, bio: e.target.value })}
-                rows={2}
-                className="w-full rounded-lg bg-gray-900 border border-gray-800 px-3 py-2 text-sm text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Character image link, optional</label>
-              <Input value={hire.image} placeholder="https://..." onChange={(e) => setHire({ ...hire, image: e.target.value })} />
             </div>
             <button
               type="button"
               onClick={async () => {
-                const ok = await post("hire", {
-                  what: "therapist_save",
-                  name: hire.name,
-                  bio: hire.bio,
-                  image: hire.image,
-                  sort: Number(hire.sort) || 100,
-                })
-                if (ok) setHire({ name: "", bio: "", image: "", sort: "100" })
+                const ok = await post("hire", { what: "hire_artist", artist_id: hire.artist_id, bio: hire.bio })
+                if (ok) setHire({ artist_id: "", bio: "" })
               }}
-              disabled={busy === "hire"}
+              disabled={busy === "hire" || !hire.artist_id}
               className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
             >
               {busy === "hire" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              Hire
+              Put on staff
             </button>
           </div>
+
+          {/* THEIR CATALOGUE, AS TICK BOXES */}
+          {therapists.length > 0 ? (
+            <div className="rounded-xl border border-gray-800 p-4 space-y-3">
+              <div className="text-xs font-semibold tracking-wider text-gray-400">SONGS ON THE WARD</div>
+              <p className="text-[11px] text-gray-600">
+                Every song each therapist has in the catalogue. Tick one to put it up, untick to take
+                it off. The first song a therapist gets is live immediately; give a later one a dose
+                target to keep it locked until the ward earns it.
+              </p>
+              {therapists.map((t) => {
+                const mine = tracks.filter(
+                  (x) => x.artist.trim().toLowerCase() === t.name.trim().toLowerCase(),
+                )
+                return (
+                  <div key={t.id} className="rounded-lg border border-gray-800 p-3">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-gray-300">
+                      {t.name}
+                      {t.featured ? <span className="text-yellow-400">FEATURED</span> : null}
+                      <span className="ml-auto text-gray-600">{mine.length} in catalogue</span>
+                    </div>
+                    {mine.length === 0 ? (
+                      <p className="mt-2 text-[11px] text-gray-600">
+                        No song in Tracks carries this artist name. Fix the artist field on the track
+                        and it appears here.
+                      </p>
+                    ) : (
+                      <div className="mt-2 space-y-1.5">
+                        {mine.map((x) => {
+                          const on = t.prescriptions.some((r) => r.track_id === x.id)
+                          const rx = t.prescriptions.find((r) => r.track_id === x.id)
+                          const elsewhere = x.taken && !on
+                          return (
+                            <div key={x.id} className="flex flex-wrap items-center gap-2 text-xs">
+                              <button
+                                type="button"
+                                disabled={elsewhere || busy === `song-${x.id}`}
+                                onClick={() =>
+                                  post(`song-${x.id}`, {
+                                    what: "song_toggle",
+                                    therapist_id: t.id,
+                                    track_id: x.id,
+                                    on: !on,
+                                    target: songTarget[x.id] ?? "",
+                                  })
+                                }
+                                className={`rounded border px-2 py-1 font-semibold ${
+                                  on
+                                    ? "border-green-800 bg-green-950/40 text-green-400"
+                                    : elsewhere
+                                      ? "border-gray-800 text-gray-700"
+                                      : "border-gray-700 text-gray-400"
+                                }`}
+                              >
+                                {on ? "ON THE WARD" : elsewhere ? "ON SOMEONE ELSE" : "PUT IT UP"}
+                              </button>
+                              <span className="text-gray-300">{x.title}</span>
+                              {rx ? (
+                                <span className="text-gray-600">
+                                  RX {String(rx.seq).padStart(3, "0")} &middot; {rx.doses.toLocaleString("en-US")} doses
+                                  {rx.unlocked ? "" : ` · locked at ${rx.target ?? 0}`}
+                                </span>
+                              ) : (
+                                <input
+                                  type="number"
+                                  placeholder="lock target"
+                                  value={songTarget[x.id] ?? ""}
+                                  onChange={(e) => setSongTarget({ ...songTarget, [x.id]: e.target.value })}
+                                  className="w-28 rounded bg-gray-900 border border-gray-800 px-2 py-1 text-xs text-white"
+                                />
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ) : null}
+
+          {/* SONGS THAT MATCH NOBODY */}
+          {unmatched.length > 0 ? (
+            <div className="rounded-xl border border-amber-900/60 bg-amber-950/20 p-4">
+              <div className="text-xs font-semibold tracking-wider text-amber-400">
+                {unmatched.length} SONGS MATCH NO ARTIST
+              </div>
+              <p className="mt-1 text-[11px] text-gray-400">
+                A track&rsquo;s artist is plain text, so a different spelling or a stray space hides it
+                from the list above. Fix the artist field in Tracks and it comes back.
+              </p>
+              <div className="mt-2 space-y-1 text-[11px] text-gray-500">
+                {unmatched.slice(0, 20).map((x) => (
+                  <div key={x.id}>
+                    {x.title} <span className="text-gray-600">by &ldquo;{x.artist || "nobody"}&rdquo;</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
         </CardContent>
       </Card>
 
