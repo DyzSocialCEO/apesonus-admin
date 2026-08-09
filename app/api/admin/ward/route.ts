@@ -126,7 +126,7 @@ export async function GET() {
   try {
     const supabase = await createAdminClient()
     const day = today()
-    const [cfgRow, tracks, census, holders, therapists, rx, clip, mintRow, artists] = await Promise.all([
+    const [cfgRow, tracks, census, holders, therapists, rx, clip, mintRow, artists, desk] = await Promise.all([
       supabase.from("app_settings").select("value").eq("key", "ward_config").maybeSingle(),
       supabase
         .from("tracks")
@@ -151,6 +151,10 @@ export async function GET() {
         .select("id, name, image, is_active")
         .eq("is_active", true)
         .order("sort_order", { ascending: true }),
+      // THE NEW DESK, in one read: the target, what is live, the queue, the
+      // archive, and every artist with all of their songs built straight from
+      // the tracks table. Nothing in here is matched by name.
+      supabase.rpc("ward_desk"),
     ])
 
     const config = readConfig(cfgRow.data?.value)
@@ -297,7 +301,10 @@ export async function GET() {
         archived_at: r.archived_at ?? null,
       }))
 
+    if (desk.error) console.error("[admin/ward] ward_desk failed:", desk.error)
+
     return NextResponse.json({
+      desk: desk.data ?? null,
       onWard,
       live,
       queue,
@@ -685,6 +692,91 @@ export async function POST(request: Request) {
       }
       await logAdminAction(supabase, request, session.username, "ward.rx.publish", { id, result: data })
       return NextResponse.json({ saved: true, published: data })
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // THE NEW DESK. One target, songs switched on and off, and a queue.
+    // Everything below the next divider is the old model and comes out once
+    // the page stops calling it.
+    // ════════════════════════════════════════════════════════════════════
+
+    if (body.what === "desk_target") {
+      const target = Math.floor(Number(body.target))
+      const pct = body.pct == null || body.pct === "" ? null : Math.floor(Number(body.pct))
+      if (!Number.isFinite(target) || target < 1) {
+        return NextResponse.json({ error: "The target has to be at least 1." }, { status: 400 })
+      }
+      if (pct != null && (!Number.isFinite(pct) || pct < 10 || pct > 100)) {
+        return NextResponse.json({ error: "The qualifying percent must be between 10 and 100." }, { status: 400 })
+      }
+      const { data, error } = await supabase.rpc("ward_set_target", { p_target: target, p_pct: pct })
+      if (error) throw error
+      await logAdminAction(supabase, request, session.username, "ward.target", { target, pct })
+      return NextResponse.json({ saved: true, result: data })
+    }
+
+    if (body.what === "song_on" || body.what === "song_off" || body.what === "song_line" || body.what === "song_queue") {
+      const track = Number(body.track_id)
+      if (!Number.isFinite(track) || track < 1) {
+        return NextResponse.json({ error: "track_id required" }, { status: 400 })
+      }
+      const line = body.line == null ? null : String(body.line).slice(0, 200)
+
+      if (body.what === "song_on") {
+        const { data, error } = await supabase.rpc("ward_song_on", { p_track: track, p_line: line })
+        if (error) throw error
+        if (data?.ok !== true) {
+          return NextResponse.json(
+            {
+              error:
+                data?.reason === "track_has_no_artist"
+                  ? "That track has no artist on it. Fill the Artist field in Tracks first."
+                  : "Could not put that song up.",
+            },
+            { status: 400 },
+          )
+        }
+        await logAdminAction(supabase, request, session.username, "ward.song.on", { track })
+        return NextResponse.json({ saved: true })
+      }
+
+      if (body.what === "song_off") {
+        // Pulling a song by hand does NOT pull the queue forward. The queue
+        // replaces a song that finished, not one that was taken down.
+        const { data, error } = await supabase.rpc("ward_song_off", { p_track: track, p_promote: false })
+        if (error) throw error
+        if (data?.ok !== true) return NextResponse.json({ error: "That song is not on the ward." }, { status: 400 })
+        await logAdminAction(supabase, request, session.username, "ward.song.off", { track })
+        return NextResponse.json({ saved: true, result: data })
+      }
+
+      if (body.what === "song_queue") {
+        const { data, error } = await supabase.rpc("ward_queue_add", { p_track: track, p_line: line })
+        if (error) throw error
+        if (data?.ok !== true) {
+          return NextResponse.json(
+            { error: "That track has no artist on it. Fill the Artist field in Tracks first." },
+            { status: 400 },
+          )
+        }
+        await logAdminAction(supabase, request, session.username, "ward.queue", { track })
+        return NextResponse.json({ saved: true })
+      }
+
+      const { data, error } = await supabase.rpc("ward_song_line", { p_track: track, p_line: line ?? "" })
+      if (error) throw error
+      if (data?.ok !== true) {
+        return NextResponse.json({ error: "That song is not on the ward or in the queue." }, { status: 400 })
+      }
+      return NextResponse.json({ saved: true })
+    }
+
+    if (body.what === "queue_move") {
+      const id = Number(body.id)
+      if (!Number.isFinite(id) || id < 1) return NextResponse.json({ error: "id required" }, { status: 400 })
+      const { error } = await supabase.rpc("ward_queue_move", { p_prescription: id, p_up: body.up === true })
+      if (error) throw error
+      return NextResponse.json({ saved: true })
     }
 
     // ── DR. ONUS'S PICK. One at a time, enforced by a unique index in the

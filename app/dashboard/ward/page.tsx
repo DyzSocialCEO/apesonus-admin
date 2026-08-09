@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Loader2, Save, Check, AlertCircle, Activity, Users, Plus, Trash2, Lock, Unlock, Star } from "lucide-react"
+import { Loader2, Save, Check, AlertCircle, Activity, Users, Plus, Trash2, Lock, Unlock, Star, Music2, ChevronRight } from "lucide-react"
 
 /**
  * /dashboard/ward, THE WARD desk.
@@ -103,6 +103,60 @@ interface LiveRx {
   breached_at: string | null
 }
 
+/** What ward_desk() hands back. One read, the whole page. */
+interface DeskSong {
+  trackId: number
+  title: string
+  duration: number
+  cover: string
+  state: string
+  line: string
+  doses: number
+}
+interface DeskArtist {
+  name: string
+  image: string
+  songs: DeskSong[]
+}
+interface DeskLive {
+  id: number
+  trackId: number
+  title: string
+  artist: string
+  cover: string
+  line: string
+  featured: boolean
+  status: string
+  doses: number
+  target: number
+}
+interface DeskQueued {
+  id: number
+  trackId: number
+  title: string
+  artist: string
+  cover: string
+  pos: number | null
+}
+interface DeskArchived {
+  id: number
+  trackId: number
+  title: string
+  artist: string
+  cover: string
+  doses: number
+  archivedAt: string | null
+}
+interface Desk {
+  target: number
+  pct: number
+  live: DeskLive[]
+  queue: DeskQueued[]
+  archive: DeskArchived[]
+  artists: DeskArtist[]
+}
+const EMPTY_DESK: Desk = { target: 10000, pct: 80, live: [], queue: [], archive: [], artists: [] }
+
 interface WardRow {
   id: number
   seq: number
@@ -157,6 +211,10 @@ export default function WardPage() {
   })
   const [live, setLive] = useState<LiveRx | null>(null)
   const [onWard, setOnWard] = useState<WardRow[]>([])
+  const [desk, setDesk] = useState<Desk>(EMPTY_DESK)
+  const [deskTarget, setDeskTarget] = useState("10000")
+  const [deskPct, setDeskPct] = useState("80")
+  const [openArtist, setOpenArtist] = useState<string | null>(null)
   const [queue, setQueue] = useState<QueueRx[]>([])
   const [retired, setRetired] = useState<RetiredRx[]>([])
   const [tune, setTune] = useState({ target: "", pct: "" })
@@ -197,6 +255,19 @@ export default function WardPage() {
         })
         setLive(d.live ?? null)
         setOnWard(Array.isArray(d.onWard) ? d.onWard : [])
+        if (d.desk) {
+          const k = d.desk as Desk
+          setDesk({
+            target: Number(k.target ?? 10000),
+            pct: Number(k.pct ?? 80),
+            live: Array.isArray(k.live) ? k.live : [],
+            queue: Array.isArray(k.queue) ? k.queue : [],
+            archive: Array.isArray(k.archive) ? k.archive : [],
+            artists: Array.isArray(k.artists) ? k.artists : [],
+          })
+          setDeskTarget(String(k.target ?? 10000))
+          setDeskPct(String(k.pct ?? 80))
+        }
         setQueue(Array.isArray(d.queue) ? d.queue : [])
         setRetired(Array.isArray(d.retired) ? d.retired : [])
         setTune({
@@ -321,708 +392,329 @@ export default function WardPage() {
         </div>
       ) : null}
 
-      {/* ── WHAT IS ON THE WARD RIGHT NOW ──
-          One prescription at a time. Nothing swaps itself at the target: the
-          record holds at DOSAGE LIMIT BREACHED and waits for the button here,
-          so a release happens when the post and the artwork are ready and not
-          at three in the morning to nobody. */}
+      {/* ══════════════════════════════════════════════════════════════
+          THE WARD, IN FOUR CARDS.
+
+          One target. Tick the songs. Order what comes next. That is the whole
+          page. The staff list, prescription numbers, per song targets, the
+          hire form and the songs-match-nobody warning are all gone: they were
+          four ways of describing the same thing, and the warning only ever
+          existed because two tables held the same names.
+          ══════════════════════════════════════════════════════════════ */}
+
+      {/* 1. THE TARGET */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm text-gray-400 flex items-center gap-2">
-            <Activity className="w-4 h-4" /> On the ward right now
+            <Activity className="w-4 h-4" /> 1. The dose target
           </CardTitle>
           <CardDescription>
-            Every prescription patients can see, grouped by therapist in the app. One of them is Dr. Onus&rsquo;s
-            pick and sits at the top. A song that reaches its target holds there until you retire it.
+            One number for every song on the ward. Reach it and the song moves to the archive on its own,
+            and the next one in the queue comes up. Changing it changes every song at once.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {!live ? (
-            <p className="text-sm text-gray-500">
-              Nothing is on the ward. Add a prescription below, then put it on the ward.
+        <CardContent>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[150px]">
+              <label className="block text-[11px] text-gray-500 mb-1">Doses before a song retires</label>
+              <Input
+                value={deskTarget}
+                inputMode="numeric"
+                onChange={(e) => setDeskTarget(e.target.value.replace(/[^0-9]/g, ""))}
+              />
+            </div>
+            <div className="flex-1 min-w-[150px]">
+              <label className="block text-[11px] text-gray-500 mb-1">A dose counts at</label>
+              <Input
+                value={deskPct}
+                inputMode="numeric"
+                onChange={(e) => setDeskPct(e.target.value.replace(/[^0-9]/g, ""))}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => post("target", { what: "desk_target", target: Number(deskTarget), pct: Number(deskPct) })}
+              disabled={busy === "target"}
+              className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-60"
+            >
+              {busy === "target" ? <Loader2 className="w-4 h-4 animate-spin" /> : saved === "target" ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+              Save
+            </button>
+            <p className="basis-full text-xs text-gray-600">
+              {desk.live.length} on the ward, each retiring at {Number(deskTarget || 0).toLocaleString("en-US")} doses,
+              counted at {deskPct || 80}% of the track.
             </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 2. ON THE WARD */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm text-gray-400 flex items-center gap-2">
+            <Music2 className="w-4 h-4" /> 2. On the ward
+            <span className="ml-auto text-xs font-normal text-gray-500">
+              {desk.live.length} {desk.live.length === 1 ? "song" : "songs"}
+            </span>
+          </CardTitle>
+          <CardDescription>Tap the star to choose the one in focus at the top of the app.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {desk.live.length === 0 ? (
+            <p className="text-sm text-gray-500">Nothing on the ward. Flip a song on below.</p>
           ) : (
-            <>
-              <div className="flex flex-wrap items-center gap-3">
-                <span
-                  className={`rounded px-2 py-1 text-xs font-semibold ${
-                    live.status === "breached"
-                      ? "bg-yellow-950/50 text-yellow-400"
-                      : "bg-green-950/50 text-green-400"
+            desk.live.map((s) => {
+              const pct = s.target > 0 ? Math.min(100, (s.doses / s.target) * 100) : 0
+              return (
+                <div
+                  key={s.id}
+                  className={`flex items-center gap-3 rounded-xl border p-3 ${
+                    s.featured ? "border-green-800 bg-green-950/20" : "border-gray-800 bg-gray-950/40"
                   }`}
                 >
-                  {live.status === "breached" ? "DOSAGE LIMIT BREACHED" : "ACTIVE"}
-                </span>
-                <span className="text-lg font-bold text-white">{live.title || `Track ${live.track_id}`}</span>
-                <span className="text-sm text-gray-500">{live.therapist}</span>
-                <span className="text-xs text-gray-600">PRESCRIPTION {String(live.seq).padStart(3, "0")}</span>
-              </div>
+                  <button
+                    type="button"
+                    title={s.featured ? "In focus" : "Put this one in focus"}
+                    onClick={() => !s.featured && post(`feat-${s.id}`, { what: "rx_feature", id: s.id })}
+                    className={s.featured ? "text-yellow-400" : "text-gray-600 hover:text-yellow-500"}
+                  >
+                    <Star className="w-4 h-4" fill={s.featured ? "currentColor" : "none"} />
+                  </button>
 
-              <div>
-                <div className="flex items-baseline justify-between text-sm">
-                  <span className="font-mono text-white">
-                    {live.dose_total.toLocaleString("en-US")} / {live.dose_target.toLocaleString("en-US")} doses
+                  {s.cover ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={s.cover} alt="" className="w-11 h-11 rounded-lg object-cover shrink-0 bg-gray-800" />
+                  ) : (
+                    <div className="w-11 h-11 rounded-lg bg-gray-800 shrink-0" />
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-white">{s.title}</p>
+                    <p className="truncate text-xs text-gray-500">{s.artist}</p>
+                    <div className="mt-2 h-1 max-w-[320px] overflow-hidden rounded bg-gray-800">
+                      <div className="h-full bg-green-500" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+
+                  <span className="shrink-0 font-mono text-xs text-gray-400">
+                    {s.doses.toLocaleString("en-US")} / {s.target.toLocaleString("en-US")}
                   </span>
-                  <span className="text-xs text-gray-500">
-                    {Math.max(0, live.dose_target - live.dose_total).toLocaleString("en-US")} to go
-                  </span>
-                </div>
-                <div className="mt-2 h-2 overflow-hidden rounded bg-gray-800">
-                  <div
-                    className="h-full bg-green-500"
-                    style={{
-                      width: `${Math.min(100, live.dose_target > 0 ? (live.dose_total / live.dose_target) * 100 : 0)}%`,
+
+                  <button
+                    type="button"
+                    disabled={busy === `off-${s.trackId}`}
+                    onClick={() => {
+                      if (window.confirm(`Move ${s.title} to the archive? It comes off the ward and patients can still play it there.`)) {
+                        post(`off-${s.trackId}`, { what: "song_off", track_id: s.trackId })
+                      }
                     }}
-                  />
+                    className="shrink-0 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs font-semibold text-gray-400 hover:border-red-900 hover:text-red-400 disabled:opacity-40"
+                  >
+                    Move to archive
+                  </button>
                 </div>
-                {live.counted !== live.dose_total ? (
-                  <p className="mt-2 text-xs text-yellow-500">
-                    The counter says {live.dose_total.toLocaleString("en-US")} but {live.counted.toLocaleString("en-US")}{" "}
-                    doses are on the ledger for this track. They should match.
-                  </p>
+              )
+            })
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 3. THE CATALOGUE */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm text-gray-400 flex items-center gap-2">
+            <Users className="w-4 h-4" /> 3. The catalogue
+            <span className="ml-auto text-xs font-normal text-gray-500">
+              {desk.artists.length} artists &middot; {desk.artists.reduce((n, a) => n + a.songs.length, 0)} songs
+            </span>
+          </CardTitle>
+          <CardDescription>
+            Your artists and their songs, straight from Tracks. Flip one on and it is on the ward. The line
+            saves when you click away.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {desk.artists.map((a) => {
+            const onCount = a.songs.filter((s) => s.state === "current" || s.state === "breached").length
+            const isOpen = openArtist === a.name
+            return (
+              <div key={a.name} className="overflow-hidden rounded-xl border border-gray-800 bg-gray-950/40">
+                <button
+                  type="button"
+                  onClick={() => setOpenArtist(isOpen ? null : a.name)}
+                  className="flex w-full items-center gap-3 p-3 text-left hover:bg-gray-900/50"
+                >
+                  {a.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={a.image} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0 bg-gray-800" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-gray-800 shrink-0" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-white">{a.name}</p>
+                    <p className="text-xs text-gray-500">{a.songs.length} songs</p>
+                  </div>
+                  {onCount > 0 ? (
+                    <span className="rounded-full border border-green-800 bg-green-950/40 px-2.5 py-1 text-[11px] text-green-400">
+                      {onCount} on the ward
+                    </span>
+                  ) : null}
+                  <ChevronRight className={`w-4 h-4 text-gray-600 transition-transform ${isOpen ? "rotate-90" : ""}`} />
+                </button>
+
+                {isOpen ? (
+                  <div className="border-t border-gray-800 px-3 pb-3">
+                    {a.songs.map((s) => {
+                      const up = s.state === "current" || s.state === "breached"
+                      return (
+                        <div key={s.trackId} className="flex flex-wrap items-center gap-3 border-b border-gray-900 py-3 last:border-b-0">
+                          <button
+                            type="button"
+                            disabled={busy === `sw-${s.trackId}`}
+                            onClick={() =>
+                              post(`sw-${s.trackId}`, {
+                                what: up ? "song_off" : "song_on",
+                                track_id: s.trackId,
+                                line: s.line,
+                              })
+                            }
+                            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                              up ? "bg-green-800" : "bg-gray-700"
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-[3px] h-[18px] w-[18px] rounded-full transition-all ${
+                                up ? "left-[26px] bg-green-400" : "left-[3px] bg-gray-400"
+                              }`}
+                            />
+                          </button>
+
+                          <div className="w-[180px] min-w-0">
+                            <p className="truncate text-sm text-white">{s.title}</p>
+                            <p className="text-[11px] text-gray-600">
+                              {Math.floor(s.duration / 60)}:{String(s.duration % 60).padStart(2, "0")}
+                              {s.doses > 0 ? ` · ${s.doses.toLocaleString("en-US")} doses` : ""}
+                            </p>
+                          </div>
+
+                          <Input
+                            defaultValue={s.line}
+                            placeholder="One line under the title, optional"
+                            onBlur={(e) => {
+                              if (e.target.value !== s.line && (up || s.state === "classified")) {
+                                post(`line-${s.trackId}`, {
+                                  what: "song_line",
+                                  track_id: s.trackId,
+                                  line: e.target.value,
+                                })
+                              }
+                            }}
+                            className="min-w-[160px] flex-1"
+                          />
+
+                          {up ? (
+                            <span className="w-[86px] shrink-0 text-right text-[11px] text-green-500">ON THE WARD</span>
+                          ) : s.state === "classified" ? (
+                            <span className="w-[86px] shrink-0 text-right text-[11px] text-yellow-600">QUEUED</span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => post(`q-${s.trackId}`, { what: "song_queue", track_id: s.trackId, line: s.line })}
+                              className="w-[86px] shrink-0 rounded border border-gray-800 py-1 text-[11px] text-gray-500 hover:border-yellow-800 hover:text-yellow-500"
+                            >
+                              Queue it
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 ) : null}
               </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div>
-                  <label className="block text-[11px] text-gray-500 mb-1">Shared dose target</label>
-                  <Input
-                    value={tune.target}
-                    inputMode="numeric"
-                    onChange={(e) => setTune({ ...tune, target: e.target.value.replace(/[^0-9]/g, "") })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] text-gray-500 mb-1">Qualifying percent, this one only</label>
-                  <Input
-                    value={tune.pct}
-                    inputMode="numeric"
-                    placeholder={String(spinCfg.dose_pct)}
-                    onChange={(e) => setTune({ ...tune, pct: e.target.value.replace(/[^0-9]/g, "") })}
-                  />
-                </div>
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      post("tune", {
-                        what: "rx_tune",
-                        id: live.id,
-                        dose_target: Number(tune.target || live.dose_target),
-                        qualified_pct: tune.pct,
-                      })
-                    }
-                    disabled={busy === "tune"}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gray-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                  >
-                    {busy === "tune" ? <Loader2 className="w-4 h-4 animate-spin" /> : saved === "tune" ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-                    Save
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-
-          <div className="space-y-2">
-            {onWard.length === 0 ? (
-              <p className="text-sm text-gray-500">
-                Nothing is on the ward. Add a prescription below, then put it on the ward.
-              </p>
-            ) : (
-              onWard.map((r) => (
-                <div
-                  key={r.id}
-                  className={`rounded-lg border p-3 ${
-                    r.featured ? "border-green-800 bg-green-950/20" : "border-gray-800"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    {r.featured ? (
-                      <span className="rounded bg-green-500 px-2 py-0.5 text-[10px] font-bold text-black">PICK</span>
-                    ) : null}
-                    {r.status === "breached" ? (
-                      <span className="rounded bg-yellow-950/50 px-2 py-0.5 text-[10px] font-semibold text-yellow-400">
-                        LIMIT REACHED
-                      </span>
-                    ) : null}
-                    <span className="font-semibold text-white">{r.title || `Track ${r.track_id}`}</span>
-                    <span className="text-sm text-gray-500">{r.therapist}</span>
-                    <span className="ml-auto font-mono text-xs text-gray-400">
-                      {r.dose_total.toLocaleString("en-US")} / {r.dose_target.toLocaleString("en-US")}
-                    </span>
-                  </div>
-
-                  <div className="mt-2 h-1.5 overflow-hidden rounded bg-gray-800">
-                    <div
-                      className={r.status === "breached" ? "h-full bg-yellow-500" : "h-full bg-green-500"}
-                      style={{
-                        width: `${Math.min(100, r.dose_target > 0 ? (r.dose_total / r.dose_target) * 100 : 0)}%`,
-                      }}
-                    />
-                  </div>
-
-                  {r.counted !== r.dose_total ? (
-                    <p className="mt-2 text-[11px] text-yellow-500">
-                      Counter says {r.dose_total.toLocaleString("en-US")} but the ledger has{" "}
-                      {r.counted.toLocaleString("en-US")} for this track. They should match.
-                    </p>
-                  ) : null}
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                    <button
-                      type="button"
-                      disabled={r.featured || busy === `feat-${r.id}`}
-                      onClick={() => post(`feat-${r.id}`, { what: "rx_feature", id: r.id })}
-                      className="rounded border border-gray-700 px-2 py-1 font-semibold text-gray-300 hover:border-green-800 hover:text-green-400 disabled:opacity-40"
-                    >
-                      {r.featured ? "IS THE PICK" : "MAKE IT THE PICK"}
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={busy === `ret-${r.id}`}
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            "Retire this prescription? It leaves the ward and moves to the archive, where patients can still play it.",
-                          )
-                        ) {
-                          post(`ret-${r.id}`, { what: "rx_retire", id: r.id })
-                        }
-                      }}
-                      className="rounded border border-gray-700 px-2 py-1 font-semibold text-gray-300 hover:border-red-900 hover:text-red-400 disabled:opacity-40"
-                    >
-                      RETIRE
-                    </button>
-
-                    <label className="ml-auto flex items-center gap-2 text-gray-500">
-                      Order
-                      <input
-                        type="number"
-                        defaultValue={r.sort}
-                        onBlur={(e) => {
-                          const v = Number(e.target.value)
-                          if (v !== r.sort) post(`sort-${r.id}`, { what: "rx_sort", id: r.id, sort: v })
-                        }}
-                        className="w-16 rounded border border-gray-700 bg-gray-900 px-2 py-1 text-white"
-                      />
-                    </label>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="rounded-lg border border-gray-800 p-3">
-            <div className="text-xs font-semibold tracking-wider text-gray-400">NEXT UP</div>
-            {queue.length === 0 ? (
-              <p className="mt-1 text-sm text-gray-500">
-                Nothing is prepared. Add a prescription below and leave it classified, then publish it here.
-              </p>
-            ) : (
-              <ul className="mt-2 space-y-1 text-sm text-gray-300">
-                {queue.map((q) => (
-                  <li key={q.id} className="flex items-center gap-2">
-                    <Lock className="w-3 h-3 text-gray-600" />
-                    <span className="font-semibold">{q.title || `Track ${q.id}`}</span>
-                    <span className="text-gray-500">{q.therapist}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                if (queue.length === 0) return
-                if (
-                  window.confirm(
-                    "Publish this prescription? It joins the ward and its title becomes public immediately. Nothing is retired by publishing; retire a song separately when you want it off the ward.",
-                  )
-                ) {
-                  post("publish", { what: "rx_publish", id: queue[0]?.id })
-                }
-              }}
-              disabled={busy === "publish" || queue.length === 0}
-              className="mt-3 inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-black disabled:opacity-40"
-            >
-              {busy === "publish" ? <Loader2 className="w-4 h-4 animate-spin" /> : saved === "publish" ? <Check className="w-4 h-4" /> : <Star className="w-4 h-4" />}
-              Publish the next prescription
-            </button>
-          </div>
-
-          {retired.length > 0 ? (
-            <div className="rounded-lg border border-gray-800 p-3">
-              <div className="text-xs font-semibold tracking-wider text-gray-400">PREVIOUS PRESCRIPTIONS</div>
-              <ul className="mt-2 space-y-1 text-sm text-gray-400">
-                {retired.map((r) => (
-                  <li key={r.id} className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-300">{r.title || `Track ${r.id}`}</span>
-                    <span className="text-gray-500">{r.therapist}</span>
-                    <span className="ml-auto font-mono text-xs">{r.dose_total.toLocaleString("en-US")} doses</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+            )
+          })}
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-400 flex items-center gap-2">
-              <Users className="w-4 h-4" /> Ward census
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-white">{census.toLocaleString("en-US")}</div>
-            <p className="text-xs text-gray-500 mt-1">accounts the clinic has seen. The app shows this number.</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-400 flex items-center gap-2">
-              <Activity className="w-4 h-4" /> Holding Spins
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-white">{holders.toLocaleString("en-US")}</div>
-            <p className="text-xs text-gray-500 mt-1">accounts with at least one Spin left</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ── THE STAFF ─────────────────────────────────────────────── */}
+      {/* 4. NEXT UP */}
       <Card>
-        <CardHeader>
-          <CardTitle>The therapists</CardTitle>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm text-gray-400 flex items-center gap-2">
+            <Lock className="w-4 h-4" /> 4. Next up
+            <span className="ml-auto text-xs font-normal text-gray-500">the order they join</span>
+          </CardTitle>
           <CardDescription>
-            The starred one leads the ward. FEATURE and ON STAFF save the instant they are pressed;
-            names, bios, images and prescriptions save with their own button. Locked prescriptions
-            never reach the app, so the next title stays a secret until its target is hit.
+            When a song reaches the target and retires, the top of this queue takes its place. Patients never
+            see these titles.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {therapists.map((t) => (
-            <div key={t.id} className="rounded-xl border border-gray-800 p-4 space-y-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  title={t.featured ? "Leading the ward" : "Put this therapist on the ward"}
-                  onClick={() => !t.featured && post(`feat-${t.id}`, { what: "therapist_feature", id: t.id })}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${
-                    t.featured
-                      ? "border-yellow-600 bg-yellow-950/40 text-yellow-400"
-                      : "border-gray-700 text-gray-400 hover:border-yellow-700 hover:text-yellow-500"
-                  }`}
-                >
-                  <Star className="w-3.5 h-3.5" /> {t.featured ? "FEATURED" : "FEATURE"}
+        <CardContent className="space-y-2">
+          {desk.queue.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              Queue empty. Nothing will replace a song when it retires, the ward just gets smaller.
+            </p>
+          ) : (
+            desk.queue.map((q, i) => (
+              <div key={q.id} className="flex items-center gap-3 rounded-lg border border-dashed border-gray-800 p-2.5">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-gray-900 text-[11px] font-semibold text-gray-400">
+                  {i + 1}
+                </span>
+                {q.cover ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={q.cover} alt="" className="w-9 h-9 rounded object-cover shrink-0 bg-gray-800" />
+                ) : (
+                  <div className="w-9 h-9 rounded bg-gray-800 shrink-0" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-white">{q.title}</p>
+                  <p className="truncate text-xs text-gray-500">{q.artist}</p>
+                </div>
+                {i > 0 ? (
+                  <button type="button" onClick={() => post(`mu-${q.id}`, { what: "queue_move", id: q.id, up: true })}
+                    className="rounded border border-gray-800 px-2 py-1 text-xs text-gray-500 hover:text-white">&uarr;</button>
+                ) : null}
+                {i < desk.queue.length - 1 ? (
+                  <button type="button" onClick={() => post(`md-${q.id}`, { what: "queue_move", id: q.id, up: false })}
+                    className="rounded border border-gray-800 px-2 py-1 text-xs text-gray-500 hover:text-white">&darr;</button>
+                ) : null}
+                <button type="button"
+                  onClick={() => post(`qon-${q.trackId}`, { what: "song_on", track_id: q.trackId })}
+                  className="rounded border border-gray-800 px-2 py-1 text-[11px] text-gray-400 hover:border-green-800 hover:text-green-400">
+                  Put it up now
                 </button>
-                <button
-                  type="button"
-                  onClick={() => post(`act-${t.id}`, { what: "therapist_active", id: t.id, active: !t.active })}
-                  className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${
-                    t.active ? "border-green-800 bg-green-950/40 text-green-400" : "border-gray-700 text-gray-500"
-                  }`}
-                >
-                  {t.active ? "ON STAFF" : "OFF STAFF"}
-                </button>
-                <span className="ml-auto text-xs text-gray-500">
-                  {t.doses.toLocaleString("en-US")} doses lifetime
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      {/* THE ARCHIVE */}
+      {desk.archive.length > 0 ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-gray-400">The archive</CardTitle>
+            <CardDescription>Retired, off the ward, and still playable for patients who go looking.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1.5">
+            {desk.archive.map((s) => (
+              <div key={s.id} className="flex items-center gap-3 text-sm">
+                <span className="truncate font-medium text-gray-300">{s.title}</span>
+                <span className="truncate text-gray-600">{s.artist}</span>
+                <span className="ml-auto shrink-0 font-mono text-xs text-gray-600">
+                  {s.doses.toLocaleString("en-US")} doses
                 </span>
                 <button
                   type="button"
-                  title="Remove this therapist and their prescriptions"
-                  onClick={() => {
-                    if (window.confirm(`Remove ${t.name} and every prescription attached? Doses already counted stay in the ledger.`)) {
-                      post(`del-${t.id}`, { what: "therapist_delete", id: t.id })
-                    }
-                  }}
-                  className="rounded-lg border border-gray-800 p-1.5 text-gray-500 hover:border-red-900 hover:text-red-500"
+                  onClick={() => post(`back-${s.trackId}`, { what: "song_on", track_id: s.trackId })}
+                  className="shrink-0 rounded border border-gray-800 px-2 py-1 text-[11px] text-gray-500 hover:border-green-800 hover:text-green-400"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  Put it back
                 </button>
               </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Name</label>
-                  <Input value={t.name} onChange={(e) => setT(t.id, { name: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Sort (low sits first)</label>
-                  <Input
-                    type="number"
-                    value={t.sort}
-                    onChange={(e) => setT(t.id, { sort: Number(e.target.value) })}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Bio, one or two lines</label>
-                <textarea
-                  value={t.bio}
-                  onChange={(e) => setT(t.id, { bio: e.target.value })}
-                  rows={2}
-                  className="w-full rounded-lg bg-gray-900 border border-gray-800 px-3 py-2 text-sm text-white"
-                />
-              </div>
-              <div className="rounded-lg border border-gray-800 bg-gray-950 px-3 py-2">
-                <div className="text-[11px] text-gray-500">
-                  Picture, taken from this artist&rsquo;s record. Change it on the Artists page and the ward
-                  follows. There is no link to paste here, which is how a wrong or unsigned image used to
-                  get in.
-                </div>
-                <div className="mt-1 break-all font-mono text-[10px] text-gray-400">
-                  {t.image || "using the cover art"}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  post(`tsave-${t.id}`, {
-                    what: "therapist_save",
-                    id: t.id,
-                    name: t.name,
-                    bio: t.bio,
-                    sort: t.sort,
-                  })
-                }
-                disabled={busy === `tsave-${t.id}`}
-                className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
-              >
-                {busy === `tsave-${t.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : saved === `tsave-${t.id}` ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-                Save the therapist
-              </button>
-
-              {/* ── PRESCRIPTIONS ── */}
-              <div className="space-y-3 border-t border-gray-800 pt-4">
-                <div className="text-xs font-semibold tracking-wider text-gray-400">PRESCRIPTIONS</div>
-                {t.prescriptions.map((r) => (
-                  <div key={r.id} className="rounded-lg border border-gray-800 p-3 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded px-2 py-1 font-semibold ${
-                          r.status === "current"
-                            ? "bg-green-950/50 text-green-400"
-                            : r.status === "breached"
-                              ? "bg-yellow-950/50 text-yellow-400"
-                              : r.status === "archived"
-                                ? "bg-gray-900 text-gray-500"
-                                : "bg-gray-900 text-gray-400"
-                        }`}
-                      >
-                        {r.status === "classified" ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
-                        {r.status === "current"
-                          ? "ON THE WARD"
-                          : r.status === "breached"
-                            ? "LIMIT REACHED"
-                            : r.status === "archived"
-                              ? "RETIRED"
-                              : "CLASSIFIED"}
-                      </span>
-                      <span className="text-gray-500">{r.doses.toLocaleString("en-US")} doses</span>
-                      {r.status === "classified" ? (
-                        <button
-                          type="button"
-                          onClick={() => post(`cur-${r.id}`, { what: "rx_set_current", id: r.id })}
-                          className="rounded border border-gray-700 px-2 py-1 font-semibold text-gray-300 hover:border-green-800 hover:text-green-400"
-                          title="Put this on the ward now. Use PUBLISH for a real release."
-                        >
-                          PUT ON THE WARD
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm("Remove this prescription? Its doses stay in the ledger.")) {
-                            post(`rxdel-${r.id}`, { what: "rx_delete", id: r.id })
-                          }
-                        }}
-                        className="ml-auto rounded border border-gray-800 p-1 text-gray-500 hover:border-red-900 hover:text-red-500"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      <div className="sm:col-span-1">
-                        <label className="block text-[11px] text-gray-500 mb-1">Track</label>
-                        <select
-                          value={r.track_id}
-                          onChange={(e) => setRx(t.id, r.id, { track_id: Number(e.target.value) })}
-                          className="w-full rounded-lg bg-gray-900 border border-gray-800 px-2 py-2 text-sm text-white"
-                        >
-                          <option value={r.track_id}>{trackName(r.track_id)}</option>
-                          {tracks
-                            .filter((x) => x.id !== r.track_id)
-                            .map((x) => (
-                              <option key={x.id} value={x.id}>
-                                {x.title} · {x.artist}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[11px] text-gray-500 mb-1">Prescription #</label>
-                        <Input type="number" value={r.seq} onChange={(e) => setRx(t.id, r.id, { seq: Number(e.target.value) })} />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] text-gray-500 mb-1">Dose target to unlock</label>
-                        <Input
-                          type="number"
-                          value={r.target ?? ""}
-                          placeholder="none"
-                          onChange={(e) => setRx(t.id, r.id, { target: e.target.value === "" ? null : Number(e.target.value) })}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-gray-500 mb-1">One line of character copy under the title, optional</label>
-                      <Input value={r.line} onChange={(e) => setRx(t.id, r.id, { line: e.target.value })} />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        post(`rxsave-${r.id}`, {
-                          what: "rx_save",
-                          id: r.id,
-                          therapist_id: t.id,
-                          track_id: r.track_id,
-                          seq: r.seq,
-                          target: r.target,
-                          line: r.line,
-                        })
-                      }
-                      disabled={busy === `rxsave-${r.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs font-semibold text-gray-200 disabled:opacity-60"
-                    >
-                      {busy === `rxsave-${r.id}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : saved === `rxsave-${r.id}` ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
-                      Save the prescription
-                    </button>
-                  </div>
-                ))}
-
-                {/* add a prescription */}
-                <div className="rounded-lg border border-dashed border-gray-800 p-3 space-y-2">
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <div>
-                      <label className="block text-[11px] text-gray-500 mb-1">Track</label>
-                      <select
-                        value={(newRx[t.id] ?? EMPTY_RX).track_id}
-                        onChange={(e) => setNewRx((m) => ({ ...m, [t.id]: { ...(m[t.id] ?? EMPTY_RX), track_id: e.target.value } }))}
-                        className="w-full rounded-lg bg-gray-900 border border-gray-800 px-2 py-2 text-sm text-white"
-                      >
-                        <option value="">Pick a track</option>
-                        {tracks.map((x) => (
-                          <option key={x.id} value={x.id}>
-                            {x.title} · {x.artist}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-gray-500 mb-1">Prescription #</label>
-                      <Input
-                        type="number"
-                        placeholder={String(t.prescriptions.length + 1)}
-                        value={(newRx[t.id] ?? EMPTY_RX).seq}
-                        onChange={(e) => setNewRx((m) => ({ ...m, [t.id]: { ...(m[t.id] ?? EMPTY_RX), seq: e.target.value } }))}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-gray-500 mb-1">Dose target to unlock</label>
-                      <Input
-                        type="number"
-                        placeholder="10000"
-                        value={(newRx[t.id] ?? EMPTY_RX).target}
-                        onChange={(e) => setNewRx((m) => ({ ...m, [t.id]: { ...(m[t.id] ?? EMPTY_RX), target: e.target.value } }))}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">One line of character copy, optional</label>
-                    <Input
-                      value={(newRx[t.id] ?? EMPTY_RX).line}
-                      onChange={(e) => setNewRx((m) => ({ ...m, [t.id]: { ...(m[t.id] ?? EMPTY_RX), line: e.target.value } }))}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const v = newRx[t.id] ?? EMPTY_RX
-                      const ok = await post(`rxadd-${t.id}`, {
-                        what: "rx_save",
-                        therapist_id: t.id,
-                        track_id: v.track_id === "" ? null : Number(v.track_id),
-                        seq: v.seq === "" ? t.prescriptions.length + 1 : Number(v.seq),
-                        target: v.target === "" ? null : Number(v.target),
-                        line: v.line,
-                      })
-                      if (ok) setNewRx((m) => ({ ...m, [t.id]: EMPTY_RX }))
-                    }}
-                    disabled={busy === `rxadd-${t.id}`}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs font-semibold text-gray-200 disabled:opacity-60"
-                  >
-                    {busy === `rxadd-${t.id}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                    Add the prescription
-                  </button>
-                  <p className="text-[11px] text-gray-600">
-                    Prescription 1 goes on the ward the moment it is added. Every later one needs a dose
-                    target and unlocks itself when the therapist reaches it.
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {/* HIRE STRAIGHT OFF THE ROSTER */}
-          <div className="rounded-xl border border-dashed border-gray-800 p-4 space-y-3">
-            <div className="text-xs font-semibold tracking-wider text-gray-400">PUT AN ARTIST ON STAFF</div>
-            <p className="text-[11px] text-gray-600">
-              Pick from the artists you already have. The name and the picture come from their artist
-              record, so there is nothing to type and no link to paste.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Artist</label>
-                <select
-                  value={hire.artist_id}
-                  onChange={(e) => setHire({ ...hire, artist_id: e.target.value })}
-                  className="w-full rounded-lg bg-gray-900 border border-gray-800 px-3 py-2 text-sm text-white"
-                >
-                  <option value="">Pick an artist</option>
-                  {artists
-                    .filter((a) => !therapists.some((t) => t.name.trim().toLowerCase() === a.name.trim().toLowerCase()))
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Bio, optional</label>
-                <Input value={hire.bio} onChange={(e) => setHire({ ...hire, bio: e.target.value })} />
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={async () => {
-                const ok = await post("hire", { what: "hire_artist", artist_id: hire.artist_id, bio: hire.bio })
-                if (ok) setHire({ artist_id: "", bio: "" })
-              }}
-              disabled={busy === "hire" || !hire.artist_id}
-              className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
-            >
-              {busy === "hire" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              Put on staff
-            </button>
-          </div>
-
-          {/* THEIR CATALOGUE, AS TICK BOXES */}
-          {therapists.length > 0 ? (
-            <div className="rounded-xl border border-gray-800 p-4 space-y-3">
-              <div className="text-xs font-semibold tracking-wider text-gray-400">SONGS ON THE WARD</div>
-              <p className="text-[11px] text-gray-600">
-                Every song each therapist has in the catalogue. Tick one to put it up, untick to take
-                it off. The first song a therapist gets is live immediately; give a later one a dose
-                target to keep it locked until the ward earns it.
-              </p>
-              {therapists.map((t) => {
-                const mine = tracks.filter(
-                  (x) => x.artist.trim().toLowerCase() === t.name.trim().toLowerCase(),
-                )
-                return (
-                  <div key={t.id} className="rounded-lg border border-gray-800 p-3">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-gray-300">
-                      {t.name}
-                      {t.featured ? <span className="text-yellow-400">FEATURED</span> : null}
-                      <span className="ml-auto text-gray-600">{mine.length} in catalogue</span>
-                    </div>
-                    {mine.length === 0 ? (
-                      <p className="mt-2 text-[11px] text-gray-600">
-                        No song in Tracks carries this artist name. Fix the artist field on the track
-                        and it appears here.
-                      </p>
-                    ) : (
-                      <div className="mt-2 space-y-1.5">
-                        {mine.map((x) => {
-                          const on = t.prescriptions.some((r) => r.track_id === x.id)
-                          const rx = t.prescriptions.find((r) => r.track_id === x.id)
-                          const elsewhere = x.taken && !on
-                          return (
-                            <div key={x.id} className="flex flex-wrap items-center gap-2 text-xs">
-                              <button
-                                type="button"
-                                disabled={elsewhere || busy === `song-${x.id}`}
-                                onClick={() =>
-                                  post(`song-${x.id}`, {
-                                    what: "song_toggle",
-                                    therapist_id: t.id,
-                                    track_id: x.id,
-                                    on: !on,
-                                    target: songTarget[x.id] ?? "",
-                                  })
-                                }
-                                className={`rounded border px-2 py-1 font-semibold ${
-                                  on
-                                    ? "border-green-800 bg-green-950/40 text-green-400"
-                                    : elsewhere
-                                      ? "border-gray-800 text-gray-700"
-                                      : "border-gray-700 text-gray-400"
-                                }`}
-                              >
-                                {on ? "ON THE WARD" : elsewhere ? "ON SOMEONE ELSE" : "PUT IT UP"}
-                              </button>
-                              <span className="text-gray-300">{x.title}</span>
-                              {rx ? (
-                                <span className="text-gray-600">
-                                  RX {String(rx.seq).padStart(3, "0")} &middot; {rx.doses.toLocaleString("en-US")} doses
-                                  {rx.unlocked ? "" : ` · locked at ${rx.target ?? 0}`}
-                                </span>
-                              ) : (
-                                <input
-                                  type="number"
-                                  placeholder="lock target"
-                                  value={songTarget[x.id] ?? ""}
-                                  onChange={(e) => setSongTarget({ ...songTarget, [x.id]: e.target.value })}
-                                  className="w-28 rounded bg-gray-900 border border-gray-800 px-2 py-1 text-xs text-white"
-                                />
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          ) : null}
-
-          {/* SONGS THAT MATCH NOBODY */}
-          {unmatched.length > 0 ? (
-            <div className="rounded-xl border border-amber-900/60 bg-amber-950/20 p-4">
-              <div className="text-xs font-semibold tracking-wider text-amber-400">
-                {unmatched.length} SONGS MATCH NO ARTIST
-              </div>
-              <p className="mt-1 text-[11px] text-gray-400">
-                A track&rsquo;s artist is plain text, so a different spelling or a stray space hides it
-                from the list above. Fix the artist field in Tracks and it comes back.
-              </p>
-              <div className="mt-2 space-y-1 text-[11px] text-gray-500">
-                {unmatched.slice(0, 20).map((x) => (
-                  <div key={x.id}>
-                    {x.title} <span className="text-gray-600">by &ldquo;{x.artist || "nobody"}&rdquo;</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-        </CardContent>
-      </Card>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* ── SPIN PACKS ───────────────────────────────────────────── */}
       <Card>
