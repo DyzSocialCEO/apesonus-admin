@@ -155,6 +155,19 @@ interface Desk {
   archive: DeskArchived[]
   artists: DeskArtist[]
 }
+/**
+ * Images are stored as short paths, the way the Tracks and Artists pages
+ * expect them. Anything that is not already a full URL gets the CDN in front
+ * of it, or the browser looks for the file on the admin domain and finds
+ * nothing.
+ */
+const IMAGE_CDN = "https://apesonus-images.b-cdn.net"
+function img(src: string): string {
+  if (!src) return ""
+  if (src.startsWith("http")) return src
+  return `${IMAGE_CDN}${src.startsWith("/") ? "" : "/"}${src}`
+}
+
 const EMPTY_DESK: Desk = { target: 10000, pct: 80, live: [], queue: [], archive: [], artists: [] }
 
 interface WardRow {
@@ -481,9 +494,9 @@ export default function WardPage() {
                     <Star className="w-4 h-4" fill={s.featured ? "currentColor" : "none"} />
                   </button>
 
-                  {s.cover ? (
+                  {img(s.cover) ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.cover} alt="" className="w-11 h-11 rounded-lg object-cover shrink-0 bg-gray-800" />
+                    <img src={img(s.cover)} alt="" className="w-11 h-11 rounded-lg object-cover shrink-0 bg-gray-800" />
                   ) : (
                     <div className="w-11 h-11 rounded-lg bg-gray-800 shrink-0" />
                   )}
@@ -544,9 +557,9 @@ export default function WardPage() {
                   onClick={() => setOpenArtist(isOpen ? null : a.name)}
                   className="flex w-full items-center gap-3 p-3 text-left hover:bg-gray-900/50"
                 >
-                  {a.image ? (
+                  {img(a.image) ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={a.image} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0 bg-gray-800" />
+                    <img src={img(a.image)} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0 bg-gray-800" />
                   ) : (
                     <div className="w-10 h-10 rounded-lg bg-gray-800 shrink-0" />
                   )}
@@ -659,9 +672,9 @@ export default function WardPage() {
                 <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-gray-900 text-[11px] font-semibold text-gray-400">
                   {i + 1}
                 </span>
-                {q.cover ? (
+                {img(q.cover) ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={q.cover} alt="" className="w-9 h-9 rounded object-cover shrink-0 bg-gray-800" />
+                  <img src={img(q.cover)} alt="" className="w-9 h-9 rounded object-cover shrink-0 bg-gray-800" />
                 ) : (
                   <div className="w-9 h-9 rounded bg-gray-800 shrink-0" />
                 )}

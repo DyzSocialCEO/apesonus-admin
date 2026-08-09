@@ -581,7 +581,9 @@ AS $$
                    'name', btrim(t.artist),
                    -- The picture belongs to the artist record. Grouped on, not
                    -- looked up per row, or Postgres rightly refuses it.
-                   'image', COALESCE(max(ar.image), ''),
+                   -- The artist's own picture, and if they have not got one
+                   -- yet, one of their covers rather than an empty square.
+                   'image', COALESCE(NULLIF(max(ar.image), ''), max(t.cover), ''),
                    'songs', jsonb_agg(jsonb_build_object(
                      'trackId', t.id,
                      'title', btrim(t.title),
