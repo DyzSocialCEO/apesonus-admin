@@ -229,7 +229,8 @@ export async function GET() {
 
     // What is on the ward right now, said plainly, so the desk never has to
     // work it out from a list of everything.
-    const liveRow = rxRows.find((r) => r.status === "current" || r.status === "breached") ?? null
+    const liveRows = rxRows.filter((r) => r.status === "current" || r.status === "breached")
+    const liveRow = liveRows.find((r) => r.featured) ?? liveRows[0] ?? null
     const nameOf = (id: number) =>
       String(((therapists.data ?? []) as any[]).find((t) => Number(t.id) === Number(id))?.name || "")
     const titleOf = (id: number) => allTracks.find((t) => t.id === Number(id))?.title || ""
@@ -249,6 +250,33 @@ export async function GET() {
           breached_at: liveRow.breached_at ?? null,
         }
       : null
+    // Everything on the ward, in the order the app draws it: the pick first,
+    // then by therapist. The desk should never make him work out what is live.
+    const onWard = liveRows
+      .map((r) => ({
+        id: Number(r.id),
+        seq: Number(r.seq),
+        status: String(r.status),
+        featured: r.featured === true,
+        sort: Number(r.sort ?? 0),
+        therapist_id: Number(r.therapist_id),
+        therapist: nameOf(r.therapist_id),
+        title: titleOf(r.track_id),
+        track_id: Number(r.track_id),
+        line: String(r.line || ""),
+        dose_total: Number(r.dose_total ?? 0),
+        dose_target: Number(r.dose_target ?? 0),
+        counted: perTrack.get(Number(r.track_id)) ?? 0,
+        qualified_pct: r.qualified_pct == null ? null : Number(r.qualified_pct),
+      }))
+      .sort(
+        (a, b) =>
+          Number(b.featured) - Number(a.featured) ||
+          a.therapist.localeCompare(b.therapist) ||
+          a.sort - b.sort ||
+          a.seq - b.seq,
+      )
+
     const queue = rxRows
       .filter((r) => r.status === "classified")
       .map((r) => ({
@@ -270,6 +298,7 @@ export async function GET() {
       }))
 
     return NextResponse.json({
+      onWard,
       live,
       queue,
       retired,
@@ -658,7 +687,49 @@ export async function POST(request: Request) {
       return NextResponse.json({ saved: true, published: data })
     }
 
-    // ── Choosing what sits on the ward before launch. ──
+    // ── DR. ONUS'S PICK. One at a time, enforced by a unique index in the
+    // database rather than by this button behaving itself. ──
+    if (body.what === "rx_feature") {
+      const id = Number(body.id)
+      if (!Number.isFinite(id) || id < 1) return NextResponse.json({ error: "id required" }, { status: 400 })
+      const { data, error } = await supabase.rpc("ward_feature", { p_prescription: id })
+      if (error) throw error
+      if (data?.ok !== true) {
+        return NextResponse.json({ error: "That prescription is not on the ward." }, { status: 400 })
+      }
+      await logAdminAction(supabase, request, session.username, "ward.rx.feature", { id })
+      return NextResponse.json({ saved: true })
+    }
+
+    // ── RETIRING. It leaves the ward for the archive, where it stays
+    // playable. If it held the pick, the database hands the pick on. ──
+    if (body.what === "rx_retire") {
+      const id = Number(body.id)
+      if (!Number.isFinite(id) || id < 1) return NextResponse.json({ error: "id required" }, { status: 400 })
+      const { data, error } = await supabase.rpc("ward_retire", { p_prescription: id })
+      if (error) throw error
+      if (data?.ok !== true) {
+        return NextResponse.json({ error: "That prescription is not on the ward." }, { status: 400 })
+      }
+      await logAdminAction(supabase, request, session.username, "ward.rx.retire", { id, result: data })
+      return NextResponse.json({ saved: true, retired: data })
+    }
+
+    // ── Order within a therapist's block on the ward. ──
+    if (body.what === "rx_sort") {
+      const id = Number(body.id)
+      const sort = Math.max(0, Math.min(999, Math.floor(Number(body.sort))))
+      if (!Number.isFinite(id) || id < 1 || !Number.isFinite(sort)) {
+        return NextResponse.json({ error: "id and sort required" }, { status: 400 })
+      }
+      const { error } = await supabase.from("ward_prescriptions").update({ sort }).eq("id", id)
+      if (error) throw error
+      await logAdminAction(supabase, request, session.username, "ward.rx.sort", { id, sort })
+      return NextResponse.json({ saved: true })
+    }
+
+    // ── Putting a classified prescription on the ward without it counting as
+    // a release. It joins the others rather than pushing anything off. ──
     // Whatever is live goes back to CLASSIFIED rather than to the archive,
     // because nothing was released. This is setup, not a release moment.
     if (body.what === "rx_set_current") {

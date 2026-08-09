@@ -103,6 +103,20 @@ interface LiveRx {
   breached_at: string | null
 }
 
+interface WardRow {
+  id: number
+  seq: number
+  status: string
+  featured: boolean
+  sort: number
+  therapist: string
+  title: string
+  track_id: number
+  dose_total: number
+  dose_target: number
+  counted: number
+}
+
 interface QueueRx {
   id: number
   seq: number
@@ -142,6 +156,7 @@ export default function WardPage() {
     dose_target: 10000,
   })
   const [live, setLive] = useState<LiveRx | null>(null)
+  const [onWard, setOnWard] = useState<WardRow[]>([])
   const [queue, setQueue] = useState<QueueRx[]>([])
   const [retired, setRetired] = useState<RetiredRx[]>([])
   const [tune, setTune] = useState({ target: "", pct: "" })
@@ -181,6 +196,7 @@ export default function WardPage() {
           dose_target: Number(d.config?.dose_target ?? 10000),
         })
         setLive(d.live ?? null)
+        setOnWard(Array.isArray(d.onWard) ? d.onWard : [])
         setQueue(Array.isArray(d.queue) ? d.queue : [])
         setRetired(Array.isArray(d.retired) ? d.retired : [])
         setTune({
@@ -316,7 +332,8 @@ export default function WardPage() {
             <Activity className="w-4 h-4" /> On the ward right now
           </CardTitle>
           <CardDescription>
-            One active prescription. Everything else is classified until you publish it.
+            Every prescription patients can see, grouped by therapist in the app. One of them is Dr. Onus&rsquo;s
+            pick and sits at the top. A song that reaches its target holds there until you retire it.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -406,11 +423,101 @@ export default function WardPage() {
             </>
           )}
 
+          <div className="space-y-2">
+            {onWard.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                Nothing is on the ward. Add a prescription below, then put it on the ward.
+              </p>
+            ) : (
+              onWard.map((r) => (
+                <div
+                  key={r.id}
+                  className={`rounded-lg border p-3 ${
+                    r.featured ? "border-green-800 bg-green-950/20" : "border-gray-800"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    {r.featured ? (
+                      <span className="rounded bg-green-500 px-2 py-0.5 text-[10px] font-bold text-black">PICK</span>
+                    ) : null}
+                    {r.status === "breached" ? (
+                      <span className="rounded bg-yellow-950/50 px-2 py-0.5 text-[10px] font-semibold text-yellow-400">
+                        LIMIT REACHED
+                      </span>
+                    ) : null}
+                    <span className="font-semibold text-white">{r.title || `Track ${r.track_id}`}</span>
+                    <span className="text-sm text-gray-500">{r.therapist}</span>
+                    <span className="ml-auto font-mono text-xs text-gray-400">
+                      {r.dose_total.toLocaleString("en-US")} / {r.dose_target.toLocaleString("en-US")}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 h-1.5 overflow-hidden rounded bg-gray-800">
+                    <div
+                      className={r.status === "breached" ? "h-full bg-yellow-500" : "h-full bg-green-500"}
+                      style={{
+                        width: `${Math.min(100, r.dose_target > 0 ? (r.dose_total / r.dose_target) * 100 : 0)}%`,
+                      }}
+                    />
+                  </div>
+
+                  {r.counted !== r.dose_total ? (
+                    <p className="mt-2 text-[11px] text-yellow-500">
+                      Counter says {r.dose_total.toLocaleString("en-US")} but the ledger has{" "}
+                      {r.counted.toLocaleString("en-US")} for this track. They should match.
+                    </p>
+                  ) : null}
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                    <button
+                      type="button"
+                      disabled={r.featured || busy === `feat-${r.id}`}
+                      onClick={() => post(`feat-${r.id}`, { what: "rx_feature", id: r.id })}
+                      className="rounded border border-gray-700 px-2 py-1 font-semibold text-gray-300 hover:border-green-800 hover:text-green-400 disabled:opacity-40"
+                    >
+                      {r.featured ? "IS THE PICK" : "MAKE IT THE PICK"}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={busy === `ret-${r.id}`}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            "Retire this prescription? It leaves the ward and moves to the archive, where patients can still play it.",
+                          )
+                        ) {
+                          post(`ret-${r.id}`, { what: "rx_retire", id: r.id })
+                        }
+                      }}
+                      className="rounded border border-gray-700 px-2 py-1 font-semibold text-gray-300 hover:border-red-900 hover:text-red-400 disabled:opacity-40"
+                    >
+                      RETIRE
+                    </button>
+
+                    <label className="ml-auto flex items-center gap-2 text-gray-500">
+                      Order
+                      <input
+                        type="number"
+                        defaultValue={r.sort}
+                        onBlur={(e) => {
+                          const v = Number(e.target.value)
+                          if (v !== r.sort) post(`sort-${r.id}`, { what: "rx_sort", id: r.id, sort: v })
+                        }}
+                        className="w-16 rounded border border-gray-700 bg-gray-900 px-2 py-1 text-white"
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
           <div className="rounded-lg border border-gray-800 p-3">
             <div className="text-xs font-semibold tracking-wider text-gray-400">NEXT UP</div>
             {queue.length === 0 ? (
               <p className="mt-1 text-sm text-gray-500">
-                Nothing is prepared. The app tells patients nothing has been prepared for release.
+                Nothing is prepared. Add a prescription below and leave it classified, then publish it here.
               </p>
             ) : (
               <ul className="mt-2 space-y-1 text-sm text-gray-300">
@@ -429,7 +536,7 @@ export default function WardPage() {
                 if (queue.length === 0) return
                 if (
                   window.confirm(
-                    "Publish the next prescription? The one on the ward moves to the archive and the new title becomes public immediately.",
+                    "Publish this prescription? It joins the ward and its title becomes public immediately. Nothing is retired by publishing; retire a song separately when you want it off the ward.",
                   )
                 ) {
                   post("publish", { what: "rx_publish", id: queue[0]?.id })
