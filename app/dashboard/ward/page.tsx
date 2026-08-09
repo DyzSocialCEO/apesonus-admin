@@ -228,6 +228,12 @@ export default function WardPage() {
   const [deskTarget, setDeskTarget] = useState("10000")
   const [deskPct, setDeskPct] = useState("80")
   const [openArtist, setOpenArtist] = useState<string | null>(null)
+  // What he has typed but not yet committed, per track. A line for a song that
+  // is still off has nowhere on the server to live, so it waits here and goes
+  // up WITH the song. Typing a caption used to do nothing at all unless the
+  // song was already published, which meant publishing first and captioning
+  // second. Backwards.
+  const [lineDraft, setLineDraft] = useState<Record<number, string>>({})
   const [queue, setQueue] = useState<QueueRx[]>([])
   const [retired, setRetired] = useState<RetiredRx[]>([])
   const [tune, setTune] = useState({ target: "", pct: "" })
@@ -331,6 +337,16 @@ export default function WardPage() {
       const d = await r.json()
       if (!r.ok) throw new Error(d?.error || "could not save")
       flash(tag)
+      // The typed line has landed on the server now, so the draft stops
+      // overriding what comes back on the next read.
+      const t = Number((payload as { track_id?: unknown }).track_id)
+      if (Number.isFinite(t)) {
+        setLineDraft((m) => {
+          const next = { ...m }
+          delete next[t]
+          return next
+        })
+      }
       load()
       return true
     } catch (e) {
@@ -588,7 +604,7 @@ export default function WardPage() {
                               post(`sw-${s.trackId}`, {
                                 what: up ? "song_off" : "song_on",
                                 track_id: s.trackId,
-                                line: s.line,
+                                line: lineDraft[s.trackId] ?? s.line,
                               })
                             }
                             className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
@@ -610,20 +626,30 @@ export default function WardPage() {
                             </p>
                           </div>
 
-                          <Input
-                            defaultValue={s.line}
-                            placeholder="One line under the title, optional"
-                            onBlur={(e) => {
-                              if (e.target.value !== s.line && (up || s.state === "classified")) {
-                                post(`line-${s.trackId}`, {
-                                  what: "song_line",
-                                  track_id: s.trackId,
-                                  line: e.target.value,
-                                })
+                          <div className="min-w-[160px] flex-1">
+                            <Input
+                              value={lineDraft[s.trackId] ?? s.line}
+                              placeholder="One line under the title, optional"
+                              onChange={(e) =>
+                                setLineDraft((m) => ({ ...m, [s.trackId]: e.target.value }))
                               }
-                            }}
-                            className="min-w-[160px] flex-1"
-                          />
+                              onBlur={(e) => {
+                                // Already up, so the line can be saved on its own.
+                                if (e.target.value !== s.line && (up || s.state === "classified")) {
+                                  post(`line-${s.trackId}`, {
+                                    what: "song_line",
+                                    track_id: s.trackId,
+                                    line: e.target.value,
+                                  })
+                                }
+                              }}
+                            />
+                            {!up && s.state !== "classified" && (lineDraft[s.trackId] ?? "").trim() !== "" ? (
+                              <p className="mt-1 text-[11px] text-yellow-600">
+                                Goes up with the song when you flip it on.
+                              </p>
+                            ) : null}
+                          </div>
 
                           {up ? (
                             <span className="w-[86px] shrink-0 text-right text-[11px] text-green-500">ON THE WARD</span>
@@ -632,7 +658,13 @@ export default function WardPage() {
                           ) : (
                             <button
                               type="button"
-                              onClick={() => post(`q-${s.trackId}`, { what: "song_queue", track_id: s.trackId, line: s.line })}
+                              onClick={() =>
+                                post(`q-${s.trackId}`, {
+                                  what: "song_queue",
+                                  track_id: s.trackId,
+                                  line: lineDraft[s.trackId] ?? s.line,
+                                })
+                              }
                               className="w-[86px] shrink-0 rounded border border-gray-800 py-1 text-[11px] text-gray-500 hover:border-yellow-800 hover:text-yellow-500"
                             >
                               Queue it
