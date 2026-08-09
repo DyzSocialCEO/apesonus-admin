@@ -503,9 +503,22 @@ export default function WardPage() {
                 >
                   <button
                     type="button"
-                    title={s.featured ? "In focus" : "Put this one in focus"}
+                    disabled={s.featured || desk.live.length < 2}
+                    title={
+                      desk.live.length < 2
+                        ? "Only one song is up, so it is already the one in focus"
+                        : s.featured
+                          ? "In focus"
+                          : "Put this one in focus"
+                    }
                     onClick={() => !s.featured && post(`feat-${s.id}`, { what: "rx_feature", id: s.id })}
-                    className={s.featured ? "text-yellow-400" : "text-gray-600 hover:text-yellow-500"}
+                    className={
+                      s.featured
+                        ? "text-yellow-400"
+                        : desk.live.length < 2
+                          ? "cursor-not-allowed text-gray-700"
+                          : "text-gray-600 hover:text-yellow-500"
+                    }
                   >
                     <Star className="w-4 h-4" fill={s.featured ? "currentColor" : "none"} />
                   </button>
@@ -573,12 +586,9 @@ export default function WardPage() {
                   onClick={() => setOpenArtist(isOpen ? null : a.name)}
                   className="flex w-full items-center gap-3 p-3 text-left hover:bg-gray-900/50"
                 >
-                  {img(a.image) ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={img(a.image)} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0 bg-gray-800" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-lg bg-gray-800 shrink-0" />
-                  )}
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-gray-800 text-sm font-bold text-gray-400">
+                    {a.name.slice(0, 1).toUpperCase()}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-white">{a.name}</p>
                     <p className="text-xs text-gray-500">{a.songs.length} songs</p>
