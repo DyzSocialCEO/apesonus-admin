@@ -48,6 +48,8 @@ interface WardConfig {
   refill_spins: number
   /** Free treatments a patient gets each clinic day. */
   courtesy_per_day: number
+  /** What a wallet reading costs in Spins. Set here, never in code. */
+  autopsy_spins: number
   /** The shared target a new prescription is published with. */
   dose_target: number
 }
@@ -98,6 +100,7 @@ function readConfig(raw: unknown): WardConfig {
       refill_every: num(v.refill_every, 25, 1, 100000),
       refill_spins: num(v.refill_spins, 5, 0, 10000),
       courtesy_per_day: num(v.courtesy_per_day, 1, 0, 24),
+      autopsy_spins: num(v.autopsy_spins, 5, 0, 10000),
       dose_target: num(v.dose_target, 10000, 1, 100000000),
     }
   } catch {
@@ -110,6 +113,7 @@ function readConfig(raw: unknown): WardConfig {
       refill_every: 25,
       refill_spins: 5,
       courtesy_per_day: 1,
+      autopsy_spins: 5,
       dose_target: 10000,
     }
   }
@@ -370,6 +374,7 @@ export async function PATCH(request: Request) {
     if ("refill_every" in body) next.refill_every = num(body.refill_every, next.refill_every, 1, 100000)
     if ("refill_spins" in body) next.refill_spins = num(body.refill_spins, next.refill_spins, 0, 10000)
     if ("courtesy_per_day" in body) next.courtesy_per_day = num(body.courtesy_per_day, next.courtesy_per_day, 0, 24)
+    if ("autopsy_spins" in body) next.autopsy_spins = num(body.autopsy_spins, next.autopsy_spins, 0, 10000)
     if ("dose_target" in body) next.dose_target = num(body.dose_target, next.dose_target, 1, 100000000)
 
     const { error } = await supabase

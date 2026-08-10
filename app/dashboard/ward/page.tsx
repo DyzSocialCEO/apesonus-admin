@@ -34,6 +34,7 @@ interface SpinSettings {
   refill_spins: number
   /** Free treatments a patient gets each clinic day. */
   courtesy_per_day: number
+  autopsy_spins: number
   /** The shared target a newly published prescription starts with. */
   dose_target: number
 }
@@ -220,6 +221,7 @@ export default function WardPage() {
     refill_every: 25,
     refill_spins: 5,
     courtesy_per_day: 1,
+    autopsy_spins: 5,
     dose_target: 10000,
   })
   const [live, setLive] = useState<LiveRx | null>(null)
@@ -270,6 +272,7 @@ export default function WardPage() {
           refill_every: Number(d.config?.refill_every ?? 25),
           refill_spins: Number(d.config?.refill_spins ?? 5),
           courtesy_per_day: Number(d.config?.courtesy_per_day ?? 1),
+          autopsy_spins: Number(d.config?.autopsy_spins ?? 5),
           dose_target: Number(d.config?.dose_target ?? 10000),
         })
         setLive(d.live ?? null)
@@ -930,6 +933,19 @@ export default function WardPage() {
               />
               <p className="text-[11px] text-gray-600 mt-1">
                 What a newly published prescription starts with. The one on the ward is set above.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">A wallet reading costs</label>
+              <Input
+                type="number"
+                value={spinCfg.autopsy_spins}
+                onChange={(e) => setSpinCfg({ ...spinCfg, autopsy_spins: Number(e.target.value) })}
+              />
+              <p className="text-[11px] text-gray-600 mt-1">
+                Spins taken for one autopsy in The Records. Charged once a day per wallet, so reading the
+                same wallet again the same day is free. Zero makes it free for everybody.
               </p>
             </div>
           </div>
