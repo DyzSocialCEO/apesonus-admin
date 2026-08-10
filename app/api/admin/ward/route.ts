@@ -726,12 +726,17 @@ export async function POST(request: Request) {
         const { data, error } = await supabase.rpc("ward_song_on", { p_track: track, p_line: line })
         if (error) throw error
         if (data?.ok !== true) {
+          // One song per therapist on the ward, enforced in the database. The
+          // desk says which song is in the way rather than failing quietly.
+          const reason = String(data?.reason || "")
           return NextResponse.json(
             {
               error:
-                data?.reason === "track_has_no_artist"
-                  ? "That track has no artist on it. Fill the Artist field in Tracks first."
-                  : "Could not put that song up.",
+                reason === "therapist_busy"
+                  ? `That therapist already has ${data?.song ?? "a song"} on the ward. Move that one to the archive first, or switch it off.`
+                  : reason === "track_has_no_artist"
+                    ? "That track has no artist on it. Fill the Artist field in Tracks first."
+                    : "Could not put that song up.",
             },
             { status: 400 },
           )

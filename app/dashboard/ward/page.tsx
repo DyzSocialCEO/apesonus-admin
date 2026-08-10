@@ -572,7 +572,8 @@ export default function WardPage() {
           </CardTitle>
           <CardDescription>
             Your artists and their songs, straight from Tracks. Flip one on and it is on the ward. The line
-            saves when you click away.
+            saves when you click away. <strong className="text-gray-300">One song per therapist:</strong> to
+            put a different one up, move the current one to the archive first.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -605,11 +606,23 @@ export default function WardPage() {
                   <div className="border-t border-gray-800 px-3 pb-3">
                     {a.songs.map((s) => {
                       const up = s.state === "current" || s.state === "breached"
+                      // Their slot is taken by a different song of theirs.
+                      const blocked =
+                        !up &&
+                        s.state !== "classified" &&
+                        a.songs.some((o) => o.state === "current" || o.state === "breached")
                       return (
                         <div key={s.trackId} className="flex flex-wrap items-center gap-3 border-b border-gray-900 py-3 last:border-b-0">
                           <button
                             type="button"
-                            disabled={busy === `sw-${s.trackId}`}
+                            disabled={busy === `sw-${s.trackId}` || blocked}
+                            title={
+                              blocked
+                                ? "This therapist already has a song on the ward. Move it to the archive first."
+                                : up
+                                  ? "Take it off the ward"
+                                  : "Put it on the ward"
+                            }
                             onClick={() =>
                               post(`sw-${s.trackId}`, {
                                 what: up ? "song_off" : "song_on",
@@ -618,7 +631,7 @@ export default function WardPage() {
                               })
                             }
                             className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                              up ? "bg-green-800" : "bg-gray-700"
+                              up ? "bg-green-800" : blocked ? "cursor-not-allowed bg-gray-800 opacity-40" : "bg-gray-700"
                             }`}
                           >
                             <span
