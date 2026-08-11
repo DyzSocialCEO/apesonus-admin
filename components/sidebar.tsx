@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
-    ScrollText, UserCircle, DollarSign, Activity, MessageSquare, Film } from "lucide-react"
+    ScrollText, UserCircle, DollarSign, Activity } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
@@ -21,17 +21,23 @@ import { useState } from "react"
  * instead of rebuilt.
  *
  * AUG 8: the app became one song, one admission and one mission, so the Spins
- * desk and the Call desk stopped describing anything the app reads. Both are
- * unlinked rather than deleted, and The Ward takes their place: it holds the
- * song, the target, the price and the length of an admission.
+ * desk and the Call desk stopped describing anything the app reads. The Ward
+ * took their place: it holds the song, the target, the price and the length
+ * of an admission. Both desks are now deleted outright, along with their API
+ * routes, and the one thing worth keeping off the Spins desk, clearing stale
+ * pending orders, moved onto Finance.
+ *
+ * AUG 11: Case Studies and the Waiting Room are unlinked. Case Studies ran
+ * the mockumentary clips, which were cut. The Waiting Room moderated the
+ * confessions wall, which The Records replaced. The pages and their routes
+ * stay in the repo until after launch, because Case Studies owns a table and
+ * a migration and that is a decision rather than a keystroke.
  */
 const navigation = [
   { name: "Dashboard",       href: "/dashboard",                 icon: LayoutDashboard },
   { name: "Tracks",          href: "/dashboard/tracks",          icon: Music           },
   { name: "Artists",         href: "/dashboard/artists",         icon: UserCircle      },
   { name: "The Ward",        href: "/dashboard/ward",            icon: Activity        },
-  { name: "Case Studies",    href: "/dashboard/case-studies",    icon: Film            },
-  { name: "Waiting Room",    href: "/dashboard/room",            icon: MessageSquare   },
   { name: "Users",           href: "/dashboard/users",           icon: Users           },
   { name: "Finance",         href: "/dashboard/finance",         icon: DollarSign     },
   { name: "Analytics",       href: "/dashboard/analytics",       icon: BarChart3       },
