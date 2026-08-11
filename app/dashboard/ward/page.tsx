@@ -35,6 +35,8 @@ interface SpinSettings {
   /** Free treatments a patient gets each clinic day. */
   courtesy_per_day: number
   autopsy_spins: number
+  token_bonus_pct: number
+  pay_currencies: string[]
   /** The shared target a newly published prescription starts with. */
   dose_target: number
 }
@@ -222,6 +224,8 @@ export default function WardPage() {
     refill_spins: 5,
     courtesy_per_day: 1,
     autopsy_spins: 5,
+    token_bonus_pct: 10,
+    pay_currencies: ["PUMP", "USDC"],
     dose_target: 10000,
   })
   const [live, setLive] = useState<LiveRx | null>(null)
@@ -273,6 +277,8 @@ export default function WardPage() {
           refill_spins: Number(d.config?.refill_spins ?? 5),
           courtesy_per_day: Number(d.config?.courtesy_per_day ?? 1),
           autopsy_spins: Number(d.config?.autopsy_spins ?? 5),
+          token_bonus_pct: Number(d.config?.token_bonus_pct ?? 10),
+          pay_currencies: Array.isArray(d.config?.pay_currencies) ? d.config.pay_currencies : ["PUMP", "USDC"],
           dose_target: Number(d.config?.dose_target ?? 10000),
         })
         setLive(d.live ?? null)
@@ -933,6 +939,60 @@ export default function WardPage() {
               />
               <p className="text-[11px] text-gray-600 mt-1">
                 What a newly published prescription starts with. The one on the ward is set above.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Extra Spins for paying in the token</label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  value={spinCfg.token_bonus_pct}
+                  onChange={(e) => setSpinCfg({ ...spinCfg, token_bonus_pct: Number(e.target.value) })}
+                />
+                <span className="text-sm text-gray-500">%</span>
+              </div>
+              <p className="text-[11px] text-gray-600 mt-1">
+                Paying in the token pays this much more on every pack, on top of whatever bonus the pack
+                already carries. USDC gets none. A 10 Spin pack pays{" "}
+                <span className="text-gray-300">
+                  {10 + Math.floor((10 * (spinCfg.token_bonus_pct || 0)) / 100)}
+                </span>{" "}
+                in the token and 10 in USDC.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Accepted at the till</label>
+              <div className="flex gap-2">
+                {(["PUMP", "USDC"] as const).map((c) => {
+                  const on = spinCfg.pay_currencies.includes(c)
+                  const only = on && spinCfg.pay_currencies.length === 1
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      disabled={only}
+                      onClick={() =>
+                        setSpinCfg({
+                          ...spinCfg,
+                          pay_currencies: on
+                            ? spinCfg.pay_currencies.filter((x) => x !== c)
+                            : [...spinCfg.pay_currencies, c],
+                        })
+                      }
+                      title={only ? "One rail has to stay open." : ""}
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
+                        on ? "border-green-700 bg-green-950/40 text-green-400" : "border-gray-800 text-gray-500"
+                      } ${only ? "cursor-not-allowed opacity-70" : ""}`}
+                    >
+                      {c}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[11px] text-gray-600 mt-1">
+                Switch one off and it disappears from the refill screen. One has to stay on.
               </p>
             </div>
 

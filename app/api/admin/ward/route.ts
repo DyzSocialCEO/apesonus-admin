@@ -50,6 +50,10 @@ interface WardConfig {
   courtesy_per_day: number
   /** What a wallet reading costs in Spins. Set here, never in code. */
   autopsy_spins: number
+  /** Percent extra Spins for paying in the token instead of USDC. */
+  token_bonus_pct: number
+  /** Which rails are accepted at the till. */
+  pay_currencies: string[]
   /** The shared target a new prescription is published with. */
   dose_target: number
 }
@@ -101,6 +105,10 @@ function readConfig(raw: unknown): WardConfig {
       refill_spins: num(v.refill_spins, 5, 0, 10000),
       courtesy_per_day: num(v.courtesy_per_day, 1, 0, 24),
       autopsy_spins: num(v.autopsy_spins, 5, 0, 10000),
+      token_bonus_pct: num(v.token_bonus_pct, 10, 0, 100),
+      pay_currencies: Array.isArray(v.pay_currencies) && v.pay_currencies.length > 0
+        ? (v.pay_currencies as string[]).map(String)
+        : ["PUMP", "USDC"],
       dose_target: num(v.dose_target, 10000, 1, 100000000),
     }
   } catch {
@@ -114,6 +122,8 @@ function readConfig(raw: unknown): WardConfig {
       refill_spins: 5,
       courtesy_per_day: 1,
       autopsy_spins: 5,
+      token_bonus_pct: 10,
+      pay_currencies: ["PUMP", "USDC"],
       dose_target: 10000,
     }
   }
@@ -375,6 +385,12 @@ export async function PATCH(request: Request) {
     if ("refill_spins" in body) next.refill_spins = num(body.refill_spins, next.refill_spins, 0, 10000)
     if ("courtesy_per_day" in body) next.courtesy_per_day = num(body.courtesy_per_day, next.courtesy_per_day, 0, 24)
     if ("autopsy_spins" in body) next.autopsy_spins = num(body.autopsy_spins, next.autopsy_spins, 0, 10000)
+    if ("token_bonus_pct" in body) next.token_bonus_pct = num(body.token_bonus_pct, next.token_bonus_pct, 0, 100)
+    if ("pay_currencies" in body && Array.isArray(body.pay_currencies)) {
+      // At least one rail has to stay open, or nobody can pay at all.
+      const rails = (body.pay_currencies as unknown[]).map(String).filter((c) => c === "PUMP" || c === "USDC")
+      if (rails.length > 0) next.pay_currencies = rails
+    }
     if ("dose_target" in body) next.dose_target = num(body.dose_target, next.dose_target, 1, 100000000)
 
     const { error } = await supabase
