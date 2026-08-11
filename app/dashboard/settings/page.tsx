@@ -504,7 +504,9 @@ function ExpirySweepCard() {
  * half-filled form here cannot take money in a token nothing can verify.
  */
 function PayRailCard() {
-  const [rail, setRail] = useState("usdc")
+  const [usdcOn, setUsdcOn] = useState(true)
+  const [tokenOn, setTokenOn] = useState(false)
+  const [bonus, setBonus] = useState("0")
   const [mint, setMint] = useState("")
   const [decimals, setDecimals] = useState("6")
   const [symbol, setSymbol] = useState("ONUS")
@@ -523,15 +525,26 @@ function PayRailCard() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       const s = data.settings || {}
+      // The pair is authoritative when it has ever been saved; the legacy
+      // single pay_rail only decides for a database from before the pair.
+      let rails: string[] = []
+      try {
+        const parsed = JSON.parse(String(s.pay_rails ?? "null"))
+        if (Array.isArray(parsed)) rails = parsed.map((x: unknown) => String(x))
+      } catch {}
+      if (rails.length === 0) rails = [String(s.pay_rail ?? "usdc") === "onus" ? "onus" : "usdc"]
       const next = {
-        pay_rail: String(s.pay_rail ?? "usdc"),
+        pay_rails: JSON.stringify(rails),
+        token_bonus_pct: String(s.token_bonus_pct ?? "0"),
         onus_mint: String(s.onus_mint ?? ""),
         onus_decimals: String(s.onus_decimals ?? "6"),
         onus_symbol: String(s.onus_symbol ?? "ONUS"),
         onus_ttl_min: String(s.onus_ttl_min ?? "5"),
         onus_manual_price_usd: String(s.onus_manual_price_usd ?? ""),
       }
-      setRail(next.pay_rail === "onus" ? "onus" : "usdc")
+      setUsdcOn(rails.includes("usdc"))
+      setTokenOn(rails.includes("onus"))
+      setBonus(next.token_bonus_pct)
       setMint(next.onus_mint)
       setDecimals(next.onus_decimals)
       setSymbol(next.onus_symbol)
@@ -554,8 +567,12 @@ function PayRailCard() {
   const ttlNum = Number(ttl)
   const ttlValid = Number.isFinite(ttlNum) && ttlNum >= 1 && ttlNum <= 60
   const canGoOnus = mintValid && decValid && ttlValid
+  const bonusNum = Number(bonus)
+  const bonusValid = bonus.trim() === "" || (Number.isFinite(bonusNum) && bonusNum >= 0 && bonusNum <= 100)
+  const railsNow = JSON.stringify([...(tokenOn ? ["onus"] : []), ...(usdcOn ? ["usdc"] : [])])
   const dirty =
-    rail !== (loaded.pay_rail === "onus" ? "onus" : "usdc") ||
+    railsNow !== (loaded.pay_rails ?? "") ||
+    bonus.trim() !== (loaded.token_bonus_pct ?? "0") ||
     trimmedMint !== (loaded.onus_mint ?? "") ||
     decimals !== (loaded.onus_decimals ?? "") ||
     symbol.trim() !== (loaded.onus_symbol ?? "") ||
@@ -563,14 +580,26 @@ function PayRailCard() {
     manualPrice.trim() !== (loaded.onus_manual_price_usd ?? "")
 
   const save = async () => {
-    if (rail === "onus" && !canGoOnus) {
-      setErr("Fill in a valid mint, decimals and window before switching the rail.")
+    if (!usdcOn && !tokenOn) {
+      setErr("At least one rail has to stay open, or nobody can pay at all.")
+      return
+    }
+    if (tokenOn && !canGoOnus) {
+      setErr("Fill in a valid mint, decimals and window before opening the token rail.")
+      return
+    }
+    if (!bonusValid) {
+      setErr("The token bonus is a whole percent from 0 to 100.")
       return
     }
     setSaving(true); setErr(null); setSaved(false)
     try {
       const updates: Record<string, string> = {
-        pay_rail: rail,
+        pay_rails: railsNow,
+        // Kept in step for anything still reading the old single key: the
+        // token leads when it is open, which is how the app has behaved.
+        pay_rail: tokenOn ? "onus" : "usdc",
+        token_bonus_pct: String(Math.max(0, Math.min(100, Math.floor(bonusNum || 0)))),
         onus_mint: trimmedMint,
         onus_decimals: String(decimals),
         onus_symbol: symbol.trim().toUpperCase(),
@@ -601,9 +630,10 @@ function PayRailCard() {
           <Gem className="w-4 h-4" /> Payment token
         </CardTitle>
         <CardDescription>
-          The token buyers pay in. On the token rail each order is quoted at the live price
-          and frozen, so the mint and decimals must be correct before you switch. Pending
-          orders keep the token they were opened on.
+          The tokens buyers can pay in. Both rails can be open at once, into one receiving
+          wallet. On the token rail each order is quoted at the live price and frozen, so the
+          mint and decimals must be correct before it opens. Pending orders keep the token
+          they were opened on.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -615,18 +645,23 @@ function PayRailCard() {
           <div className="space-y-3">
             <div className="flex gap-2">
               <button
-                onClick={() => setRail("usdc")}
-                className={`px-3 py-2 rounded-lg text-sm border ${rail === "usdc" ? "bg-white/10 border-white/40 text-white" : "border-gray-700 text-gray-400"}`}
+                onClick={() => setUsdcOn((v) => !v)}
+                className={`px-3 py-2 rounded-lg text-sm border ${usdcOn ? "bg-green-950/40 border-green-700 text-green-400" : "border-gray-700 text-gray-500"}`}
               >
-                USDC (stable)
+                USDC (stable) {usdcOn ? "· ON" : "· OFF"}
               </button>
               <button
-                onClick={() => setRail("onus")}
-                className={`px-3 py-2 rounded-lg text-sm border ${rail === "onus" ? "bg-white/10 border-white/40 text-white" : "border-gray-700 text-gray-400"}`}
+                onClick={() => setTokenOn((v) => !v)}
+                className={`px-3 py-2 rounded-lg text-sm border ${tokenOn ? "bg-green-950/40 border-green-700 text-green-400" : "border-gray-700 text-gray-500"}`}
               >
-                Token (floating)
+                Token (floating) {tokenOn ? "· ON" : "· OFF"}
               </button>
             </div>
+            <p className="text-xs text-gray-500">
+              Both can be on at once. The refill screen then asks the buyer which one, and every
+              payment lands at the same receiving wallet. Switch one off and it disappears from
+              the refill screen; at least one has to stay on.
+            </p>
 
             <Field label="Token mint address (the CA)">
               <Input
@@ -639,6 +674,19 @@ function PayRailCard() {
             {trimmedMint.length > 0 && !mintValid && (
               <p className="text-xs text-red-400">That doesn't look like a Solana address (32-44 base58 characters).</p>
             )}
+
+            <Field label="Extra Spins for paying in the token (%)">
+              <Input
+                value={bonus}
+                onChange={(e) => setBonus(e.target.value)}
+                inputMode="numeric"
+                className="bg-gray-950 border-gray-800 text-white"
+              />
+            </Field>
+            <p className="text-xs text-gray-500">
+              Paying on the token rail pays this much more on every pack, on top of whatever bonus
+              the pack already carries. USDC gets none. Zero turns it off.
+            </p>
 
             <div className="grid grid-cols-3 gap-3">
               <Field label="Decimals">
@@ -669,7 +717,7 @@ function PayRailCard() {
               number here sells passes at the wrong price, so clear it once the feeds are back.
             </p>
 
-            {rail === "onus" && !canGoOnus && (
+            {tokenOn && !canGoOnus && (
               <p className="text-xs text-amber-400">
                 The app will stay on USDC until the mint, decimals and window are all valid.
               </p>

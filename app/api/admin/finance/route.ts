@@ -68,7 +68,7 @@ export async function GET() {
       supabase
         .from("app_settings")
         .select("key, value")
-        .in("key", ["pay_rail", "onus_mint", "onus_decimals", "onus_symbol", "helius_treasury_wallet"]),
+        .in("key", ["pay_rails", "pay_rail", "onus_mint", "onus_decimals", "onus_symbol", "helius_treasury_wallet"]),
       supabase
         .from("pit_ammo_purchases")
         .select("pay_amount_base, usd_cents, ammo_amount, rail, created_at")
@@ -90,7 +90,13 @@ export async function GET() {
     const mint = (s.get("onus_mint") || "").trim()
     const symbol = (s.get("onus_symbol") || "TOKEN").trim().toUpperCase()
     const decimals = Math.min(12, Math.max(0, Math.round(Number(s.get("onus_decimals")) || 6)))
-    const railName = (s.get("pay_rail") || "usdc").trim().toLowerCase()
+    // What the till accepts, for the label at the bottom of the desk. The
+    // pair wins when it has ever been saved; the legacy single key otherwise.
+    let railName = (s.get("pay_rail") || "usdc").trim().toLowerCase()
+    try {
+      const parsed = JSON.parse(String(s.get("pay_rails") ?? "null"))
+      if (Array.isArray(parsed) && parsed.length > 0) railName = parsed.join(" + ")
+    } catch {}
     const wallet = (s.get("helius_treasury_wallet") || "").trim()
 
     const all = (rows ?? []) as Row[]

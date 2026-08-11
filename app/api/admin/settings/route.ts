@@ -42,7 +42,9 @@ const ALLOWED_KEYS = new Set([
   "cp_pack_whale_amount",
   "daily_free_cp_grant",
   "ledger_day_threshold",
-  // Payment rail — which token Spins are bought with
+  // Payment rails, the tokens Spins are bought with
+  "pay_rails",
+  "token_bonus_pct",
   "pay_rail",
   "onus_mint",
   "onus_decimals",
@@ -123,6 +125,23 @@ function validate(key: string, value: string): string | null {
     case "pay_rail": {
       if (value === "usdc" || value === "onus" || value === "") return null
       return "pay_rail must be 'usdc' or 'onus'"
+    }
+    case "pay_rails": {
+      if (value === "") return null
+      try {
+        const parsed = JSON.parse(value)
+        if (!Array.isArray(parsed) || parsed.length < 1) return "pay_rails must be a JSON list with at least one rail"
+        if (parsed.some((x) => x !== "usdc" && x !== "onus")) return "pay_rails may only contain 'usdc' and 'onus'"
+        return null
+      } catch {
+        return "pay_rails must be JSON, e.g. [\"onus\",\"usdc\"]"
+      }
+    }
+    case "token_bonus_pct": {
+      if (value === "") return null
+      const n = Number(value)
+      if (!Number.isInteger(n) || n < 0 || n > 100) return "token_bonus_pct must be a whole number from 0 to 100"
+      return null
     }
     case "onus_mint": {
       if (value === "") return null // empty is fine while the rail is still USDC
