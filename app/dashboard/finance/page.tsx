@@ -54,6 +54,8 @@ export default function FinancePage() {
   const [d, setD] = useState<Fin | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState("")
+  const [clearing, setClearing] = useState(false)
+  const [cleared, setCleared] = useState<string | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -65,6 +67,34 @@ export default function FinancePage() {
   }
 
   useEffect(load, [])
+
+  // Housekeeping for orders nobody paid. Only ones already past their pay
+  // window are touched, and the numbers above are re-read afterwards so the
+  // desk never shows a count the database no longer agrees with.
+  const clearPending = async () => {
+    if (clearing) return
+    if (
+      !confirm(
+        "Clear every pending order past its pay window? Orders still inside their window are left alone, and a late payment of an exact amount still credits.",
+      )
+    ) {
+      return
+    }
+    setClearing(true)
+    setCleared(null)
+    try {
+      const res = await fetch("/api/admin/finance/clear-pending", { method: "POST" })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.error || `Failed (${res.status})`)
+      const n = Number(body?.cleared ?? 0)
+      setCleared(`Cleared ${n} stale pending order${n === 1 ? "" : "s"}.`)
+      load()
+    } catch (e) {
+      setCleared(e instanceof Error ? e.message : "Could not clear pending orders.")
+    } finally {
+      setClearing(false)
+    }
+  }
 
   if (loading && !d) {
     return (
@@ -185,6 +215,27 @@ export default function FinancePage() {
         <div className="mt-2 break-all font-mono text-[12px] text-gray-300">{d.wallet || "No wallet set"}</div>
         <div className="mt-3 text-xs uppercase tracking-wider text-gray-500">Token</div>
         <div className="mt-1 break-all font-mono text-[12px] text-gray-300">{d.mint || "Not set"}</div>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-gray-800 bg-gray-900 p-5">
+        <div className="text-xs uppercase tracking-wider text-gray-500">Housekeeping</div>
+        <p className="mt-2 text-sm text-gray-400">
+          Orders that were opened and never paid sit as pending until their window runs out.
+          This marks the ones already past their window as expired. Anything still inside its
+          window is left alone, and a late payment of the exact amount still credits.
+        </p>
+        <div className="mt-3 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={clearPending}
+            disabled={clearing}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-800 px-3 py-2 text-sm text-gray-300 hover:text-white disabled:opacity-40"
+          >
+            {clearing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Clear stale pending orders
+          </button>
+          {cleared ? <span className="text-xs text-gray-400">{cleared}</span> : null}
+        </div>
       </div>
 
       {/* ── THE ECONOMY ──
