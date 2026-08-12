@@ -781,6 +781,21 @@ export default function WardPage() {
                 >
                   Put it back
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      confirm(
+                        `Scrap "${s.title}" from the archive? It disappears from the app's archive for everyone. The song itself stays in Tracks and can be prescribed again fresh.`,
+                      )
+                    ) {
+                      post(`scrap-${s.id}`, { what: "rx_scrap", id: s.id })
+                    }
+                  }}
+                  className="shrink-0 rounded border border-gray-800 px-2 py-1 text-[11px] text-gray-600 hover:border-red-900 hover:text-red-400"
+                >
+                  Scrap
+                </button>
               </div>
             ))}
           </CardContent>

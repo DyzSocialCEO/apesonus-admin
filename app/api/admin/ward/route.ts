@@ -677,6 +677,29 @@ export async function POST(request: Request) {
     // the artwork, the video and the post instead of happening at 3am to
     // nobody. The database does the archive and the promotion in one
     // transaction so there can never be two live prescriptions.
+    if (body.what === "rx_scrap") {
+      const id = Number(body.id)
+      if (!Number.isFinite(id) || id <= 0) {
+        return NextResponse.json({ error: "Which one?" }, { status: 400 })
+      }
+      // Only an ARCHIVED row can be scrapped. Anything live, queued or
+      // classified is refused by the filter itself, so a mis-click on the
+      // wrong id deletes nothing.
+      const { data: gone, error } = await supabase
+        .from("ward_prescriptions")
+        .delete()
+        .eq("id", id)
+        .eq("status", "archived")
+        .select("id")
+      if (error) {
+        return NextResponse.json({ error: String(error.message || "The database refused.") }, { status: 500 })
+      }
+      if (!gone || gone.length === 0) {
+        return NextResponse.json({ error: "Not archived, or already gone." }, { status: 409 })
+      }
+      return NextResponse.json({ ok: true })
+    }
+
     if (body.what === "rx_publish") {
       const id = body.id == null || String(body.id).trim() === "" ? null : Number(body.id)
       if (id != null && (!Number.isFinite(id) || id < 1)) {
