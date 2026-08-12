@@ -377,7 +377,9 @@ function ReceivingWalletCard() {
           <Wallet className="w-4 h-4" /> Receiving wallet
         </CardTitle>
         <CardDescription>
-          Solana address that receives USDC for Ammo purchases. Changes take effect immediately on save.
+          Solana address that receives payments when deposit mode is off. Changes take effect immediately on save.
+          With deposit mode ON, every buyer pays a one-time address instead and this wallet is never shown to
+          anyone; funds arrive by sweep to the destination set on Railway (SWEEP_DESTINATION_WALLET), not here.
         </CardDescription>
       </CardHeader>
       <CardContent>
