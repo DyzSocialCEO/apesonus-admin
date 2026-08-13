@@ -28,30 +28,60 @@ type Row = {
   created_at: string
 }
 
-async function livePriceUsd(mint: string): Promise<number | null> {
-  if (!mint) return null
+/**
+ * The venue is the only voice, same law the PWA learned on Aug 13.
+ *
+ * DexScreener was feeding this desk a fabricated pair ($76M of fake
+ * liquidity on a scam pool) and the treasury valued itself at $13.80 a
+ * token, about five thousand times flattering. "Most liquid pair wins"
+ * cannot beat invented liquidity. So: read the configured pool's own
+ * vault reserves over plain JSON-RPC, fence the answer against the
+ * hand-typed anchor price, and when neither pool nor anchor can speak,
+ * show no valuation rather than a lie.
+ */
+async function rpcTokenBalance(url: string, account: string): Promise<number | null> {
   try {
-    const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`, {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getTokenAccountBalance", params: [account] }),
       cache: "no-store",
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(4000),
     })
     if (!res.ok) return null
-    const data = (await res.json()) as { pairs?: { priceUsd?: string; liquidity?: { usd?: number } }[] }
-    // Most liquid pair wins; a thin pool can print a nonsense price.
-    let best = -1
-    let price: number | null = null
-    for (const p of data.pairs ?? []) {
-      const v = Number(p?.priceUsd)
-      const liq = Number(p?.liquidity?.usd ?? 0)
-      if (Number.isFinite(v) && v > 0 && liq > best) {
-        best = liq
-        price = v
-      }
-    }
-    return price
+    const body = await res.json()
+    const ui = Number(body?.result?.value?.uiAmount)
+    return Number.isFinite(ui) && ui > 0 ? ui : null
   } catch {
     return null
   }
+}
+
+async function livePriceUsd(poolRaw: unknown, anchorRaw: unknown): Promise<number | null> {
+  const anchor = Number(anchorRaw)
+  const hasAnchor = Number.isFinite(anchor) && anchor > 0
+
+  try {
+    const pool = typeof poolRaw === "string" ? JSON.parse(poolRaw) : poolRaw
+    const baseVault = String((pool as Record<string, unknown>)?.base_vault || "")
+    const quoteVault = String((pool as Record<string, unknown>)?.quote_vault || "")
+    const quote = String((pool as Record<string, unknown>)?.quote || "usdc").toLowerCase()
+    const url = process.env.ONUS_RPC_URL || process.env.HELIUS_RPC_URL || ""
+
+    if (baseVault && quoteVault && url && quote === "usdc") {
+      const [b, q] = await Promise.all([rpcTokenBalance(url, baseVault), rpcTokenBalance(url, quoteVault)])
+      if (b != null && q != null && b > 0) {
+        const price = q / b
+        const sane = !hasAnchor || (price <= anchor * 25 && price >= anchor / 25)
+        if (sane) return price
+        console.error(`[finance] pool price ${price} is >25x from anchor ${anchor}; discarded`)
+      }
+    }
+  } catch {
+    // fall through to the anchor
+  }
+
+  return hasAnchor ? anchor : null
 }
 
 export async function GET() {
@@ -68,7 +98,7 @@ export async function GET() {
       supabase
         .from("app_settings")
         .select("key, value")
-        .in("key", ["pay_rails", "pay_rail", "onus_mint", "onus_decimals", "onus_symbol", "helius_treasury_wallet"]),
+        .in("key", ["pay_rails", "pay_rail", "onus_mint", "onus_decimals", "onus_symbol", "helius_treasury_wallet", "pay_pool", "onus_manual_price_usd"]),
       supabase
         .from("pit_ammo_purchases")
         .select("pay_amount_base, usd_cents, ammo_amount, rail, created_at")
@@ -113,7 +143,7 @@ export async function GET() {
     const stableUsd = stable.reduce((a, r) => a + Number(r.usd_cents || 0), 0) / 100
     const daysSold = all.reduce((a, r) => a + Number(r.ammo_amount || 0), 0)
 
-    const price = await livePriceUsd(mint)
+    const price = await livePriceUsd(s.get("pay_pool"), s.get("onus_manual_price_usd"))
     const tokenValueNow = price != null ? tokenReceived * price : null
 
     // Thirty days, oldest first, so the chart reads left to right.
