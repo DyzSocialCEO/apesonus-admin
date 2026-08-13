@@ -131,8 +131,8 @@ export default function FinancePage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Finance</h1>
           <p className="mt-1 text-gray-400">
-            Patients pay in {d.symbol}. Every confirmed payment is counted in the token that
-            arrived and in the dollars it was quoted at.
+            Every confirmed payment is counted in the dollars it was quoted at and the token it
+            arrived as.
           </p>
         </div>
         <button
@@ -145,22 +145,17 @@ export default function FinancePage() {
         </button>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Tile
-          label={`${d.symbol} received`}
-          value={num(d.tokenReceived, 2)}
-          hint="All confirmed payments on the token rail"
+          label="USDC received"
+          value={usd(d.stableUsd)}
+          hint="All confirmed payments on the stable rail"
           accent="#c6ff2e"
         />
         <Tile
-          label="Worth now"
-          value={usd(d.tokenValueNow)}
-          hint={d.price != null ? `At $${d.price.toPrecision(4)} per ${d.symbol}` : "Live price unavailable"}
-        />
-        <Tile
           label="Sold for"
-          value={usd(d.tokenUsdAtSale)}
-          hint="The dollar prices those orders were quoted at"
+          value={usd(d.stableUsd + d.tokenUsdAtSale)}
+          hint="Every rail, at the quoted dollar prices"
         />
         <Tile label="Days sold" value={d.daysSold.toLocaleString("en-US")} hint={`${d.payments} payments`} />
       </div>
@@ -171,17 +166,19 @@ export default function FinancePage() {
         <Tile label="Last 30 days" value={usd(d.usd30d)} />
       </div>
 
-      {d.stableUsd > 0 ? (
+      {d.tokenReceived > 0 ? (
         <div className="mt-4 rounded-xl border border-gray-800 bg-gray-900 p-4 text-sm text-gray-400">
-          Before the token rail, {usd(d.stableUsd)} came in on the stable rail. Kept separate on
-          purpose: those were dollars, not {d.symbol}.
+          The retired token rail took {num(d.tokenReceived, 2)} {d.symbol}, sold for{" "}
+          {usd(d.tokenUsdAtSale)} at the door
+          {d.tokenValueNow != null ? <> and worth {usd(d.tokenValueNow)} at today&apos;s price</> : null}. Kept
+          apart on purpose: those were {d.symbol}, not dollars.
         </div>
       ) : null}
 
       <div className="mt-6 rounded-xl border border-gray-800 bg-gray-900 p-5">
         <div className="text-sm font-semibold text-white">Thirty days</div>
         <div className="mt-1 text-[11px] text-gray-600">
-          {d.symbol} received per day. Hover for the dollars and the payment count.
+          Dollars sold per day. Hover for the payment count.
         </div>
         <div className="mt-4 h-56">
           {d.series.length === 0 ? (
@@ -198,11 +195,10 @@ export default function FinancePage() {
                   contentStyle={{ background: "#0b0f14", border: "1px solid #1f2937", borderRadius: 8 }}
                   labelStyle={{ color: "#9ca3af" }}
                   formatter={(v: number, name: string) =>
-                    name === "usd" ? [usd(v), "Sold for"] : name === "payments" ? [v, "Payments"] : [num(v, 2), d.symbol]
+                    name === "usd" ? [usd(v), "Sold for"] : [v, "Payments"]
                   }
                 />
-                <Area type="monotone" dataKey="token" stroke="#c6ff2e" fill="rgba(198,255,46,.15)" strokeWidth={2} />
-                <Area type="monotone" dataKey="usd" stroke="transparent" fill="transparent" />
+                <Area type="monotone" dataKey="usd" stroke="#c6ff2e" fill="rgba(198,255,46,.15)" strokeWidth={2} />
                 <Area type="monotone" dataKey="payments" stroke="transparent" fill="transparent" />
               </AreaChart>
             </ResponsiveContainer>
@@ -213,8 +209,12 @@ export default function FinancePage() {
       <div className="mt-4 rounded-xl border border-gray-800 bg-gray-900 p-5 text-sm text-gray-400">
         <div className="text-xs uppercase tracking-wider text-gray-500">Where it lands</div>
         <div className="mt-2 break-all font-mono text-[12px] text-gray-300">{d.wallet || "No wallet set"}</div>
-        <div className="mt-3 text-xs uppercase tracking-wider text-gray-500">Token</div>
-        <div className="mt-1 break-all font-mono text-[12px] text-gray-300">{d.mint || "Not set"}</div>
+        {d.tokenReceived > 0 ? (
+          <>
+            <div className="mt-3 text-xs uppercase tracking-wider text-gray-500">Retired token rail mint</div>
+            <div className="mt-1 break-all font-mono text-[12px] text-gray-300">{d.mint || "Not set"}</div>
+          </>
+        ) : null}
       </div>
 
       <div className="mt-4 rounded-xl border border-gray-800 bg-gray-900 p-5">
