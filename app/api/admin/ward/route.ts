@@ -308,6 +308,27 @@ export async function GET() {
 
     if (desk.error) console.error("[admin/ward] ward_desk failed:", desk.error)
 
+    // The catalogue's per-song state comes from ward_desk, a database
+    // function that predates the parked state and may label a parked song
+    // with whatever it labels the unknown. The desk payload is corrected
+    // here from the prescriptions read above, which is the actual truth of
+    // the table, so the page always sees parked as parked.
+    try {
+      const parkedTracks = new Set(
+        rxRows.filter((r) => String(r.status) === "parked").map((r) => Number(r.track_id)),
+      )
+      if (parkedTracks.size > 0 && desk.data && Array.isArray((desk.data as any).artists)) {
+        for (const a of (desk.data as any).artists) {
+          if (!Array.isArray(a?.songs)) continue
+          for (const s2 of a.songs) {
+            if (parkedTracks.has(Number(s2?.trackId))) s2.state = "parked"
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[admin/ward] parked overlay failed:", e)
+    }
+
     return NextResponse.json({
       desk: desk.data ?? null,
       onWard,
@@ -828,12 +849,43 @@ export async function POST(request: Request) {
 
       if (body.what === "song_park") {
         // The toggle. Off the ward, out of every archive, counter kept. The
-        // queue does not move: parking is not finishing.
-        const { data, error } = await supabase.rpc("ward_song_park", { p_track: track })
-        if (error) throw error
-        if (data?.ok !== true) return NextResponse.json({ error: "That song is not on the ward." }, { status: 400 })
-        await logAdminAction(supabase, request, session.username, "ward.song.park", { track })
-        return NextResponse.json({ saved: true, result: data })
+        // queue does not move: parking is not finishing. Done with direct
+        // table writes on purpose: a brand-new database function is invisible
+        // to the API layer's schema cache for a while after it is created,
+        // and the park switch must not depend on that timing.
+        const { data: liveRow } = await supabase
+          .from("ward_prescriptions")
+          .select("id, featured")
+          .eq("track_id", track)
+          .in("status", ["current", "breached"])
+          .maybeSingle()
+        if (!liveRow) return NextResponse.json({ error: "That song is not on the ward." }, { status: 400 })
+
+        const { error: parkErr } = await supabase
+          .from("ward_prescriptions")
+          .update({ status: "parked", featured: false, queue_pos: null, archived_at: null })
+          .eq("id", liveRow.id)
+          .in("status", ["current", "breached"])
+        if (parkErr) throw parkErr
+
+        // If it held the star, the star moves to the first song still up.
+        if (liveRow.featured) {
+          const { data: nextUp } = await supabase
+            .from("ward_prescriptions")
+            .select("id")
+            .in("status", ["current", "breached"])
+            .order("sort", { ascending: true })
+            .order("seq", { ascending: true })
+            .order("id", { ascending: true })
+            .limit(1)
+            .maybeSingle()
+          if (nextUp) {
+            await supabase.from("ward_prescriptions").update({ featured: true }).eq("id", nextUp.id)
+          }
+        }
+
+        await logAdminAction(supabase, request, session.username, "ward.song.park", { track, id: liveRow.id })
+        return NextResponse.json({ saved: true, parked: liveRow.id })
       }
 
       if (body.what === "song_off") {
