@@ -308,6 +308,16 @@ export async function GET() {
 
     if (desk.error) console.error("[admin/ward] ward_desk failed:", desk.error)
 
+    // THE FOUNDING SERIES card. One rpc, read-only; failures leave the card
+    // hidden rather than breaking the desk.
+    let founding: unknown = null
+    try {
+      const { data: f } = await supabase.rpc("founding_overview")
+      founding = f ?? null
+    } catch {
+      founding = null
+    }
+
     // The catalogue's per-song state comes from ward_desk, a database
     // function that predates the parked state and may label a parked song
     // with whatever it labels the unknown. The desk payload is corrected
@@ -330,6 +340,7 @@ export async function GET() {
     }
 
     return NextResponse.json({
+      founding,
       desk: desk.data ?? null,
       onWard,
       live,
@@ -763,6 +774,39 @@ export async function POST(request: Request) {
       if (error) throw error
       await logAdminAction(supabase, request, session.username, "ward.target", { target, pct })
       return NextResponse.json({ saved: true, result: data })
+    }
+
+    // ── THE FOUNDING SERIES knobs. Close date extends the door; the three
+    // numbers tune the task. Values land in app_settings, which is where the
+    // issuing function reads them, so a save changes the game immediately. ──
+    if (body.what === "founding_config") {
+      const close = String(body.close || "").trim()
+      const daily = Math.floor(Number(body.daily))
+      const needed = Math.floor(Number(body.needed))
+      const windowDays = Math.floor(Number(body.window_days))
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(close)) {
+        return NextResponse.json({ error: "Close date must be YYYY-MM-DD." }, { status: 400 })
+      }
+      for (const [name, v, lo, hi] of [["Daily treatments", daily, 1, 100], ["Days needed", needed, 1, 30], ["Window days", windowDays, 1, 60]] as const) {
+        if (!Number.isFinite(v) || v < lo || v > hi) {
+          return NextResponse.json({ error: `${name} must be between ${lo} and ${hi}.` }, { status: 400 })
+        }
+      }
+      if (windowDays < needed) {
+        return NextResponse.json({ error: "The window cannot be shorter than the days needed." }, { status: 400 })
+      }
+      const pairs: Array<[string, string]> = [
+        ["founding_close", close],
+        ["founding_daily", String(daily)],
+        ["founding_days_needed", String(needed)],
+        ["founding_window_days", String(windowDays)],
+      ]
+      for (const [key, value] of pairs) {
+        const { error } = await supabase.from("app_settings").upsert({ key, value }, { onConflict: "key" })
+        if (error) throw error
+      }
+      await logAdminAction(supabase, request, session.username, "ward.founding.config", { close, daily, needed, windowDays })
+      return NextResponse.json({ saved: true })
     }
 
     if (body.what === "song_on" || body.what === "song_off" || body.what === "song_park" || body.what === "song_line" || body.what === "song_queue") {

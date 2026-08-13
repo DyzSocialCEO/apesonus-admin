@@ -237,6 +237,11 @@ export default function WardPage() {
   // second. Backwards.
   const [lineDraft, setLineDraft] = useState<Record<number, string>>({})
   const [queue, setQueue] = useState<QueueRx[]>([])
+  const [founding, setFounding] = useState<{ issued: number; admitted: number } | null>(null)
+  const [fClose, setFClose] = useState("")
+  const [fDaily, setFDaily] = useState("")
+  const [fNeeded, setFNeeded] = useState("")
+  const [fWindow, setFWindow] = useState("")
   const [retired, setRetired] = useState<RetiredRx[]>([])
   const [tune, setTune] = useState({ target: "", pct: "" })
   const [grant, setGrant] = useState({ email: "", spins: "", reason: "" })
@@ -304,6 +309,13 @@ export default function WardPage() {
         setHolders(Number(d.holders ?? 0))
         setMint(d.mint ?? null)
         setDay(String(d.day ?? ""))
+        if (d.founding) {
+          setFounding({ issued: Number(d.founding.issued ?? 0), admitted: Number(d.founding.admitted ?? 0) })
+          setFClose(String(d.founding.close ?? ""))
+          setFDaily(String(d.founding.daily ?? "10"))
+          setFNeeded(String(d.founding.needed ?? "7"))
+          setFWindow(String(d.founding.windowDays ?? "10"))
+        }
         setClip(
           d.morningDose
             ? {
@@ -435,6 +447,48 @@ export default function WardPage() {
           ══════════════════════════════════════════════════════════════ */}
 
       {/* 1. THE TARGET */}
+      {founding ? (
+        <Card className="border-amber-700/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-amber-400">THE FOUNDING SERIES</CardTitle>
+            <CardDescription>
+              The Original Prescription. Issued automatically when a patient admitted before the close date
+              completes the daily treatments on enough days inside their window. Saving here changes the live
+              rules immediately.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-4 flex gap-8 font-mono text-sm">
+              <div><span className="text-gray-500">Issued</span> <strong className="text-amber-300">{founding.issued}</strong></div>
+              <div><span className="text-gray-500">Admitted in window</span> <strong>{founding.admitted}</strong></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <label className="block text-[11px] text-gray-500">Series closes (UTC)
+                <input value={fClose} onChange={(e) => setFClose(e.target.value)} placeholder="2026-08-27"
+                  className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-950 px-2 py-1.5 font-mono text-sm" />
+              </label>
+              <label className="block text-[11px] text-gray-500">Treatments per day
+                <input value={fDaily} onChange={(e) => setFDaily(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-950 px-2 py-1.5 font-mono text-sm" />
+              </label>
+              <label className="block text-[11px] text-gray-500">Days needed
+                <input value={fNeeded} onChange={(e) => setFNeeded(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-950 px-2 py-1.5 font-mono text-sm" />
+              </label>
+              <label className="block text-[11px] text-gray-500">Personal window (days)
+                <input value={fWindow} onChange={(e) => setFWindow(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-950 px-2 py-1.5 font-mono text-sm" />
+              </label>
+            </div>
+            <button type="button" disabled={busy === "founding"}
+              onClick={() => post("founding", { what: "founding_config", close: fClose, daily: fDaily, needed: fNeeded, window_days: fWindow })}
+              className="mt-4 rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-black hover:bg-amber-400 disabled:opacity-40">
+              Save series rules
+            </button>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm text-gray-400 flex items-center gap-2">
