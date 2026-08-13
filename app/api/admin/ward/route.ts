@@ -810,14 +810,15 @@ export async function POST(request: Request) {
             .update({
               status: "current",
               archived_at: null,
-              queue_pos: null,
               dose_target: parked.dose_target > 0 ? parked.dose_target : fallbackTarget,
               published_at: new Date().toISOString(),
               unlocked_at: new Date().toISOString(),
             })
             .eq("id", parked.id)
             .eq("status", "parked")
-          if (reviveErr) throw reviveErr
+          if (reviveErr) {
+            return NextResponse.json({ error: `Revive failed: ${reviveErr.message}` }, { status: 400 })
+          }
           if (line != null) {
             await supabase.from("ward_prescriptions").update({ line: line.trim() }).eq("id", parked.id)
           }
@@ -863,10 +864,14 @@ export async function POST(request: Request) {
 
         const { error: parkErr } = await supabase
           .from("ward_prescriptions")
-          .update({ status: "parked", featured: false, queue_pos: null, archived_at: null })
+          .update({ status: "parked", featured: false, archived_at: null })
           .eq("id", liveRow.id)
           .in("status", ["current", "breached"])
-        if (parkErr) throw parkErr
+        if (parkErr) {
+          // The exact database words, straight to the red bar. A mute 500
+          // cost a morning; never again.
+          return NextResponse.json({ error: `Park failed: ${parkErr.message}` }, { status: 400 })
+        }
 
         // If it held the star, the star moves to the first song still up.
         if (liveRow.featured) {
