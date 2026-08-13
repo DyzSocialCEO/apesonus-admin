@@ -62,6 +62,7 @@ export default function AirdropPage() {
 
   const [pot, setPot] = useState("")
   const [days, setDays] = useState("14")
+  const [symbol, setSymbol] = useState("USDC")
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -110,6 +111,11 @@ export default function AirdropPage() {
   const openWindow = () => {
     const p = Number(pot)
     const dNum = Number(days)
+    const sym = symbol.replace(/[^A-Za-z0-9]/g, "").toUpperCase()
+    if (!sym || sym.length > 12) {
+      setMsg("The currency needs a ticker, letters and numbers only, 12 max.")
+      return
+    }
     if (!Number.isFinite(p) || p <= 0) {
       setMsg("The pot needs a number above zero.")
       return
@@ -119,7 +125,7 @@ export default function AirdropPage() {
       return
     }
     const closes = new Date(Date.now() + dNum * 86400000).toISOString()
-    void act("open", { what: "open", pot: p, closes_at: closes })
+    void act("open", { what: "open", pot: p, closes_at: closes, symbol: sym })
   }
 
   const markPaid = (row: Row) => {
@@ -175,13 +181,22 @@ export default function AirdropPage() {
           </p>
           <div className="mt-4 flex flex-wrap items-end gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-400">Pot (PUMP)</label>
+              <label className="mb-1 block text-xs font-medium text-gray-400">Pot ({symbol.replace(/[^A-Za-z0-9]/g, "").toUpperCase() || "?"})</label>
               <input
                 value={pot}
                 onChange={(e) => setPot(e.target.value)}
                 inputMode="numeric"
                 placeholder="250000"
                 className="w-40 rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm text-white"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-400">Currency</label>
+              <input
+                value={symbol}
+                onChange={(e) => setSymbol(e.target.value)}
+                placeholder="USDC"
+                className="w-28 rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm text-white"
               />
             </div>
             <div>

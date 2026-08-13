@@ -12,7 +12,7 @@ export const runtime = "nodejs"
  *       standings (recomputed on every read, it moves as patients earn);
  *       once LOCKED it is the frozen shares, the list to check before
  *       anything moves.
- * POST  { what: "open",      pot, closes_at }
+ * POST  { what: "open",      pot, closes_at, symbol }
  *       { what: "lock",      window_id }
  *       { what: "mark_paid", window_id, user_id, tx }
  *       { what: "finish",    window_id, force? }
@@ -137,9 +137,11 @@ export async function POST(request: Request) {
     if (what === "open") {
       const pot = Number(body?.pot)
       const closes = String(body?.closes_at || "")
+      const symbol = String(body?.symbol || "")
       const { data, error } = await supabase.rpc("airdrop_open", {
         p_pot: pot,
         p_closes_at: closes,
+        p_symbol: symbol,
       })
       if (error) throw error
       return NextResponse.json(data)
