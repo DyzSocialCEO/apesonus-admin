@@ -576,7 +576,8 @@ export default function WardPage() {
           <CardDescription>
             Your artists and their songs, straight from Tracks. Flip one on and it is on the ward. The line
             saves when you click away. <strong className="text-gray-300">One song per therapist:</strong> to
-            put a different one up, move the current one to the archive first.
+            put a different one up, switch the current one off first. Off keeps its dose count and stays out of the
+            archive; only Move to archive and a finished 10,000 put a song in the archive.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -621,14 +622,14 @@ export default function WardPage() {
                             disabled={busy === `sw-${s.trackId}` || blocked}
                             title={
                               blocked
-                                ? "This therapist already has a song on the ward. Move it to the archive first."
+                                ? "This therapist already has a song on the ward. Switch it off or archive it first."
                                 : up
-                                  ? "Take it off the ward"
+                                  ? "Take it off the ward. It keeps its dose count and does not go to the archive."
                                   : "Put it on the ward"
                             }
                             onClick={() =>
                               post(`sw-${s.trackId}`, {
-                                what: up ? "song_off" : "song_on",
+                                what: up ? "song_park" : "song_on",
                                 track_id: s.trackId,
                                 line: lineDraft[s.trackId] ?? s.line,
                               })

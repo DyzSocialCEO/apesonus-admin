@@ -744,7 +744,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ saved: true, result: data })
     }
 
-    if (body.what === "song_on" || body.what === "song_off" || body.what === "song_line" || body.what === "song_queue") {
+    if (body.what === "song_on" || body.what === "song_off" || body.what === "song_park" || body.what === "song_line" || body.what === "song_queue") {
       const track = Number(body.track_id)
       if (!Number.isFinite(track) || track < 1) {
         return NextResponse.json({ error: "track_id required" }, { status: 400 })
@@ -752,6 +752,58 @@ export async function POST(request: Request) {
       const line = body.line == null ? null : String(body.line).slice(0, 200)
 
       if (body.what === "song_on") {
+        // A parked song comes back as ITSELF: same row, same dose counter.
+        // Only if no parked row exists does this fall through to the normal
+        // put-it-up path, which starts a fresh prescription.
+        const { data: parked } = await supabase
+          .from("ward_prescriptions")
+          .select("id, therapist_id, dose_target")
+          .eq("track_id", track)
+          .eq("status", "parked")
+          .maybeSingle()
+
+        if (parked) {
+          const { count: liveForTherapist } = await supabase
+            .from("ward_prescriptions")
+            .select("id", { count: "exact", head: true })
+            .eq("therapist_id", parked.therapist_id)
+            .in("status", ["current", "breached"])
+          if (Number(liveForTherapist ?? 0) > 0) {
+            return NextResponse.json(
+              { error: "That therapist already has a song on the ward. Switch it off or archive it first." },
+              { status: 400 },
+            )
+          }
+
+          const { data: cfg } = await supabase
+            .from("app_settings").select("value").eq("key", "ward_config").maybeSingle()
+          let fallbackTarget = 10000
+          try {
+            const parsed = JSON.parse(String(cfg?.value ?? "{}"))
+            const n = Math.floor(Number(parsed?.dose_target))
+            if (Number.isFinite(n) && n >= 1) fallbackTarget = n
+          } catch {}
+
+          const { error: reviveErr } = await supabase
+            .from("ward_prescriptions")
+            .update({
+              status: "current",
+              archived_at: null,
+              queue_pos: null,
+              dose_target: parked.dose_target > 0 ? parked.dose_target : fallbackTarget,
+              published_at: new Date().toISOString(),
+              unlocked_at: new Date().toISOString(),
+            })
+            .eq("id", parked.id)
+            .eq("status", "parked")
+          if (reviveErr) throw reviveErr
+          if (line != null) {
+            await supabase.from("ward_prescriptions").update({ line: line.trim() }).eq("id", parked.id)
+          }
+          await logAdminAction(supabase, request, session.username, "ward.song.revive", { track, id: parked.id })
+          return NextResponse.json({ saved: true, revived: true })
+        }
+
         const { data, error } = await supabase.rpc("ward_song_on", { p_track: track, p_line: line })
         if (error) throw error
         if (data?.ok !== true) {
@@ -772,6 +824,16 @@ export async function POST(request: Request) {
         }
         await logAdminAction(supabase, request, session.username, "ward.song.on", { track })
         return NextResponse.json({ saved: true })
+      }
+
+      if (body.what === "song_park") {
+        // The toggle. Off the ward, out of every archive, counter kept. The
+        // queue does not move: parking is not finishing.
+        const { data, error } = await supabase.rpc("ward_song_park", { p_track: track })
+        if (error) throw error
+        if (data?.ok !== true) return NextResponse.json({ error: "That song is not on the ward." }, { status: 400 })
+        await logAdminAction(supabase, request, session.username, "ward.song.park", { track })
+        return NextResponse.json({ saved: true, result: data })
       }
 
       if (body.what === "song_off") {
