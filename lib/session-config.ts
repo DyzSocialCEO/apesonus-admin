@@ -12,6 +12,12 @@ export interface SessionConfig {
   price_cents: number
   /** Cases that can be opened in a clinic day. Booking closes when it is hit. */
   capacity_per_day: number
+  /**
+   * Cases one patient can open in a clinic day. Held at 1 for quality: the
+   * desk owes a finished song for every case, and a patient who can book
+   * five in an afternoon fills the queue with whatever comes to mind.
+   */
+  per_patient_per_day: number
   /** What the waiting room counts down from, per case, unless overridden. */
   estimate_minutes: number
   /** The master switch. False means the booking screen refuses politely. */
@@ -21,6 +27,7 @@ export interface SessionConfig {
 export const SESSION_FALLBACK: SessionConfig = {
   price_cents: 200,
   capacity_per_day: 10,
+  per_patient_per_day: 1,
   estimate_minutes: 120,
   booking_open: false,
 }
@@ -41,6 +48,7 @@ export function readSessionConfig(raw: unknown): SessionConfig {
     return {
       price_cents: sessionNum(v.price_cents, SESSION_FALLBACK.price_cents, 1, 100000),
       capacity_per_day: sessionNum(v.capacity_per_day, SESSION_FALLBACK.capacity_per_day, 0, 1000),
+      per_patient_per_day: sessionNum(v.per_patient_per_day, SESSION_FALLBACK.per_patient_per_day, 1, 50),
       estimate_minutes: sessionNum(v.estimate_minutes, SESSION_FALLBACK.estimate_minutes, 1, 10080),
       booking_open: v.booking_open === true,
     }

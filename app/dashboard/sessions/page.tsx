@@ -19,6 +19,7 @@ import { Loader2, Save, Check, AlertCircle, Stethoscope } from "lucide-react"
 interface Config {
   price_cents: number
   capacity_per_day: number
+  per_patient_per_day: number
   estimate_minutes: number
   booking_open: boolean
 }
@@ -26,6 +27,7 @@ interface Config {
 const EMPTY: Config = {
   price_cents: 200,
   capacity_per_day: 10,
+  per_patient_per_day: 1,
   estimate_minutes: 120,
   booking_open: false,
 }
@@ -188,7 +190,7 @@ export default function SessionsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1">Price, cents</label>
               <Input
@@ -206,7 +208,18 @@ export default function SessionsPage() {
                 onChange={(e) => setCfg({ ...cfg, capacity_per_day: Number(e.target.value) })}
               />
               <p className="text-[11px] text-gray-600 mt-1">
-                Booking closes when this is hit. Zero closes it outright.
+                Booking closes for everybody when this is hit. Zero closes it outright.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Cases per patient a day</label>
+              <Input
+                type="number"
+                value={cfg.per_patient_per_day}
+                onChange={(e) => setCfg({ ...cfg, per_patient_per_day: Number(e.target.value) })}
+              />
+              <p className="text-[11px] text-gray-600 mt-1">
+                Held at 1 so nobody floods the queue. Raise it only if the stories are worth it.
               </p>
             </div>
             <div>
@@ -223,7 +236,8 @@ export default function SessionsPage() {
           <p className="text-[11px] text-gray-600">
             At {cfg.capacity_per_day} cases a day this desk owes {cfg.capacity_per_day} finished songs
             every day and takes ${((cfg.capacity_per_day * cfg.price_cents) / 100).toFixed(2)} to do it.
-            Set it to what you can actually deliver.
+            Set it to what you can actually deliver. With {cfg.per_patient_per_day} per patient, that is
+            at least {cfg.capacity_per_day} different people.
           </p>
 
           <button
@@ -232,6 +246,7 @@ export default function SessionsPage() {
               patch("numbers", {
                 price_cents: cfg.price_cents,
                 capacity_per_day: cfg.capacity_per_day,
+                per_patient_per_day: cfg.per_patient_per_day,
                 estimate_minutes: cfg.estimate_minutes,
               })
             }

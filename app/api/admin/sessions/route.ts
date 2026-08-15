@@ -72,6 +72,7 @@ export async function PATCH(request: Request) {
 
     if ("price_cents" in body) next.price_cents = num(body.price_cents, current.price_cents, 1, 100000)
     if ("capacity_per_day" in body) next.capacity_per_day = num(body.capacity_per_day, current.capacity_per_day, 0, 1000)
+    if ("per_patient_per_day" in body) next.per_patient_per_day = num(body.per_patient_per_day, current.per_patient_per_day, 1, 50)
     if ("estimate_minutes" in body) next.estimate_minutes = num(body.estimate_minutes, current.estimate_minutes, 1, 10080)
     if ("booking_open" in body) next.booking_open = body.booking_open === true
 
