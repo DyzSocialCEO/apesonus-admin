@@ -4,13 +4,13 @@ import { useCallback, useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Loader2, Save, Check, AlertCircle, Stethoscope } from "lucide-react"
+import { CaseQueue } from "./case-queue"
 
 /**
  * /dashboard/sessions, THE SESSIONS desk.
  *
- * Right now it holds the four numbers a private session runs on. The queue,
- * the conversation and the release step land on this same page as they are
- * built, so there is one desk for the whole thing rather than three.
+ * The numbers a private session runs on, and under them the queue of cases
+ * waiting to be written. One desk for the whole thing rather than three.
  *
  * The open switch saves the instant it is pressed. Everything else is typed,
  * so it saves behind its own button.
@@ -259,8 +259,10 @@ export default function SessionsPage() {
         </CardContent>
       </Card>
 
+      <CaseQueue />
+
       <p className="text-xs text-gray-600">
-        The queue, the conversation and the release step arrive on this page as they are built.
+        The conversation with the therapist arrives on this page next.
       </p>
     </div>
   )
