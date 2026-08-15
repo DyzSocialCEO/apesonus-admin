@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard, Music, Users, BarChart3, Settings, LogOut, Menu, X,
-    ScrollText, UserCircle, DollarSign, Activity, Gift } from "lucide-react"
+    ScrollText, UserCircle, DollarSign, Activity, Gift, Stethoscope } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
@@ -32,12 +32,17 @@ import { useState } from "react"
  * confessions wall, which The Records replaced. The pages and their routes
  * stay in the repo until after launch, because Case Studies owns a table and
  * a migration and that is a decision rather than a keystroke.
+ *
+ * AUG 15: Sessions. Listening went free and the private session became the
+ * only thing the app charges for, so it gets its own desk. It holds the four
+ * numbers now and the case queue as it is built.
  */
 const navigation = [
   { name: "Dashboard",       href: "/dashboard",                 icon: LayoutDashboard },
   { name: "Tracks",          href: "/dashboard/tracks",          icon: Music           },
   { name: "Artists",         href: "/dashboard/artists",         icon: UserCircle      },
   { name: "The Ward",        href: "/dashboard/ward",            icon: Activity        },
+  { name: "Sessions",        href: "/dashboard/sessions",        icon: Stethoscope     },
   { name: "Users",           href: "/dashboard/users",           icon: Users           },
   { name: "Finance",         href: "/dashboard/finance",         icon: DollarSign     },
   { name: "The Airdrop",     href: "/dashboard/airdrop",         icon: Gift            },
