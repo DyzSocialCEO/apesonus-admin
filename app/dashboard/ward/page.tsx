@@ -339,6 +339,17 @@ export default function WardPage() {
     setTimeout(() => setSaved(""), 2200)
   }
 
+  // Days left on the founding series, read off the SAVED close date. Null when
+  // the field is empty or malformed, negative once the date has passed. There
+  // is deliberately no separate on/off switch: two controls for one state is
+  // how a series ends up open in the app and closed on the desk.
+  const seriesDays = (() => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fClose)) return null
+    const end = Date.parse(`${fClose}T23:59:59Z`)
+    if (!Number.isFinite(end)) return null
+    return Math.floor((end - Date.now()) / 86400000)
+  })()
+
   const post = async (tag: string, payload: Record<string, unknown>) => {
     if (busy) return false
     setBusy(tag)
@@ -458,9 +469,23 @@ export default function WardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="mb-4 flex gap-8 font-mono text-sm">
+            <div className="mb-4 flex flex-wrap gap-8 font-mono text-sm">
               <div><span className="text-gray-500">Issued</span> <strong className="text-amber-300">{founding.issued}</strong></div>
               <div><span className="text-gray-500">Admitted in window</span> <strong>{founding.admitted}</strong></div>
+              {/* Whether the door is still open, worked out from the saved close
+                  date rather than a second switch. One date, one truth. */}
+              <div>
+                <span className="text-gray-500">Series</span>{" "}
+                {seriesDays === null ? (
+                  <strong className="text-gray-500">NO CLOSE DATE</strong>
+                ) : seriesDays >= 0 ? (
+                  <strong className="text-emerald-400">
+                    OPEN · {seriesDays} day{seriesDays === 1 ? "" : "s"} left
+                  </strong>
+                ) : (
+                  <strong className="text-red-400">CLOSED</strong>
+                )}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <label className="block text-[11px] text-gray-500">Series closes (UTC)
