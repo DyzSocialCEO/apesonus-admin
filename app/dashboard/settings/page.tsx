@@ -660,9 +660,9 @@ function PayRailCard() {
               </button>
             </div>
             <p className="text-xs text-gray-500">
-              Both can be on at once. The refill screen then asks the buyer which one, and every
+              Both can be on at once. The checkout then asks the buyer which one, and every
               payment lands at the same receiving wallet. Switch one off and it disappears from
-              the refill screen; at least one has to stay on.
+              the checkout; at least one has to stay on.
             </p>
 
             <Field label="Token mint address (the CA)">

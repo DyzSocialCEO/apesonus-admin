@@ -1075,46 +1075,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ saved: true })
     }
 
-    // ── Handing Spins to an account by hand. ──
-    // When a payment lands and something breaks, the fix has to be possible
-    // from here rather than from a SQL editor at midnight. Every grant is
-    // audited with the reason typed beside it.
-    if (body.what === "grant_spins") {
-      const email = String(body.email || "").trim().toLowerCase()
-      const spins = Math.floor(Number(body.spins))
-      const reason = String(body.reason || "").trim()
-      if (!email) return NextResponse.json({ error: "Which account?" }, { status: 400 })
-      if (!Number.isFinite(spins) || spins === 0) {
-        return NextResponse.json({ error: "How many Spins?" }, { status: 400 })
-      }
-      if (!reason) return NextResponse.json({ error: "Say why. It goes in the log." }, { status: 400 })
-
-      const { data: user } = await supabase
-        .from("users")
-        .select("id, email")
-        .ilike("email", email)
-        .maybeSingle()
-      if (!user?.id) return NextResponse.json({ error: "No account with that email." }, { status: 404 })
-
-      const { data: row } = await supabase
-        .from("pit_ammo_balances")
-        .select("balance")
-        .eq("user_id", user.id)
-        .maybeSingle()
-      const before = Number(row?.balance ?? 0)
-      const after = Math.max(0, before + spins)
-
-      const { error } = await supabase
-        .from("pit_ammo_balances")
-        .upsert({ user_id: user.id, balance: after, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
-      if (error) throw error
-
-      await logAdminAction(supabase, request, session.username, "ward.grant_spins", {
-        email, spins, reason, before, after,
-      })
-      return NextResponse.json({ saved: true, before, after })
-    }
-
     return NextResponse.json({ error: "Nothing to save." }, { status: 400 })
   } catch (e: any) {
     console.error("[admin/ward] POST failed:", e)
