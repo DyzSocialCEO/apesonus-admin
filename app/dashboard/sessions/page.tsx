@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input"
 import { Loader2, Save, Check, AlertCircle, Stethoscope } from "lucide-react"
 import { CaseQueue } from "./case-queue"
+import { Voices } from "./voices"
 
 /**
  * /dashboard/sessions, THE SESSIONS desk.
@@ -259,11 +260,9 @@ export default function SessionsPage() {
         </CardContent>
       </Card>
 
-      <CaseQueue />
+      <Voices />
 
-      <p className="text-xs text-gray-600">
-        The conversation with the therapist arrives on this page next.
-      </p>
+      <CaseQueue />
     </div>
   )
 }
