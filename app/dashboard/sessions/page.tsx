@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Loader2, Save, Check, AlertCircle, Stethoscope } from "lucide-react"
 import { CaseQueue } from "./case-queue"
 import { Voices } from "./voices"
+import { Admission } from "./admission"
 
 /**
  * /dashboard/sessions, THE SESSIONS desk.
@@ -85,7 +86,6 @@ export default function SessionsPage() {
     if (!ok) setCfg((c) => ({ ...c, booking_open: !want }))
   }
 
-  const dollars = (cfg.price_cents / 100).toFixed(2)
   const hours = Math.floor(cfg.estimate_minutes / 60)
   const mins = cfg.estimate_minutes % 60
   const estimateText = hours > 0 ? `${hours}h ${mins > 0 ? `${mins}m` : ""}`.trim() : `${mins}m`
@@ -183,24 +183,15 @@ export default function SessionsPage() {
       {/* ── THE NUMBERS ───────────────────────────────────────────── */}
       <Card>
         <CardHeader>
-          <CardTitle>Price, capacity and time</CardTitle>
+          <CardTitle>Capacity and time</CardTitle>
           <CardDescription>
-            The price is held in cents and both payment rails derive from it. Capacity is what
-            closes booking for the day. The estimate is what the waiting room counts down from, and
-            a single case can still be given longer by hand.
+            Nothing is priced per session any more: a case is paid for by the Admission it comes out of.
+            Capacity is what closes booking for the day. The estimate is what the waiting room counts
+            down from, and a single case can still be given longer by hand.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Price, cents</label>
-              <Input
-                type="number"
-                value={cfg.price_cents}
-                onChange={(e) => setCfg({ ...cfg, price_cents: Number(e.target.value) })}
-              />
-              <p className="text-[11px] text-gray-600 mt-1">${dollars} a session.</p>
-            </div>
+          <div className="grid gap-3 sm:grid-cols-3">
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1">Cases a day</label>
               <Input
@@ -235,17 +226,16 @@ export default function SessionsPage() {
           </div>
 
           <p className="text-[11px] text-gray-600">
-            At {cfg.capacity_per_day} cases a day this desk owes {cfg.capacity_per_day} finished songs
-            every day and takes ${((cfg.capacity_per_day * cfg.price_cents) / 100).toFixed(2)} to do it.
-            Set it to what you can actually deliver. With {cfg.per_patient_per_day} per patient, that is
-            at least {cfg.capacity_per_day} different people.
+            At {cfg.capacity_per_day} cases a day this desk owes {cfg.capacity_per_day} finished
+            Prescriptions every day. Set it to what you can actually deliver. With{" "}
+            {cfg.per_patient_per_day} per patient, that is at least {cfg.capacity_per_day} different
+            people.
           </p>
 
           <button
             type="button"
             onClick={() =>
               patch("numbers", {
-                price_cents: cfg.price_cents,
                 capacity_per_day: cfg.capacity_per_day,
                 per_patient_per_day: cfg.per_patient_per_day,
                 estimate_minutes: cfg.estimate_minutes,
@@ -259,6 +249,8 @@ export default function SessionsPage() {
           </button>
         </CardContent>
       </Card>
+
+      <Admission />
 
       <Voices />
 
