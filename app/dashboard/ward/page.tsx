@@ -481,68 +481,25 @@ export default function WardPage() {
         </Card>
       ) : null}
 
+      {/* 1. ON THE WARD */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm text-gray-400 flex items-center gap-2">
-            <Activity className="w-4 h-4" /> 1. The dose target
-          </CardTitle>
-          <CardDescription>
-            One number for every song on the ward. Reach it and the song moves to the archive on its own,
-            and the next one in the queue comes up. Changing it changes every song at once.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex-1 min-w-[150px]">
-              <label className="block text-[11px] text-gray-500 mb-1">Doses before a song retires</label>
-              <Input
-                value={deskTarget}
-                inputMode="numeric"
-                onChange={(e) => setDeskTarget(e.target.value.replace(/[^0-9]/g, ""))}
-              />
-            </div>
-            <div className="flex-1 min-w-[150px]">
-              <label className="block text-[11px] text-gray-500 mb-1">A dose counts at</label>
-              <Input
-                value={deskPct}
-                inputMode="numeric"
-                onChange={(e) => setDeskPct(e.target.value.replace(/[^0-9]/g, ""))}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => post("target", { what: "desk_target", target: Number(deskTarget), pct: Number(deskPct) })}
-              disabled={busy === "target"}
-              className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-60"
-            >
-              {busy === "target" ? <Loader2 className="w-4 h-4 animate-spin" /> : saved === "target" ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-              Save
-            </button>
-            <p className="basis-full text-xs text-gray-600">
-              {desk.live.length} on the ward, each retiring at {Number(deskTarget || 0).toLocaleString("en-US")} doses,
-              counted at {deskPct || 80}% of the track.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* 2. ON THE WARD */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm text-gray-400 flex items-center gap-2">
-            <Music2 className="w-4 h-4" /> 2. On the ward
+            <Music2 className="w-4 h-4" /> 1. On the ward
             <span className="ml-auto text-xs font-normal text-gray-500">
               {desk.live.length} {desk.live.length === 1 ? "song" : "songs"}
             </span>
           </CardTitle>
-          <CardDescription>Tap the star to choose the one in focus at the top of the app.</CardDescription>
+          <CardDescription>
+            Everything patients can play right now. Tap the star to choose the one in focus at the top of
+            the app, and Take it off to bring one down. Doses keep counting either way.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {desk.live.length === 0 ? (
             <p className="text-sm text-gray-500">Nothing on the ward. Flip a song on below.</p>
           ) : (
             desk.live.map((s) => {
-              const pct = s.target > 0 ? Math.min(100, (s.doses / s.target) * 100) : 0
               return (
                 <div
                   key={s.id}
@@ -582,26 +539,19 @@ export default function WardPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-white">{s.title}</p>
                     <p className="truncate text-xs text-gray-500">{s.artist}</p>
-                    <div className="mt-2 h-1 max-w-[320px] overflow-hidden rounded bg-gray-800">
-                      <div className="h-full bg-green-500" style={{ width: `${pct}%` }} />
-                    </div>
                   </div>
 
                   <span className="shrink-0 font-mono text-xs text-gray-400">
-                    {s.doses.toLocaleString("en-US")} / {s.target.toLocaleString("en-US")}
+                    {s.doses.toLocaleString("en-US")} doses
                   </span>
 
                   <button
                     type="button"
-                    disabled={busy === `off-${s.trackId}`}
-                    onClick={() => {
-                      if (window.confirm(`Move ${s.title} to the archive? It comes off the ward and patients can still play it there.`)) {
-                        post(`off-${s.trackId}`, { what: "song_off", track_id: s.trackId })
-                      }
-                    }}
-                    className="shrink-0 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs font-semibold text-gray-400 hover:border-red-900 hover:text-red-400 disabled:opacity-40"
+                    disabled={busy === `park-${s.trackId}`}
+                    onClick={() => post(`park-${s.trackId}`, { what: "song_park", track_id: s.trackId })}
+                    className="shrink-0 rounded-lg border border-gray-700 px-2.5 py-1.5 text-xs font-semibold text-gray-400 hover:border-yellow-800 hover:text-yellow-400 disabled:opacity-40"
                   >
-                    Move to archive
+                    Take it off
                   </button>
                 </div>
               )
@@ -610,20 +560,19 @@ export default function WardPage() {
         </CardContent>
       </Card>
 
-      {/* 3. THE CATALOGUE */}
+      {/* 2. THE CATALOGUE */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm text-gray-400 flex items-center gap-2">
-            <Users className="w-4 h-4" /> 3. The catalogue
+            <Users className="w-4 h-4" /> 2. The catalogue
             <span className="ml-auto text-xs font-normal text-gray-500">
               {desk.artists.length} artists &middot; {desk.artists.reduce((n, a) => n + a.songs.length, 0)} songs
             </span>
           </CardTitle>
           <CardDescription>
-            Your artists and their songs, straight from Tracks. Flip one on and it is on the ward. The line
-            saves when you click away. <strong className="text-gray-300">One song per therapist:</strong> to
-            put a different one up, switch the current one off first. Off keeps its dose count and stays out of the
-            archive; only Move to archive and a finished 10,000 put a song in the archive.
+            Your artists and their songs, straight from Tracks. Flip one on and it is on the ward, flip it
+            off and it comes down. As many as you like, from as many therapists as you like. The line saves
+            when you click away. Nothing retires on its own and a song that comes off keeps its dose count.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -726,22 +675,8 @@ export default function WardPage() {
 
                           {up ? (
                             <span className="w-[86px] shrink-0 text-right text-[11px] text-green-500">ON THE WARD</span>
-                          ) : s.state === "classified" ? (
-                            <span className="w-[86px] shrink-0 text-right text-[11px] text-yellow-600">QUEUED</span>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                post(`q-${s.trackId}`, {
-                                  what: "song_queue",
-                                  track_id: s.trackId,
-                                  line: lineDraft[s.trackId] ?? s.line,
-                                })
-                              }
-                              className="w-[86px] shrink-0 rounded border border-gray-800 py-1 text-[11px] text-gray-500 hover:border-yellow-800 hover:text-yellow-500"
-                            >
-                              Queue it
-                            </button>
+                            <span className="w-[86px] shrink-0 text-right text-[11px] text-gray-600">OFF</span>
                           )}
                         </div>
                       )
@@ -755,100 +690,6 @@ export default function WardPage() {
       </Card>
 
       {/* 4. NEXT UP */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm text-gray-400 flex items-center gap-2">
-            <Lock className="w-4 h-4" /> 4. Next up
-            <span className="ml-auto text-xs font-normal text-gray-500">the order they join</span>
-          </CardTitle>
-          <CardDescription>
-            When a song reaches the target and retires, the top of this queue takes its place. Patients never
-            see these titles.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {desk.queue.length === 0 ? (
-            <p className="text-sm text-gray-500">
-              Queue empty. Nothing will replace a song when it retires, the ward just gets smaller.
-            </p>
-          ) : (
-            desk.queue.map((q, i) => (
-              <div key={q.id} className="flex items-center gap-3 rounded-lg border border-dashed border-gray-800 p-2.5">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-gray-900 text-[11px] font-semibold text-gray-400">
-                  {i + 1}
-                </span>
-                {img(q.cover) ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={img(q.cover)} alt="" className="w-9 h-9 rounded object-cover shrink-0 bg-gray-800" />
-                ) : (
-                  <div className="w-9 h-9 rounded bg-gray-800 shrink-0" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-white">{q.title}</p>
-                  <p className="truncate text-xs text-gray-500">{q.artist}</p>
-                </div>
-                {i > 0 ? (
-                  <button type="button" onClick={() => post(`mu-${q.id}`, { what: "queue_move", id: q.id, up: true })}
-                    className="rounded border border-gray-800 px-2 py-1 text-xs text-gray-500 hover:text-white">&uarr;</button>
-                ) : null}
-                {i < desk.queue.length - 1 ? (
-                  <button type="button" onClick={() => post(`md-${q.id}`, { what: "queue_move", id: q.id, up: false })}
-                    className="rounded border border-gray-800 px-2 py-1 text-xs text-gray-500 hover:text-white">&darr;</button>
-                ) : null}
-                <button type="button"
-                  onClick={() => post(`qon-${q.trackId}`, { what: "song_on", track_id: q.trackId })}
-                  className="rounded border border-gray-800 px-2 py-1 text-[11px] text-gray-400 hover:border-green-800 hover:text-green-400">
-                  Put it up now
-                </button>
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
-
-      {/* THE ARCHIVE */}
-      {desk.archive.length > 0 ? (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-400">The archive</CardTitle>
-            <CardDescription>Retired, off the ward, and still playable for patients who go looking.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-1.5">
-            {desk.archive.map((s) => (
-              <div key={s.id} className="flex items-center gap-3 text-sm">
-                <span className="truncate font-medium text-gray-300">{s.title}</span>
-                <span className="truncate text-gray-600">{s.artist}</span>
-                <span className="ml-auto shrink-0 font-mono text-xs text-gray-600">
-                  {s.doses.toLocaleString("en-US")} doses
-                </span>
-                <button
-                  type="button"
-                  onClick={() => post(`back-${s.trackId}`, { what: "song_on", track_id: s.trackId })}
-                  className="shrink-0 rounded border border-gray-800 px-2 py-1 text-[11px] text-gray-500 hover:border-green-800 hover:text-green-400"
-                >
-                  Put it back
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (
-                      confirm(
-                        `Scrap "${s.title}" from the archive? It disappears from the app's archive for everyone. The song itself stays in Tracks and can be prescribed again fresh.`,
-                      )
-                    ) {
-                      post(`scrap-${s.id}`, { what: "rx_scrap", id: s.id })
-                    }
-                  }}
-                  className="shrink-0 rounded border border-gray-800 px-2 py-1 text-[11px] text-gray-600 hover:border-red-900 hover:text-red-400"
-                >
-                  Scrap
-                </button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      ) : null}
-
       {/* ── DOSES ─────────────────────────────────────────────────── */}
       <Card>
         <CardHeader>
