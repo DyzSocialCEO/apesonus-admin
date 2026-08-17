@@ -18,6 +18,13 @@ import { Loader2, Check, Copy, Flag, Clock, Send, AlertCircle } from "lucide-rea
  * there is no second uploader on this page.
  */
 
+interface TrackRow {
+  id: number
+  title: string
+  artist: string
+  mood: string
+}
+
 interface CaseRow {
   id: string
   patient_no: number | null
@@ -82,6 +89,26 @@ export function CaseQueue() {
   const [error, setError] = useState("")
   const [copied, setCopied] = useState<string | null>(null)
   const [draft, setDraft] = useState<Record<string, { title: string; track: string }>>({})
+  const [tracks, setTracks] = useState<TrackRow[]>([])
+
+  // THE PICKER. Typing a track id by hand was the wrong interface: every case
+  // needed a trip to the database to look one up. The songs are already in
+  // Tracks with their moods, so the desk reads them and you choose one.
+  useEffect(() => {
+    fetch("/api/admin/tracks", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const list: TrackRow[] = (Array.isArray(d?.tracks) ? d.tracks : []).map((t: any) => ({
+          id: Number(t.id),
+          title: String(t.title || ""),
+          artist: String(t.artist || ""),
+          mood: String(t.mood || "").toUpperCase(),
+        }))
+        list.sort((a, b) => a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title))
+        setTracks(list)
+      })
+      .catch(() => {})
+  }, [])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -229,18 +256,35 @@ export function CaseQueue() {
                       ))}
                     </div>
 
-                    <div className="grid gap-2 sm:grid-cols-[1fr_140px_auto]">
+                    <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
                       <Input
                         placeholder="Title on the prescription"
                         value={d(c.id).title || c.title || ""}
                         onChange={(e) => setD(c.id, { title: e.target.value })}
                       />
-                      <Input
-                        placeholder="Track id"
-                        type="number"
+                      <select
                         value={d(c.id).track || (c.track_id ? String(c.track_id) : "")}
-                        onChange={(e) => setD(c.id, { track: e.target.value })}
-                      />
+                        onChange={(e) => {
+                          const id = e.target.value
+                          const t = tracks.find((x) => String(x.id) === id)
+                          // Take the song's own title as the starting point.
+                          // It is still editable, because a case usually wants
+                          // the patient's line rather than the studio one.
+                          setD(c.id, {
+                            track: id,
+                            title: d(c.id).title || c.title || t?.title || "",
+                          })
+                        }}
+                        className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        <option value="">Attach a song</option>
+                        {tracks.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.artist} &middot; {t.title}
+                            {t.mood ? ` [${t.mood}]` : ""}
+                          </option>
+                        ))}
+                      </select>
                       <button
                         type="button"
                         disabled={busy === `rel-${c.id}` || c.flagged}
@@ -259,8 +303,9 @@ export function CaseQueue() {
                       </button>
                     </div>
                     <p className="text-[11px] text-gray-600">
-                      Upload the finished song in Tracks first, then put its id here. Releasing puts it on
-                      the patient's own page straight away.
+                      Upload the finished song in Tracks first, with its mood, then pick it here. The
+                      condition tag follows the song, so it never has to be set twice. Releasing puts it
+                      on the patient's own page straight away.
                     </p>
 
                     <div className="flex flex-wrap gap-2">
