@@ -5,7 +5,7 @@ import { formatNumber } from "@/lib/utils"
 import { LiveSignups } from "@/components/live-signups"
 
 /**
- * /dashboard — main admin home.
+ * /dashboard, the admin home.
  *
  * Reads against the LIVE schema, not the legacy v1 columns. Source-of-truth
  * mapping established post-migration v3 (Supabase auth) and migration 045
@@ -16,7 +16,7 @@ import { LiveSignups } from "@/components/live-signups"
  *   recent users    → users.{id, display_name, total_onus, created_at}
  *                     plays count via per-user count from play_history
  *                     streak via user_streaks.telegram_id (column kept legacy
- *                     name despite holding a UUID — handoff §6.1, do NOT rename)
+ *                     name despite holding a UUID, handoff 6.1, do NOT rename)
  *
  * Previously read users.tracks_played and users.last_played_at directly.
  * Those columns exist (migration 010 added them) but the PWA no longer
@@ -35,7 +35,7 @@ async function getStats() {
       .from("users")
       .select("*", { count: "exact", head: true })
 
-    // Active (7d) — distinct user_ids who played in the last 7 days.
+    // Active in 7 days: distinct user_ids who played in the last week.
     // play_history has no aggregation RPC, so we pull the user_id column
     // and dedupe in JS. Cheap at expected scale.
     const { data: recentPlays } = await supabase
@@ -46,7 +46,7 @@ async function getStats() {
       ? new Set(recentPlays.map((p) => p.user_id)).size
       : 0
 
-    // Total plays — count of rows in play_history.
+    // Total plays, counted from play_history.
     const { count: totalPlays } = await supabase
       .from("play_history")
       .select("*", { count: "exact", head: true })
@@ -56,20 +56,37 @@ async function getStats() {
       .select("*", { count: "exact", head: true })
       .eq("is_active", true)
 
-    // Spins sold (confirmed purchases) + paying users, the real money signals.
-    // ammo_amount is the Spin count on the order; the column kept its old name
-    // because the whole payment rail rides on it.
+    // The money, in the shape the clinic actually sells it. usd_cents is what
+    // the order was worth; ammo_amount is a leftover column name from when the
+    // only product was Spins and is not read here.
     const { data: purchases } = await supabase
       .from("pit_ammo_purchases")
-      .select("user_id, ammo_amount, status")
+      .select("user_id, usd_cents, status")
       .eq("status", "confirmed")
-    let ammoSold = 0
+    let revenueCents = 0
     const payers = new Set<string>()
     for (const p of purchases || []) {
-      ammoSold += Number(p.ammo_amount || 0)
+      revenueCents += Number(p.usd_cents || 0)
       if (p.user_id) payers.add(p.user_id)
     }
     const payingUsers = payers.size
+
+    // The business, in one read each.
+    const liveIso = new Date().toISOString()
+    const [{ count: inpatients }, { count: casesBooked }, { count: delivered }, { count: onRecord }, { data: caseDoses }] =
+      await Promise.all([
+        supabase
+          .from("ward_admissions")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "active")
+          .gt("expires_at", liveIso),
+        supabase.from("ward_cases").select("*", { count: "exact", head: true }).neq("status", "awaiting_payment"),
+        supabase.from("ward_cases").select("*", { count: "exact", head: true }).eq("status", "released"),
+        supabase.from("ward_cases").select("*", { count: "exact", head: true }).not("published_at", "is", null),
+        supabase.from("ward_case_sessions").select("state").not("dosed_at", "is", null),
+      ])
+
+    const qualified = (caseDoses ?? []).filter((r: any) => r.state === "qualified").length
 
     // Recent users
     const { data: recentUsers } = await supabase
@@ -80,7 +97,7 @@ async function getStats() {
 
     const userIds = recentUsers?.map((u) => u.id) || []
 
-    // Per-user play counts — single fetch, group in JS. Avoids 8 round trips.
+    // Per-user play counts, one fetch grouped in JS. Avoids 8 round trips.
     const { data: playRows } = userIds.length
       ? await supabase
           .from("play_history")
@@ -93,7 +110,7 @@ async function getStats() {
       playCount.set(r.user_id, (playCount.get(r.user_id) || 0) + 1)
     }
 
-    // Per-user Ammo balance + Embers (loyalty) — the current model, not $ONUS/tiers.
+    // Per-user balances, kept for the recent patients table only.
     const { data: balRows } = userIds.length
       ? await supabase.from("pit_ammo_balances").select("user_id, balance").in("user_id", userIds)
       : { data: [] as any[] }
@@ -121,34 +138,44 @@ async function getStats() {
       activeUsers,
       totalPlays: totalPlays || 0,
       totalTracks: totalTracks || 0,
-      ammoSold,
+      revenueCents,
       payingUsers,
+      inpatients: inpatients || 0,
+      casesBooked: casesBooked || 0,
+      delivered: delivered || 0,
+      onRecord: onRecord || 0,
+      qualified,
       recentUsers: enrichedUsers,
     }
   } catch (error) {
     console.error("Error:", error)
     return {
       totalUsers: 0, activeUsers: 0, totalPlays: 0, totalTracks: 0,
-      ammoSold: 0, payingUsers: 0, recentUsers: [],
+      revenueCents: 0, payingUsers: 0, inpatients: 0, casesBooked: 0,
+      delivered: 0, onRecord: 0, qualified: 0, recentUsers: [],
     }
   }
 }
 
 function shortId(id: string | null | undefined): string {
-  if (!id) return "—"
+  if (!id) return "none"
   return id.length > 8 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id
 }
 
 export default async function DashboardPage() {
   const stats = await getStats()
 
+  // The numbers that describe THIS business: who is admitted, what the desk
+  // owes, what is on the record, and how much of the listening held up.
   const statCards = [
-    { title: "Total Users",    value: formatNumber(stats.totalUsers),    icon: Users,      color: "text-blue-400",   bg: "bg-blue-400/10" },
-    { title: "Active (7d)",    value: formatNumber(stats.activeUsers),   icon: TrendingUp, color: "text-green-400",  bg: "bg-green-400/10" },
-    { title: "Total Plays",    value: formatNumber(stats.totalPlays),    icon: Play,       color: "text-purple-400", bg: "bg-purple-400/10" },
-    { title: "Tracks",         value: formatNumber(stats.totalTracks),   icon: Music,      color: "text-primary",    bg: "bg-primary/10" },
-    { title: "Spins sold",     value: formatNumber(stats.ammoSold),      icon: Activity,   color: "text-cyan-400",   bg: "bg-cyan-400/10" },
-    { title: "Paying users",   value: formatNumber(stats.payingUsers),   icon: Crown,      color: "text-yellow-400", bg: "bg-yellow-400/10" },
+    { title: "Patients",          value: formatNumber(stats.totalUsers),   icon: Users,      color: "text-blue-400",   bg: "bg-blue-400/10" },
+    { title: "Active (7d)",       value: formatNumber(stats.activeUsers),  icon: TrendingUp, color: "text-green-400",  bg: "bg-green-400/10" },
+    { title: "Inpatients",        value: formatNumber(stats.inpatients),   icon: Crown,      color: "text-yellow-400", bg: "bg-yellow-400/10" },
+    { title: "Admission revenue", value: `$${(stats.revenueCents / 100).toFixed(2)}`, icon: Activity, color: "text-cyan-400", bg: "bg-cyan-400/10" },
+    { title: "Sessions booked",   value: formatNumber(stats.casesBooked),  icon: Music,      color: "text-primary",    bg: "bg-primary/10" },
+    { title: "Prescriptions out", value: formatNumber(stats.delivered),    icon: Play,       color: "text-purple-400", bg: "bg-purple-400/10" },
+    { title: "On the record",     value: formatNumber(stats.onRecord),     icon: Music,      color: "text-violet-400", bg: "bg-violet-400/10" },
+    { title: "Qualified doses",   value: formatNumber(stats.qualified),    icon: TrendingUp, color: "text-green-400",  bg: "bg-green-400/10" },
   ]
 
   return (
@@ -158,7 +185,7 @@ export default async function DashboardPage() {
         <p className="text-gray-400">Welcome back to APESONUS Admin</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {statCards.map((stat) => (
           <Card key={stat.title} className="bg-gray-900 border-gray-800">
             <CardContent className="p-4">
@@ -199,7 +226,7 @@ export default async function DashboardPage() {
                             {user.display_name || user.email || "Unknown"}
                           </p>
                         </div>
-                        <p className="text-xs text-gray-500">{user.email || "—"}</p>
+                        <p className="text-xs text-gray-500">{user.email || "none"}</p>
                       </td>
                       <td className="py-3 px-4 text-xs text-gray-400 font-mono">{shortId(user.id)}</td>
                       <td className="py-3 px-4 text-center text-white text-sm">{user.plays}</td>

@@ -9,7 +9,7 @@ import { Loader2, Save, Check, AlertCircle, Activity, Users, Plus, Trash2, Lock,
  * /dashboard/ward, THE WARD desk.
  *
  * The staff, their prescriptions and dose targets, the buy link, and today's
- * clip. Listening is free, so nothing on this desk prices it. Nothing here is
+ * Listening is free, so nothing on this desk prices it. Nothing here is
  * written into the app: changing any of it changes the app on the next page
  * load, with no deploy.
  *
@@ -65,14 +65,6 @@ interface RosterArtist {
   image: string
 }
 
-interface Clip {
-  url: string
-  caption: string
-  /** What the round is called. The archive drawer lists it. */
-  title: string
-  /** How long it runs, in seconds. Printed beside the title. */
-  seconds: string
-}
 
 interface LiveRx {
   id: number
@@ -215,11 +207,6 @@ export default function WardPage() {
   // second. Backwards.
   const [lineDraft, setLineDraft] = useState<Record<number, string>>({})
   const [queue, setQueue] = useState<QueueRx[]>([])
-  const [founding, setFounding] = useState<{ issued: number; admitted: number } | null>(null)
-  const [fClose, setFClose] = useState("")
-  const [fDaily, setFDaily] = useState("")
-  const [fNeeded, setFNeeded] = useState("")
-  const [fWindow, setFWindow] = useState("")
   const [retired, setRetired] = useState<RetiredRx[]>([])
   const [tune, setTune] = useState({ target: "", pct: "" })
   const [buyUrl, setBuyUrl] = useState("")
@@ -227,7 +214,6 @@ export default function WardPage() {
   const [census, setCensus] = useState(0)
   const [holders, setHolders] = useState(0)
   const [mint, setMint] = useState<string | null>(null)
-  const [clip, setClip] = useState<Clip>({ url: "", caption: "", title: "", seconds: "" })
   const [day, setDay] = useState("")
 
   const [loading, setLoading] = useState(true)
@@ -279,23 +265,6 @@ export default function WardPage() {
         setHolders(Number(d.holders ?? 0))
         setMint(d.mint ?? null)
         setDay(String(d.day ?? ""))
-        if (d.founding) {
-          setFounding({ issued: Number(d.founding.issued ?? 0), admitted: Number(d.founding.admitted ?? 0) })
-          setFClose(String(d.founding.close ?? ""))
-          setFDaily(String(d.founding.daily ?? "10"))
-          setFNeeded(String(d.founding.needed ?? "7"))
-          setFWindow(String(d.founding.windowDays ?? "10"))
-        }
-        setClip(
-          d.morningDose
-            ? {
-                url: d.morningDose.url,
-                caption: d.morningDose.caption ?? "",
-                title: d.morningDose.title ?? "",
-                seconds: d.morningDose.seconds ? String(d.morningDose.seconds) : "",
-              }
-            : { url: "", caption: "", title: "", seconds: "" },
-        )
         setError("")
       })
       .catch((e) => setError(e instanceof Error ? e.message : "something went wrong"))
@@ -310,16 +279,6 @@ export default function WardPage() {
   }
 
   // Days left on the founding series, read off the SAVED close date. Null when
-  // the field is empty or malformed, negative once the date has passed. There
-  // is deliberately no separate on/off switch: two controls for one state is
-  // how a series ends up open in the app and closed on the desk.
-  const seriesDays = (() => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fClose)) return null
-    const end = Date.parse(`${fClose}T23:59:59Z`)
-    if (!Number.isFinite(end)) return null
-    return Math.floor((end - Date.now()) / 86400000)
-  })()
-
   const post = async (tag: string, payload: Record<string, unknown>) => {
     if (busy) return false
     setBusy(tag)
@@ -425,62 +384,6 @@ export default function WardPage() {
           ══════════════════════════════════════════════════════════════ */}
 
       {/* 1. THE TARGET */}
-      {founding ? (
-        <Card className="border-amber-700/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-amber-400">THE FOUNDING SERIES</CardTitle>
-            <CardDescription>
-              The Original Prescription. Issued automatically when a patient admitted before the close date
-              completes the daily treatments on enough days inside their window. Saving here changes the live
-              rules immediately.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-4 flex flex-wrap gap-8 font-mono text-sm">
-              <div><span className="text-gray-500">Issued</span> <strong className="text-amber-300">{founding.issued}</strong></div>
-              <div><span className="text-gray-500">Admitted in window</span> <strong>{founding.admitted}</strong></div>
-              {/* Whether the door is still open, worked out from the saved close
-                  date rather than a second switch. One date, one truth. */}
-              <div>
-                <span className="text-gray-500">Series</span>{" "}
-                {seriesDays === null ? (
-                  <strong className="text-gray-500">NO CLOSE DATE</strong>
-                ) : seriesDays >= 0 ? (
-                  <strong className="text-emerald-400">
-                    OPEN · {seriesDays} day{seriesDays === 1 ? "" : "s"} left
-                  </strong>
-                ) : (
-                  <strong className="text-red-400">CLOSED</strong>
-                )}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <label className="block text-[11px] text-gray-500">Series closes (UTC)
-                <input value={fClose} onChange={(e) => setFClose(e.target.value)} placeholder="2026-08-27"
-                  className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-950 px-2 py-1.5 font-mono text-sm" />
-              </label>
-              <label className="block text-[11px] text-gray-500">Treatments per day
-                <input value={fDaily} onChange={(e) => setFDaily(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-950 px-2 py-1.5 font-mono text-sm" />
-              </label>
-              <label className="block text-[11px] text-gray-500">Days needed
-                <input value={fNeeded} onChange={(e) => setFNeeded(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-950 px-2 py-1.5 font-mono text-sm" />
-              </label>
-              <label className="block text-[11px] text-gray-500">Personal window (days)
-                <input value={fWindow} onChange={(e) => setFWindow(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-950 px-2 py-1.5 font-mono text-sm" />
-              </label>
-            </div>
-            <button type="button" disabled={busy === "founding"}
-              onClick={() => post("founding", { what: "founding_config", close: fClose, daily: fDaily, needed: fNeeded, window_days: fWindow })}
-              className="mt-4 rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-black hover:bg-amber-400 disabled:opacity-40">
-              Save series rules
-            </button>
-          </CardContent>
-        </Card>
-      ) : null}
-
       {/* 1. ON THE WARD */}
       <Card>
         <CardHeader className="pb-2">
@@ -736,88 +639,6 @@ export default function WardPage() {
         </CardContent>
       </Card>
 
-      {/* ── MORNING DOSE ──────────────────────────────────────────── */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Today&rsquo;s Morning Dose</CardTitle>
-          <CardDescription>
-            The clip for {day}. Upload the file to Bunny like a cover, then paste the link here.
-            Clearing the link takes the card off the ward. Tomorrow starts empty. Every round you save
-            stays in the Morning Dose Archive, which is why the title and the length matter.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Clip link</label>
-            <Input value={clip.url} placeholder="https://..." onChange={(e) => setClip({ ...clip, url: e.target.value })} />
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Title</label>
-              <Input
-                value={clip.title}
-                placeholder="Before You Open the Chart"
-                onChange={(e) => setClip({ ...clip, title: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Length in seconds</label>
-              <Input
-                value={clip.seconds}
-                inputMode="numeric"
-                placeholder="30"
-                onChange={(e) => setClip({ ...clip, seconds: e.target.value.replace(/[^0-9]/g, "") })}
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">
-              What Dr. Onus says, shown beside the clip
-            </label>
-            <Input value={clip.caption} onChange={(e) => setClip({ ...clip, caption: e.target.value })} />
-          </div>
-          <button
-            type="button"
-            onClick={() => post("clip", { what: "clip", ...clip, seconds: Number(clip.seconds || 0) })}
-            disabled={busy === "clip"}
-            className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
-          >
-            {busy === "clip" ? <Loader2 className="w-4 h-4 animate-spin" /> : saved === "clip" ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            Save the clip
-          </button>
-        </CardContent>
-      </Card>
-
-      {/* ── THE DOOR ──────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader>
-          <CardTitle>The door</CardTitle>
-          <CardDescription>
-            The CA the app shows inside the admission step is the payment mint from Settings, so a
-            wrong address and a broken checkout are the same fault. It no longer sits in the sidebar.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">BUY $PUMP link, optional override</label>
-            <Input value={buyUrl} placeholder="https://pump.fun/coin/..." onChange={(e) => setBuyUrl(e.target.value)} />
-            <p className="text-[11px] text-gray-600 mt-1">Empty = the app links straight to the mint on pump.fun.</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => patch("buy", { buy_url: buyUrl })}
-            disabled={busy === "buy"}
-            className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
-          >
-            {busy === "buy" ? <Loader2 className="w-4 h-4 animate-spin" /> : saved === "buy" ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            Save the link
-          </button>
-          <div className="rounded-lg border border-gray-800 bg-gray-950 px-3 py-2">
-            <div className="text-[11px] text-gray-500">The mint the app publishes (changed on the payments card in Settings)</div>
-            <div className="mt-1 break-all font-mono text-xs text-gray-300">{mint ?? "not set"}</div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }

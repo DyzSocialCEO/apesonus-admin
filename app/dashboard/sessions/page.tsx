@@ -7,6 +7,7 @@ import { Loader2, Save, Check, AlertCircle, Stethoscope } from "lucide-react"
 import { CaseQueue } from "./case-queue"
 import { Voices } from "./voices"
 import { Admission } from "./admission"
+import { CreatorPool } from "./creator-pool"
 
 /**
  * /dashboard/sessions, THE SESSIONS desk.
@@ -185,13 +186,14 @@ export default function SessionsPage() {
         <CardHeader>
           <CardTitle>Capacity and time</CardTitle>
           <CardDescription>
-            Nothing is priced per session any more: a case is paid for by the Admission it comes out of.
-            Capacity is what closes booking for the day. The estimate is what the waiting room counts
-            down from, and a single case can still be given longer by hand.
+Nothing is priced per session any more: a case is paid for by the Admission it comes out of, and a
+            patient gets one session per treatment week. Capacity is what closes booking for the day.
+            The estimate is what the waiting room counts down from, and a single case can still be
+            given longer by hand.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1">Cases a day</label>
               <Input
@@ -201,17 +203,6 @@ export default function SessionsPage() {
               />
               <p className="text-[11px] text-gray-600 mt-1">
                 Booking closes for everybody when this is hit. Zero closes it outright.
-              </p>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Cases per patient a day</label>
-              <Input
-                type="number"
-                value={cfg.per_patient_per_day}
-                onChange={(e) => setCfg({ ...cfg, per_patient_per_day: Number(e.target.value) })}
-              />
-              <p className="text-[11px] text-gray-600 mt-1">
-                Held at 1 so nobody floods the queue. Raise it only if the stories are worth it.
               </p>
             </div>
             <div>
@@ -228,7 +219,7 @@ export default function SessionsPage() {
           <p className="text-[11px] text-gray-600">
             At {cfg.capacity_per_day} cases a day this desk owes {cfg.capacity_per_day} finished
             Prescriptions every day. Set it to what you can actually deliver. With{" "}
-            {cfg.per_patient_per_day} per patient, that is at least {cfg.capacity_per_day} different
+one session per patient per treatment week, that is at least {cfg.capacity_per_day} different
             people.
           </p>
 
@@ -237,7 +228,6 @@ export default function SessionsPage() {
             onClick={() =>
               patch("numbers", {
                 capacity_per_day: cfg.capacity_per_day,
-                per_patient_per_day: cfg.per_patient_per_day,
                 estimate_minutes: cfg.estimate_minutes,
               })
             }
@@ -251,6 +241,8 @@ export default function SessionsPage() {
       </Card>
 
       <Admission />
+
+      <CreatorPool />
 
       <Voices />
 
