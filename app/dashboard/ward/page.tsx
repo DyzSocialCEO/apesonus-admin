@@ -508,22 +508,18 @@ export default function WardPage() {
                   <div className="border-t border-gray-800 px-3 pb-3">
                     {a.songs.map((s) => {
                       const up = s.state === "current" || s.state === "breached"
-                      // Their slot is taken by a different song of theirs.
-                      const blocked =
-                        !up &&
-                        s.state !== "classified" &&
-                        a.songs.some((o) => o.state === "current" || o.state === "breached")
+                      // NOTHING BLOCKS A SECOND SONG ANY MORE. A therapist used
+                      // to have one slot, so every other song of theirs was
+                      // greyed out until it was freed. They build a shelf now.
                       return (
                         <div key={s.trackId} className="flex flex-wrap items-center gap-3 border-b border-gray-900 py-3 last:border-b-0">
                           <button
                             type="button"
-                            disabled={busy === `sw-${s.trackId}` || blocked}
+                            disabled={busy === `sw-${s.trackId}`}
                             title={
-                              blocked
-                                ? "This therapist already has a song on the ward. Switch it off or archive it first."
-                                : up
-                                  ? "Take it off the ward. It keeps its dose count and does not go to the archive."
-                                  : "Put it on the ward"
+                              up
+                                ? "Take it off the ward. It keeps its dose count and does not go to the archive."
+                                : "Put it on the ward"
                             }
                             onClick={() =>
                               post(`sw-${s.trackId}`, {
@@ -533,7 +529,7 @@ export default function WardPage() {
                               })
                             }
                             className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                              up ? "bg-green-800" : blocked ? "cursor-not-allowed bg-gray-800 opacity-40" : "bg-gray-700"
+                              up ? "bg-green-800" : "bg-gray-700"
                             }`}
                           >
                             <span

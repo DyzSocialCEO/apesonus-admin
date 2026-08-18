@@ -828,18 +828,10 @@ export async function POST(request: Request) {
           .maybeSingle()
 
         if (parked) {
-          const { count: liveForTherapist } = await supabase
-            .from("ward_prescriptions")
-            .select("id", { count: "exact", head: true })
-            .eq("therapist_id", parked.therapist_id)
-            .in("status", ["current", "breached"])
-          if (Number(liveForTherapist ?? 0) > 0) {
-            return NextResponse.json(
-              { error: "That therapist already has a song on the ward. Switch it off or archive it first." },
-              { status: 400 },
-            )
-          }
-
+          // ONE SONG PER THERAPIST IS DEAD. Migration 124 dropped the index
+          // that enforced it, and a therapist is meant to build up a shelf.
+          // The count that used to be taken here refused to revive a parked
+          // song purely because that therapist already had one up.
           const { data: cfg } = await supabase
             .from("app_settings").select("value").eq("key", "ward_config").maybeSingle()
           let fallbackTarget = 10000
@@ -873,17 +865,16 @@ export async function POST(request: Request) {
         const { data, error } = await supabase.rpc("ward_song_on", { p_track: track, p_line: line })
         if (error) throw error
         if (data?.ok !== true) {
-          // One song per therapist on the ward, enforced in the database. The
-          // desk says which song is in the way rather than failing quietly.
+          // therapist_busy cannot come back any more: the database stopped
+          // refusing a second song per therapist in 124. Anything else it
+          // refuses is said in the desk's own words rather than as a 500.
           const reason = String(data?.reason || "")
           return NextResponse.json(
             {
               error:
-                reason === "therapist_busy"
-                  ? `That therapist already has ${data?.song ?? "a song"} on the ward. Move that one to the archive first, or switch it off.`
-                  : reason === "track_has_no_artist"
-                    ? "That track has no artist on it. Fill the Artist field in Tracks first."
-                    : "Could not put that song up.",
+                reason === "track_has_no_artist"
+                  ? "That track has no artist on it. Fill the Artist field in Tracks first."
+                  : "Could not put that song up.",
             },
             { status: 400 },
           )
