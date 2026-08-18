@@ -45,6 +45,7 @@ const ALLOWED_KEYS = new Set([
   // Payment rails, the tokens Spins are bought with
   "pay_rails",
   "token_bonus_pct",
+  "clinic_rate_pct",
   "pay_rail",
   "onus_mint",
   "onus_decimals",
@@ -137,6 +138,7 @@ function validate(key: string, value: string): string | null {
         return "pay_rails must be JSON, e.g. [\"onus\",\"usdc\"]"
       }
     }
+    case "clinic_rate_pct":
     case "token_bonus_pct": {
       if (value === "") return null
       const n = Number(value)

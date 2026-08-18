@@ -9,18 +9,18 @@ import {
   Save, Sparkles, Clock, Activity, RefreshCw, AlertCircle, Wallet, Check, Gem, Swords,
 } from "lucide-react"
 
-// Base58 (no 0 O I l), 32-44 chars — same check the API enforces.
+// Base58 (no 0 O I l), 32-44 chars, the same check the API enforces.
 const SOLANA_ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 
 /**
- * /dashboard/settings — Admin settings page.
+ * /dashboard/settings. The admin settings page.
  *
  * Stage 1 extension: subscription pricing, treasury wallet, Genesis
  * window close, SOL/USD price source, manual pin fallback, yearly
  * bonus CP amount, and the admin test-mode toggle. Plus a "Run
  * expiry sweep now" button that hits /api/cron/expire-subscriptions
  * with the CRON_SECRET stored server-side (the endpoint is on the
- * main app; admin calls it via a proxy route — see below).
+ * main app; admin calls it via a proxy route, see below).
  *
  * Existing health snapshot is preserved at the top.
  */
@@ -183,7 +183,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Receiving wallet — the one live, working control */}
+      {/* Receiving wallet, the one live working control */}
       <ReceivingWalletCard />
       <PayRailCard />
       <PaymentsToggleCard />
@@ -274,7 +274,7 @@ function PaymentsToggleCard() {
         </CardTitle>
         <CardDescription>
           Master switch for taking money. When off, the app runs fully (music, games, Embers)
-          but no one can buy a pass — used for a soft launch before payments go live.
+          but no one can buy Admission. Used for a soft launch before payments go live.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -294,7 +294,7 @@ function PaymentsToggleCard() {
             </button>
             <div className="text-sm">
               <span className={on ? "text-emerald-400 font-semibold" : "text-gray-400 font-semibold"}>
-                {saving ? "Saving…" : on ? "Payments ON — passes are for sale" : "Payments OFF — purchases blocked"}
+                {saving ? "Saving…" : on ? "Payments ON, Admission is for sale" : "Payments OFF, purchases blocked"}
               </span>
               {!on && (
                 <p className="text-[11px] text-gray-500 mt-0.5">
@@ -397,7 +397,7 @@ function ReceivingWalletCard() {
                 </code>
               ) : (
                 <span className="flex items-center gap-1.5 text-sm text-amber-400">
-                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Not set — Ammo purchases have nowhere to land.
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Not set. Payments have nowhere to land.
                 </span>
               )}
             </div>
@@ -601,7 +601,8 @@ function PayRailCard() {
         // Kept in step for anything still reading the old single key: the
         // token leads when it is open, which is how the app has behaved.
         pay_rail: tokenOn ? "onus" : "usdc",
-        token_bonus_pct: String(Math.max(0, Math.min(100, Math.floor(bonusNum || 0)))),
+        token_bonus_pct: String(Math.max(0, Math.min(90, Math.floor(bonusNum || 0)))),
+        clinic_rate_pct: String(Math.max(0, Math.min(90, Math.floor(bonusNum || 0)))),
         onus_mint: trimmedMint,
         onus_decimals: String(decimals),
         onus_symbol: symbol.trim().toUpperCase(),
@@ -677,7 +678,7 @@ function PayRailCard() {
               <p className="text-xs text-red-400">That doesn't look like a Solana address (32-44 base58 characters).</p>
             )}
 
-            <Field label="Extra Spins for paying in the token (%)">
+            <Field label="Clinic rate discount for paying in the token (%)">
               <Input
                 value={bonus}
                 onChange={(e) => setBonus(e.target.value)}
@@ -686,8 +687,9 @@ function PayRailCard() {
               />
             </Field>
             <p className="text-xs text-gray-500">
-              Paying on the token rail pays this much more on every pack, on top of whatever bonus
-              the pack already carries. USDC gets none. Zero turns it off.
+              The same Admission costs this much less on the token rail. The price is still decided in
+              dollars and only then converted, so the token moving changes how many tokens somebody
+              sends, never what they owe. USDC pays the standard rate. Zero turns the discount off.
             </p>
 
             <div className="grid grid-cols-3 gap-3">
