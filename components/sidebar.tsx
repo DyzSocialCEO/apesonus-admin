@@ -37,14 +37,19 @@ import { useState } from "react"
  * only thing the app charges for, so it gets its own desk. It holds the four
  * numbers now and the case queue as it is built.
  */
+/*
+ * AUG 18: Sessions and Finance are unlinked for beta. Nothing is being sold,
+ * so a sessions queue that can never fill and a revenue page that can only
+ * ever read zero are two desks that make the panel look busier than the
+ * business is. Both pages and both APIs stay exactly where they are, and both
+ * lines come back to this list the day the doors open.
+ */
 const navigation = [
   { name: "Dashboard",       href: "/dashboard",                 icon: LayoutDashboard },
   { name: "Tracks",          href: "/dashboard/tracks",          icon: Music           },
   { name: "Artists",         href: "/dashboard/artists",         icon: UserCircle      },
   { name: "The Ward",        href: "/dashboard/ward",            icon: Activity        },
-  { name: "Sessions",        href: "/dashboard/sessions",        icon: Stethoscope     },
   { name: "Patients",        href: "/dashboard/users",           icon: Users           },
-  { name: "Finance",         href: "/dashboard/finance",         icon: DollarSign     },
   { name: "Analytics",       href: "/dashboard/analytics",       icon: BarChart3       },
   { name: "Logs",            href: "/dashboard/logs",            icon: ScrollText      },
   { name: "Settings",        href: "/dashboard/settings",        icon: Settings        },
