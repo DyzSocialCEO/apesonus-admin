@@ -19,19 +19,33 @@ function ago(iso: string): string {
 export function LiveSignups() {
   const [d, setD] = useState<Data | null>(null)
   const [loading, setLoading] = useState(true)
+  const [denied, setDenied] = useState(false)
 
   useEffect(() => {
     let alive = true
+    let id: ReturnType<typeof setInterval> | null = null
+
+    // IT STOPS WHEN IT IS TOLD NO. This polled every 15 seconds and threw the
+    // failure away, so a signed out or expired session turned into a console
+    // full of 401s for as long as the tab stayed open, and the panel just sat
+    // there looking empty. An auth refusal now stops the loop and says so.
     const tick = () => {
       fetch("/api/admin/recent-users", { cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : null))
+        .then((r) => {
+          if (r.status === 401 || r.status === 403) {
+            if (id) clearInterval(id)
+            if (alive) setDenied(true)
+            return null
+          }
+          return r.ok ? r.json() : null
+        })
         .then((j) => { if (alive && j) setD(j) })
         .catch(() => {})
         .finally(() => { if (alive) setLoading(false) })
     }
     tick()
-    const id = setInterval(tick, 15_000) // poll every 15s for a live feel
-    return () => { alive = false; clearInterval(id) }
+    id = setInterval(tick, 15_000)
+    return () => { alive = false; if (id) clearInterval(id) }
   }, [])
 
   return (
@@ -54,7 +68,11 @@ export function LiveSignups() {
           )}
         </div>
 
-        {loading ? (
+        {denied ? (
+          <p className="text-sm text-gray-500 py-4 text-center">
+            The panel could not read the signups. Sign in again and reload this page.
+          </p>
+        ) : loading ? (
           <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-gray-600" /></div>
         ) : !d || d.users.length === 0 ? (
           <p className="text-sm text-gray-600 py-4 text-center">No signups yet — they&apos;ll appear here the moment people join.</p>

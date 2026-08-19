@@ -860,19 +860,23 @@ export async function POST(request: Request) {
         const { data, error } = await supabase.rpc("ward_song_on", { p_track: track, p_line: line })
         if (error) throw error
         if (data?.ok !== true) {
-          // therapist_busy cannot come back any more: the database stopped
-          // refusing a second song per therapist in 124. Anything else it
-          // refuses is said in the desk's own words rather than as a 500.
+          // THE DATABASE'S OWN WORD FOR IT, ALWAYS. Swallowing the reason and
+          // printing "could not put that song up" cost an afternoon: the
+          // database was still refusing a second song per therapist and the
+          // desk could not say so. Known reasons get a sentence, anything
+          // else is printed raw rather than hidden.
           const reason = String(data?.reason || "")
-          return NextResponse.json(
-            {
-              error:
-                reason === "track_has_no_artist"
-                  ? "That track has no artist on it. Fill the Artist field in Tracks first."
-                  : "Could not put that song up.",
-            },
-            { status: 400 },
-          )
+          const said =
+            reason === "track_has_no_artist"
+              ? "That track has no artist on it. Fill the Artist field in Tracks first."
+              : reason === "therapist_busy"
+                ? `The database is still refusing a second song for this therapist${
+                    data?.song ? ` because of ${data.song}` : ""
+                  }. Migration 136 removes that rule.`
+                : reason
+                  ? `Could not put that song up. The database said: ${reason}`
+                  : "Could not put that song up."
+          return NextResponse.json({ error: said }, { status: 400 })
         }
         await logAdminAction(supabase, request, session.username, "ward.song.on", { track })
         return NextResponse.json({ saved: true })
