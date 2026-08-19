@@ -822,7 +822,7 @@ export async function POST(request: Request) {
         // put-it-up path, which starts a fresh prescription.
         const { data: parked } = await supabase
           .from("ward_prescriptions")
-          .select("id, therapist_id, dose_target")
+          .select("id, therapist_id")
           .eq("track_id", track)
           .eq("status", "parked")
           .maybeSingle()
@@ -832,21 +832,16 @@ export async function POST(request: Request) {
           // that enforced it, and a therapist is meant to build up a shelf.
           // The count that used to be taken here refused to revive a parked
           // song purely because that therapist already had one up.
-          const { data: cfg } = await supabase
-            .from("app_settings").select("value").eq("key", "ward_config").maybeSingle()
-          let fallbackTarget = 10000
-          try {
-            const parsed = JSON.parse(String(cfg?.value ?? "{}"))
-            const n = Math.floor(Number(parsed?.dose_target))
-            if (Number.isFinite(n) && n >= 1) fallbackTarget = n
-          } catch {}
-
+          // THE TARGET IS NOT TOUCHED. Reviving used to stamp the config's
+          // default onto the row, which put a 10,000 on a song while a brand
+          // new one goes up with nothing. Neither number does anything now:
+          // no counter is capped by it and nothing retires when it is reached.
+          // The row keeps whatever it already had.
           const { error: reviveErr } = await supabase
             .from("ward_prescriptions")
             .update({
               status: "current",
               archived_at: null,
-              dose_target: parked.dose_target > 0 ? parked.dose_target : fallbackTarget,
               published_at: new Date().toISOString(),
               unlocked_at: new Date().toISOString(),
             })

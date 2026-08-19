@@ -374,16 +374,15 @@ export default function WardPage() {
       ) : null}
 
       {/* ══════════════════════════════════════════════════════════════
-          THE WARD, IN FOUR CARDS.
+          THE WARD, IN THREE CARDS.
 
-          One target. Tick the songs. Order what comes next. That is the whole
-          page. The staff list, prescription numbers, per song targets, the
-          hire form and the songs-match-nobody warning are all gone: they were
-          four ways of describing the same thing, and the warning only ever
-          existed because two tables held the same names.
+          What is up, the whole catalogue with a tick beside each song, and
+          the one number a Dose depends on. Targets, breaches, the queue and
+          the automatic archive are gone with the model that needed them: a
+          song is on the ward because somebody put it there and comes down
+          because somebody took it down.
           ══════════════════════════════════════════════════════════════ */}
 
-      {/* 1. THE TARGET */}
       {/* 1. ON THE WARD */}
       <Card>
         <CardHeader className="pb-2">
@@ -588,17 +587,21 @@ export default function WardPage() {
         </CardContent>
       </Card>
 
-      {/* 4. NEXT UP */}
       {/* ── DOSES ─────────────────────────────────────────────────── */}
       <Card>
         <CardHeader>
           <CardTitle>Doses</CardTitle>
           <CardDescription>
-            Listening is free. These two numbers are what a Dose means and what a new prescription is
-            aimed at. Changing the threshold takes effect on the next treatment.
+            Listening is free, and nothing is aimed at a number any more. This is the one setting
+            left: how much of a track has to play before it counts. It takes effect on the next
+            treatment.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* THE TARGET FIELD IS GONE, not hidden. It set a number that
+              nothing reads: no counter is capped by it and no song retires
+              when it is reached. A dial that does nothing is worse than no
+              dial, because it looks like a decision. */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1">Dose threshold, %</label>
@@ -611,21 +614,10 @@ export default function WardPage() {
                 How much of a track has to play before it counts.
               </p>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Default shared target</label>
-              <Input
-                type="number"
-                value={doseCfg.dose_target}
-                onChange={(e) => setDoseCfg({ ...doseCfg, dose_target: Number(e.target.value) })}
-              />
-              <p className="text-[11px] text-gray-600 mt-1">
-                What a newly published prescription starts with. The one on the ward is set above.
-              </p>
-            </div>
           </div>
           <button
             type="button"
-            onClick={() => patch("doses", { ...doseCfg })}
+            onClick={() => patch("doses", { dose_pct: doseCfg.dose_pct })}
             disabled={busy === "doses"}
             className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
           >
