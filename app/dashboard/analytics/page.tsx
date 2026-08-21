@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
-  Users, Play, TrendingUp, Activity, Flame, Music, Share2, Loader2,
+  Users, Play, TrendingUp, Activity, Flame, Music, Loader2,
 } from "lucide-react"
 
 const MOOD_COLORS: Record<string, string> = {
@@ -44,13 +44,16 @@ export default function AnalyticsPage() {
 
   if (!data) return <p className="text-gray-500">Failed to load analytics</p>
 
+  // Everything here is counted from Doses, the same rows the Chart reads.
+  // Referrals came out: nothing in the app refers anybody, so the tile was a
+  // permanent zero pretending to be a measurement.
   const statCards = [
-    { title: "Total Users", value: data.totalUsers, icon: Users, color: "text-blue-400", bg: "bg-blue-400/10" },
-    { title: "Active (7d)", value: data.activeUsers, icon: Activity, color: "text-green-400", bg: "bg-green-400/10" },
-    { title: "New (7d)", value: data.newUsers, icon: TrendingUp, color: "text-cyan-400", bg: "bg-cyan-400/10" },
-    { title: "Total Plays", value: data.totalPlays, icon: Play, color: "text-purple-400", bg: "bg-purple-400/10" },
-    { title: "Active Tracks", value: data.totalTracks, icon: Music, color: "text-pink-400", bg: "bg-pink-400/10" },
-    { title: "Referrals", value: data.totalReferrals, icon: Share2, color: "text-orange-400", bg: "bg-orange-400/10" },
+    { title: "Patients", value: data.totalUsers, icon: Users, color: "text-blue-400", bg: "bg-blue-400/10" },
+    { title: `Active (${data.days}d)`, value: data.activeUsers, icon: Activity, color: "text-green-400", bg: "bg-green-400/10" },
+    { title: `New (${data.days}d)`, value: data.newUsers, icon: TrendingUp, color: "text-cyan-400", bg: "bg-cyan-400/10" },
+    { title: `Doses (${data.days}d)`, value: data.dosesWindow, icon: Play, color: "text-purple-400", bg: "bg-purple-400/10" },
+    { title: "Total doses", value: data.dosesTotal, icon: Flame, color: "text-orange-400", bg: "bg-orange-400/10" },
+    { title: "On the ward", value: data.prescriptions, icon: Music, color: "text-pink-400", bg: "bg-pink-400/10" },
   ]
 
   const totalMoodPlays = Object.values(data.moodBreakdown as Record<string, number>).reduce((a: number, b: number) => a + b, 0)
@@ -59,7 +62,7 @@ export default function AnalyticsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Analytics</h1>
-        <p className="text-gray-400">Real-time app performance</p>
+        <p className="text-gray-400">Counted from Doses, the same rows the Chart reads.</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -90,7 +93,7 @@ export default function AnalyticsPage() {
                   <div key={mood}>
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm text-white font-medium uppercase">{mood}</span>
-                      <span className="text-xs text-gray-400">{count as number} plays ({pct.toFixed(0)}%)</span>
+                      <span className="text-xs text-gray-400">{count as number} doses ({pct.toFixed(0)}%)</span>
                     </div>
                     <div className="h-2 rounded-full bg-gray-800 overflow-hidden">
                       <div
@@ -124,7 +127,7 @@ export default function AnalyticsPage() {
                       <p className="text-sm text-white font-medium truncate">{track.title}</p>
                       <p className="text-xs text-gray-500">{track.artist}</p>
                     </div>
-                    <span className="text-sm text-primary font-bold">{track.play_count}</span>
+                    <span className="text-sm text-primary font-bold">{track.doses}</span>
                   </div>
                 ))}
               </div>

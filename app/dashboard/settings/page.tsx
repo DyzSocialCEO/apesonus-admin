@@ -171,7 +171,7 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Settings</h1>
-        <p className="text-gray-400">System info and payment controls.</p>
+        <p className="text-gray-400">System info. Nothing is being sold, so there is very little to set.</p>
       </div>
 
       {/* Banner */}
@@ -183,10 +183,14 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Receiving wallet, the one live working control */}
-      <ReceivingWalletCard />
-      <PayRailCard />
-      <PaymentsToggleCard />
+      {/* THE MONEY CONTROLS ARE NOT DRAWN DURING BETA.
+          A receiving wallet, a payment rail and a master switch for taking
+          money are three dials for a product that takes none, and a dial that
+          cannot do anything is worse than no dial because it looks like a
+          decision. The cards are still in this file, untouched, and come back
+          the day Admission does:
+              <ReceivingWalletCard /> <PayRailCard /> <PaymentsToggleCard />
+      */}
 
 
 

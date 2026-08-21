@@ -5,60 +5,38 @@ import { getSession } from "@/lib/auth"
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const supabase = await createAdminClient()
+    const { searchParams } = new URL(request.url)
+    const days = Math.max(1, Math.min(365, Math.floor(Number(searchParams.get("days") ?? 7)) || 7))
 
-    const { count: totalUsers } = await supabase.from("users").select("*", { count: "exact", head: true })
+    // ONE READ, COUNTED IN THE DATABASE. The previous version pulled every
+    // play row of the window through the API and counted them here, which
+    // stops at 1000 rows: the busier the clinic got, the more wrong this desk
+    // became, silently. It also ranked tracks by a play counter that loses
+    // counts under load and drew a condition breakdown from a table nothing
+    // has written to in months. All three now come from ward_doses, the same
+    // rows the Chart and the Diagnosis count.
+    const { data, error } = await supabase.rpc("ward_analytics", { p_days: days })
+    if (error) throw error
 
-    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString()
-
-    // Active (7d) = distinct user_ids in play_history over the window.
-    // Previously read users.last_played_at which is no longer written.
-    const { data: recentPlays } = await supabase
-      .from("play_history")
-      .select("user_id")
-      .gte("played_at", sevenDaysAgo)
-    const activeUsers = recentPlays
-      ? new Set(recentPlays.map((p) => p.user_id)).size
-      : 0
-
-    const { count: newUsers } = await supabase.from("users").select("*", { count: "exact", head: true }).gte("created_at", sevenDaysAgo)
-
-    // Total plays = count of play_history rows.
-    // Previously summed users.tracks_played which is no longer written.
-    const { count: totalPlays } = await supabase
-      .from("play_history")
-      .select("*", { count: "exact", head: true })
-
-    const { count: totalTracks } = await supabase.from("tracks").select("*", { count: "exact", head: true }).eq("is_active", true)
-
-    // Mood breakdown from mood_stats
-    const { data: moodData } = await supabase.from("mood_stats").select("mood, play_count")
-    const moodBreakdown: Record<string, number> = { moon: 0, rekt: 0, cope: 0, degen: 0, zen: 0 }
-    moodData?.forEach((m) => { moodBreakdown[m.mood] = (moodBreakdown[m.mood] || 0) + m.play_count })
-
-    // Top tracks
-    const { data: topTracks } = await supabase.from("tracks").select("id, title, artist, play_count").order("play_count", { ascending: false }).limit(5)
-
-    // Referral count from referred_by field
-    const { count: totalReferrals } = await supabase
-      .from("users")
-      .select("*", { count: "exact", head: true })
-      .not("referred_by", "is", null)
+    const d = (data ?? {}) as Record<string, any>
 
     return NextResponse.json({
-      totalUsers: totalUsers || 0,
-      activeUsers,
-      newUsers: newUsers || 0,
-      totalPlays: totalPlays || 0,
-      totalTracks: totalTracks || 0,
-      totalReferrals: totalReferrals || 0,
-      moodBreakdown,
-      topTracks: topTracks || [],
+      days,
+      totalUsers: Number(d.patients ?? 0) || 0,
+      activeUsers: Number(d.activePatients ?? 0) || 0,
+      newUsers: Number(d.newPatients ?? 0) || 0,
+      dosesWindow: Number(d.dosesWindow ?? 0) || 0,
+      dosesTotal: Number(d.dosesTotal ?? 0) || 0,
+      prescriptions: Number(d.prescriptions ?? 0) || 0,
+      therapists: Number(d.therapists ?? 0) || 0,
+      topTracks: Array.isArray(d.topTracks) ? d.topTracks : [],
+      moodBreakdown: (d.conditions ?? {}) as Record<string, number>,
     })
   } catch (error) {
     console.error("Error:", error)
