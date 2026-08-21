@@ -35,18 +35,45 @@ export async function GET() {
 
     if (error) throw error
 
+    // WHAT A PATIENT IS DURING BETA. Spins and Embers belong to an economy
+    // that no longer exists in the app, so the desk stopped asking for them.
+    // Doses, devices and the flag are what this panel is for now.
     const ids = (users || []).map((u) => u.id)
-    const ammoBal: Record<string, number> = {}
-    const embMap: Record<string, number> = {}
+    const doses: Record<string, number> = {}
+    const lastDose: Record<string, string> = {}
+    const devices: Record<string, number> = {}
+    const flags: Record<string, string> = {}
+
     if (ids.length) {
-      const [bals, embs] = await Promise.all([
-        supabase.from("pit_ammo_balances").select("user_id, balance").in("user_id", ids),
-        supabase.from("pit_embers").select("user_id, embers").in("user_id", ids),
+      const [state, dev, flg, recent] = await Promise.all([
+        supabase.from("ward_spin_state").select("user_id, lifetime_doses").in("user_id", ids),
+        supabase.from("ward_devices").select("user_id, device_id").in("user_id", ids),
+        supabase.from("ward_flags").select("user_id, status").in("user_id", ids),
+        // Bounded to this page of patients, so the 1000 row page limit cannot
+        // silently freeze a number the way it has on this panel before.
+        supabase
+          .from("ward_doses")
+          .select("user_id, taken_at")
+          .in("user_id", ids)
+          .order("taken_at", { ascending: false })
+          .limit(1000),
       ])
-      for (const b of bals.data || []) ammoBal[b.user_id] = Number(b.balance || 0)
-      for (const e of embs.data || []) embMap[e.user_id] = Number(e.embers || 0)
+
+      for (const r of state.data || []) doses[r.user_id] = Number(r.lifetime_doses || 0)
+      for (const r of dev.data || []) devices[r.user_id] = (devices[r.user_id] || 0) + 1
+      for (const r of flg.data || []) flags[r.user_id] = String(r.status || "ok")
+      for (const r of recent.data || []) {
+        if (!lastDose[r.user_id]) lastDose[r.user_id] = String(r.taken_at)
+      }
     }
-    const enriched = (users || []).map((u) => ({ ...u, ammo: ammoBal[u.id] || 0, embers: embMap[u.id] || 0 }))
+
+    const enriched = (users || []).map((u) => ({
+      ...u,
+      doses: doses[u.id] || 0,
+      devices: devices[u.id] || 0,
+      flag: flags[u.id] || "ok",
+      lastDose: lastDose[u.id] || null,
+    }))
 
     return NextResponse.json({ users: enriched })
   } catch (error: any) {

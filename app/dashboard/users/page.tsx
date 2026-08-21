@@ -9,29 +9,21 @@ import {
 } from "lucide-react"
 
 /**
- * /dashboard/users — user roster + admin actions.
+ * /dashboard/users, the patient roster.
  *
- * Live-schema fields used:
- *   id              → primary key (Supabase auth UUID)
- *   email           → email address from auth provider
- *   display_name    → display name from auth metadata (nullable)
- *   avatar_url      → from auth provider (nullable)
- *   total_onus      → ONUS balance
- *   premium_status  → 'none' | 'standard' | 'genesis' (canonical tier;
- *                     constraint from migration v2_001)
- *   is_genesis_holder → permanent card flag (true forever once minted)
- *   genesis_active  → 3x weight toggle (cardholder + most-recent purchase $5+)
- *   created_at
+ * WHAT A PATIENT IS DURING BETA. Nothing is being sold, so tiers, Spins and
+ * Embers described an economy the app no longer has: a payment badge on a
+ * product that takes no payments is a label for a thing that cannot happen.
+ * This reads what the clinic actually does now.
  *
- * Tier label rule (matches the PWA's source of truth):
- *   premium_status === 'genesis'   → GENESIS  (cardholder with active 3x)
- *   premium_status === 'standard'  → STANDARD (paid, 2x cap)
- *   premium_status === 'none'      → FREE
+ *   doses      lifetime finished listens
+ *   devices    machines this file has been opened on
+ *   standing   ok, watch or suspended, set on the Who looks like who desk
+ *   last dose  when they were last here
  *
- * Legacy verification_tier column is intentionally NOT read here. It has
- * a stricter CHECK constraint ('free'|'wagmi'|'chad'|'whale') that the
- * payment flow can't write 'genesis'/'standard' to, so it's always
- * stale. premium_status is the canonical source.
+ * The payment columns on the users table are still selected below, because
+ * they are still in the schema and the day Admission comes back this panel
+ * will want them again. They are simply not drawn.
  */
 
 interface AdminUser {
@@ -44,26 +36,24 @@ interface AdminUser {
   is_genesis_holder: boolean | null
   genesis_active: boolean | null
   has_paid: boolean | null
-  ammo: number | null
-  embers: number | null
+  doses: number | null
+  devices: number | null
+  flag: string | null
+  lastDose: string | null
   created_at: string
 }
 
-function isPaid(u: AdminUser): boolean {
-  // Paid = has ever made a confirmed purchase.
-  return !!u.has_paid
-}
-
-function embersTier(e: number): { label: string; cls: string } {
-  if (e >= 1000) return { label: "DIAMOND", cls: "bg-cyan-500/20 text-cyan-300" }
-  if (e >= 200) return { label: "DEGEN", cls: "bg-pink-500/20 text-pink-400" }
-  if (e >= 50) return { label: "BELIEVER", cls: "bg-yellow-500/20 text-yellow-400" }
-  if (e >= 10) return { label: "BACKER", cls: "bg-lime-500/20 text-lime-400" }
-  return { label: "SCOUT", cls: "bg-gray-500/20 text-gray-400" }
+/** How long ago, in words a person reads rather than a timestamp. */
+function ago(iso: string | null | undefined): string {
+  if (!iso) return "never"
+  const secs = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`
+  return `${Math.floor(secs / 86400)}d ago`
 }
 
 function shortId(id: string | null | undefined): string {
-  if (!id) return "—"
+  if (!id) return ","
   return id.length > 12 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id
 }
 
@@ -117,28 +107,21 @@ export default function UsersPage() {
     )
   })
 
-  const paidCount = users.filter(isPaid).length
 
   /**
-   * Tier badge driven by Embers, with one gate in front of it.
-   *
-   * Never paid means FREE, muted, regardless of Ember count. The Ember
-   * tiers only carry meaning for payers: an Ember is the receipt for a
-   * paid play (migration 058 gates the mint on a confirmed purchase), so
-   * a tier badge on a non-payer would be describing something they never
-   * bought.
-   *
-   * NOTE: the previous comment here described a premium_status/Genesis
-   * badge system with STANDARD and gold-card labels. That code is long
-   * gone and the comment was left behind describing behavior that did not
-   * exist. If this badge changes again, change these words with it.
+   * The only badge left. Nothing is being sold, so a payment tier described a
+   * thing that does not exist; what matters about a patient now is whether
+   * anybody has had cause to look at them twice.
    */
-  const tierBadge = (user: AdminUser) => {
-    if (!isPaid(user)) {
-      return <Badge className="bg-gray-500/20 text-gray-500 border-0 text-[10px]">FREE</Badge>
+  const flagBadge = (user: AdminUser) => {
+    const f = user.flag || "ok"
+    if (f === "suspended") {
+      return <Badge className="bg-red-500/20 text-red-400 border-0 text-[10px]">SUSPENDED</Badge>
     }
-    const t = embersTier(user.embers || 0)
-    return <Badge className={`${t.cls} border-0 text-[10px]`}>{t.label}</Badge>
+    if (f === "watch") {
+      return <Badge className="bg-yellow-500/20 text-yellow-400 border-0 text-[10px]">WATCH</Badge>
+    }
+    return <Badge className="bg-gray-500/20 text-gray-500 border-0 text-[10px]">OK</Badge>
   }
 
   return (
@@ -147,7 +130,7 @@ export default function UsersPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Users</h1>
           <p className="text-gray-400">
-            {users.length} total · {paidCount} paid
+            {users.length} patients
           </p>
         </div>
         <button
@@ -198,15 +181,15 @@ export default function UsersPage() {
                   <tr className="border-b border-gray-800">
                     <th className="text-left   py-4 px-4 text-sm font-medium text-gray-400">User</th>
                     <th className="text-left   py-4 px-4 text-sm font-medium text-gray-400">User ID</th>
-                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Tier</th>
-                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Embers</th>
-                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Spins</th>
+                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Standing</th>
+                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Doses</th>
+                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Devices</th>
+                    <th className="text-center py-4 px-4 text-sm font-medium text-gray-400">Last dose</th>
                     <th className="text-right  py-4 px-4 text-sm font-medium text-gray-400">Joined</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredUsers.map((user) => {
-                    const paid = isPaid(user)
                     return (
                       <tr key={user.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                         <td className="py-3 px-4">
@@ -229,7 +212,7 @@ export default function UsersPage() {
                                   {user.display_name || user.email?.split("@")[0] || "Unknown"}
                                 </p>
                               </div>
-                              <p className="text-xs text-gray-500">{user.email || "—"}</p>
+                              <p className="text-xs text-gray-500">{user.email || ","}</p>
                             </div>
                           </div>
                         </td>
@@ -237,33 +220,21 @@ export default function UsersPage() {
                           {shortId(user.id)}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          {tierBadge(user)}
-                        </td>
-                        <td className="py-3 px-4 text-center text-sm font-medium">
-                          {/*
-                            Red means a non-payer is holding Embers, which
-                            should be impossible after migration 058 gated the
-                            mint on a confirmed purchase. If this ever lights
-                            up, the gate has failed and the airdrop basis is
-                            being diluted. Leave the canary in.
-                          */}
-                          <span
-                            className={
-                              !paid && (user.embers || 0) > 0
-                                ? "text-red-400"
-                                : "text-gray-300"
-                            }
-                            title={
-                              !paid && (user.embers || 0) > 0
-                                ? "Non-payer holding Embers. The 058 gate should prevent this."
-                                : undefined
-                            }
-                          >
-                            {(user.embers || 0).toLocaleString("en-US")}
-                          </span>
+                          {flagBadge(user)}
                         </td>
                         <td className="py-3 px-4 text-center text-primary text-sm font-medium">
-                          {(user.ammo || 0).toLocaleString("en-US")}
+                          {(user.doses || 0).toLocaleString("en-US")}
+                        </td>
+                        <td className="py-3 px-4 text-center text-sm">
+                          {/* More than a couple of machines on one file is not
+                              proof of anything, but it is the first thing worth
+                              noticing about a patient. */}
+                          <span className={(user.devices || 0) > 2 ? "text-yellow-400" : "text-gray-400"}>
+                            {user.devices || 0}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-center text-gray-500 text-xs">
+                          {ago(user.lastDose)}
                         </td>
                         <td className="py-3 px-4 text-right text-gray-500 text-xs">
                           {new Date(user.created_at).toLocaleDateString()}
@@ -273,7 +244,7 @@ export default function UsersPage() {
                   })}
                   {filteredUsers.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center text-gray-500">
+                      <td colSpan={7} className="py-12 text-center text-gray-500">
                         {searchQuery ? "No users match your search" : "No users yet"}
                       </td>
                     </tr>
